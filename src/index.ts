@@ -13,6 +13,7 @@ import {
   unblockTaskCommand,
   archiveTaskCommand,
 } from "./commands/tasks";
+import { dispatchCommand } from "./commands/dispatch";
 import { homedir } from "node:os";
 import { mkdirSync } from "node:fs";
 
@@ -45,5 +46,6 @@ program.addCommand(promoteTaskCommand);
 program.addCommand(blockTaskCommand);
 program.addCommand(unblockTaskCommand);
 program.addCommand(archiveTaskCommand);
+program.addCommand(dispatchCommand);
 
 program.parse();
