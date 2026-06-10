@@ -1,6 +1,13 @@
 import { Database } from "bun:sqlite";
+import { homedir } from "node:os";
+import { mkdirSync } from "node:fs";
+import { dirname } from "node:path";
 
 let dbInstance: Database | null = null;
+
+export function defaultDbPath(): string {
+  return process.env.KDI_DB || `${homedir()}/.local/share/kdi/kdi.db`;
+}
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS boards (
@@ -47,10 +54,13 @@ CREATE INDEX IF NOT EXISTS idx_tasks_board_status ON tasks(board_id, status);
 CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks(assignee);
 `;
 
-export function initDb(path: string): Database {
+export function initDb(path?: string): Database {
   if (dbInstance) return dbInstance;
-  
-  dbInstance = new Database(path, { create: true });
+
+  const dbPath = path || defaultDbPath();
+  mkdirSync(dirname(dbPath), { recursive: true });
+
+  dbInstance = new Database(dbPath, { create: true });
   dbInstance.exec("PRAGMA journal_mode = WAL");
   dbInstance.exec("PRAGMA busy_timeout = 5000");
   dbInstance.exec(SCHEMA);

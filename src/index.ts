@@ -14,9 +14,6 @@ import {
   archiveTaskCommand,
 } from "./commands/tasks";
 import { dispatchCommand } from "./commands/dispatch";
-import { homedir } from "node:os";
-import { mkdirSync } from "node:fs";
-
 const program = new Command();
 
 program
@@ -24,13 +21,8 @@ program
   .description("Multi-Agent Kanban Dispatch for Coding Agents")
   .version("0.1.0");
 
-const dbDir = `${homedir()}/.local/share/kdi`;
-const dbPath = `${dbDir}/kdi.db`;
-
-mkdirSync(dbDir, { recursive: true });
-
 try {
-  initDb(dbPath);
+  initDb();
 } catch (err: any) {
   console.error(`Failed to initialize database: ${err.message}`);
   process.exit(1);
