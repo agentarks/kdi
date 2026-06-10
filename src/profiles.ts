@@ -38,7 +38,15 @@ const BUILTIN_PROFILES: Profile[] = [
 export function loadProfiles(path: string = DEFAULT_PROFILES_PATH): Profile[] {
   if (existsSync(path)) {
     const content = readFileSync(path, "utf-8");
-    return YAML.parse(content) as Profile[];
+    const custom = YAML.parse(content) as Profile[];
+    for (const profile of custom) {
+      if (!profile.command) {
+        throw new Error(`Profile "${profile.name}" is missing required field "command"`);
+      }
+    }
+    const customNames = new Set(custom.map((p) => p.name));
+    const builtins = BUILTIN_PROFILES.filter((p) => !customNames.has(p.name));
+    return [...builtins, ...custom];
   }
   return BUILTIN_PROFILES;
 }
