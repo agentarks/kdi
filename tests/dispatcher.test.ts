@@ -157,4 +157,92 @@ describe("dispatcher", () => {
 
     expect(mockHarness).toHaveBeenCalled();
   });
+
+  it("blocks task when board is not found", async () => {
+    const board = createBoard("test-board", "/tmp/test-board");
+    const task = createTask({ board_id: board.id, title: "Orphan task", assignee: "opencode" });
+    promoteTask(task.id);
+
+    // Archive the board so getBoardWorkdir returns null
+    const db = (await import("../src/db")).getDb();
+    db.run("UPDATE boards SET archived_at = unixepoch() WHERE id = ?", [board.id]);
+
+    const result = await tick();
+
+    expect(result.processed).toBe(1);
+
+    const updated = showTask(task.id);
+    expect(updated!.status).toBe("blocked");
+    expect(updated!.block_reason).toContain("Board not found");
+  });
+
+  it("blocks task when profile is unknown", async () => {
+    const board = createBoard("test-board", "/tmp/test-board");
+    const task = createTask({ board_id: board.id, title: "Unknown profile task", assignee: "nonexistent-profile-123" });
+    promoteTask(task.id);
+
+    const result = await tick();
+
+    expect(result.processed).toBe(1);
+
+    const updated = showTask(task.id);
+    expect(updated!.status).toBe("blocked");
+    expect(updated!.block_reason).toContain("Unknown profile");
+  });
+
+  it("blocks task when spawnHarness throws", async () => {
+    const board = createBoard("test-board", "/tmp/test-board");
+    const task = createTask({ board_id: board.id, title: "Throwing harness task", assignee: "opencode" });
+    promoteTask(task.id);
+
+    const mockHarness = mock(() => Promise.reject(new Error("spawn failed")));
+    const mockCreateWorktree = mock(() => "/tmp/mock-worktree");
+    const mockRemoveWorktree = mock(() => true);
+
+    const result = await tick({
+      spawnHarness: mockHarness,
+      createWorktree: mockCreateWorktree,
+      removeWorktree: mockRemoveWorktree,
+    });
+
+    expect(result.processed).toBe(1);
+
+    const updated = showTask(task.id);
+    expect(updated!.status).toBe("blocked");
+    expect(updated!.block_reason).toContain("spawn failed");
+  });
+
+  it("handles concurrent claim race", async () => {
+    const board = createBoard("test-board", "/tmp/test-board");
+    const task = createTask({ board_id: board.id, title: "Race task", assignee: "opencode" });
+    promoteTask(task.id);
+
+    const slowHarness = mock(() => new Promise((resolve) => {
+      setTimeout(() => resolve({ stdout: "ok", stderr: "", exitCode: 0 }), 200);
+    }));
+    const mockCreateWorktree = mock(() => "/tmp/mock-worktree");
+    const mockRemoveWorktree = mock(() => true);
+
+    // Start first tick (will claim the task and hold it)
+    const firstTick = tick({
+      spawnHarness: slowHarness,
+      createWorktree: mockCreateWorktree,
+      removeWorktree: mockRemoveWorktree,
+    });
+
+    // Small delay to ensure first tick claims the task
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    // Second tick should see task as running and skip it
+    const secondTick = tick({
+      spawnHarness: slowHarness,
+      createWorktree: mockCreateWorktree,
+      removeWorktree: mockRemoveWorktree,
+    });
+
+    const [result1, result2] = await Promise.all([firstTick, secondTick]);
+
+    expect(result1.processed).toBe(1);
+    expect(result2.processed).toBe(0);
+  });
 });

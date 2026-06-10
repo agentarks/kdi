@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   block_reason TEXT,
   created_at INTEGER NOT NULL DEFAULT (unixepoch()),
   updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
+  started_at INTEGER,
   archived_at INTEGER
 );
 
@@ -53,6 +54,13 @@ export function initDb(path: string): Database {
   dbInstance.exec("PRAGMA journal_mode = WAL");
   dbInstance.exec("PRAGMA busy_timeout = 5000");
   dbInstance.exec(SCHEMA);
+
+  // Migrate: add started_at column if missing
+  const tableInfo = dbInstance.query("PRAGMA table_info(tasks)").all() as any[];
+  const hasStartedAt = tableInfo.some((col) => col.name === "started_at");
+  if (!hasStartedAt) {
+    dbInstance.exec("ALTER TABLE tasks ADD COLUMN started_at INTEGER");
+  }
   
   return dbInstance;
 }

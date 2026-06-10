@@ -22,21 +22,95 @@ export interface TickResult {
   processed: number;
 }
 
-export async function spawnHarness(command: string, cwd: string): Promise<HarnessResult> {
+function parseShellCommand(command: string): [string, string[]] {
+  const args: string[] = [];
+  let current = "";
+  let inSingleQuote = false;
+  let inDoubleQuote = false;
+  let escapeNext = false;
+
+  for (let i = 0; i < command.length; i++) {
+    const char = command[i];
+
+    if (escapeNext) {
+      current += char;
+      escapeNext = false;
+      continue;
+    }
+
+    if (char === "\\" && !inSingleQuote) {
+      escapeNext = true;
+      continue;
+    }
+
+    if (char === "'" && !inDoubleQuote) {
+      inSingleQuote = !inSingleQuote;
+      continue;
+    }
+
+    if (char === '"' && !inSingleQuote) {
+      inDoubleQuote = !inDoubleQuote;
+      continue;
+    }
+
+    if (char === " " && !inSingleQuote && !inDoubleQuote) {
+      if (current.length > 0) {
+        args.push(current);
+        current = "";
+      }
+      continue;
+    }
+
+    current += char;
+  }
+
+  if (current.length > 0) {
+    args.push(current);
+  }
+
+  if (args.length === 0) {
+    throw new Error("Empty command");
+  }
+
+  const [cmd, ...rest] = args;
+  return [cmd, rest];
+}
+
+export async function spawnHarness(command: string, cwd: string, timeoutMs: number = 300000): Promise<HarnessResult> {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, { shell: true, cwd, stdio: ["ignore", "pipe", "pipe"] });
-    
+    const [cmd, args] = parseShellCommand(command);
+    const child = spawn(cmd, args, { shell: false, cwd, stdio: ["ignore", "pipe", "pipe"] });
+
+    let settled = false;
+    const timeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      child.kill("SIGTERM");
+      setTimeout(() => {
+        if (!child.killed) {
+          child.kill("SIGKILL");
+        }
+      }, 5000);
+      reject(new Error(`Harness timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+
     let stdout = "";
     let stderr = "";
-    
+
     child.stdout!.on("data", (data) => { stdout += data.toString(); });
     child.stderr!.on("data", (data) => { stderr += data.toString(); });
-    
+
     child.on("close", (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
       resolve({ stdout, stderr, exitCode: code ?? 0 });
     });
-    
+
     child.on("error", (err) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
       reject(err);
     });
   });
@@ -52,7 +126,7 @@ function listReadyTasks(): Task[] {
 function claimTask(id: number): boolean {
   const db = getDb();
   const result = db.run(
-    `UPDATE tasks SET status = 'running', updated_at = unixepoch() WHERE id = ? AND status = 'ready' AND archived_at IS NULL`,
+    `UPDATE tasks SET status = 'running', started_at = unixepoch(), updated_at = unixepoch() WHERE id = ? AND status = 'ready' AND archived_at IS NULL`,
     [id]
   );
   return result.changes > 0;
@@ -82,42 +156,55 @@ function failTask(id: number, result: string, reason: string): void {
   );
 }
 
+function reapStuckTasks(): void {
+  const db = getDb();
+  const thirtyMinutesAgo = Math.floor(Date.now() / 1000) - 30 * 60;
+  db.run(
+    `UPDATE tasks SET status = 'ready', started_at = NULL, updated_at = unixepoch() WHERE status = 'running' AND started_at < ?`,
+    [thirtyMinutesAgo]
+  );
+}
+
 export async function tick(options: TickOptions = {}): Promise<TickResult> {
   const doSpawnHarness = options.spawnHarness ?? spawnHarness;
   const doCreateWorktree = options.createWorktree ?? createWorktree;
   const doRemoveWorktree = options.removeWorktree ?? removeWorktree;
-  
+
   if (!isEnabled(FF_ENABLE_KANBAN_DISPATCH)) {
     return { processed: 0 };
   }
-  
+
+  reapStuckTasks();
+
   const tasks = listReadyTasks();
   let processed = 0;
-  
+
   for (const task of tasks) {
     if (isBlockedByDependencies(task.id)) {
       continue;
     }
-    
+
     const claimed = claimTask(task.id);
     if (!claimed) {
       continue;
     }
-    
+
     const workdir = getBoardWorkdir(task.board_id);
     if (!workdir) {
       failTask(task.id, "", "Board not found or archived");
+      processed++;
       continue;
     }
-    
+
     let profile;
     try {
       profile = getProfile(task.assignee ?? "opencode");
     } catch {
       failTask(task.id, "", `Unknown profile: ${task.assignee ?? "opencode"}`);
+      processed++;
       continue;
     }
-    
+
     let worktreePath: string;
     try {
       worktreePath = doCreateWorktree(workdir, profile.name, String(task.id));
@@ -126,7 +213,7 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
       processed++;
       continue;
     }
-    
+
     try {
       const command = substituteCommand(profile.command, {
         workdir: worktreePath,
@@ -134,15 +221,15 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
         task_id: String(task.id),
         agent: profile.agent ?? profile.name,
       });
-      
+
       const { stdout, stderr, exitCode } = await doSpawnHarness(command, worktreePath);
-      
+
       if (exitCode === 0) {
         finishTask(task.id, stdout);
       } else {
         failTask(task.id, stdout, `Harness failed (exit ${exitCode}): ${stderr || "unknown error"}`);
       }
-      
+
       processed++;
     } catch (err: any) {
       failTask(task.id, "", `Harness execution failed: ${err.message}`);
@@ -155,7 +242,7 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
       }
     }
   }
-  
+
   return { processed };
 }
 
@@ -165,20 +252,20 @@ export interface DispatcherHandle {
 
 export function startDispatcher(pollIntervalMs: number = 5000, options?: TickOptions): DispatcherHandle {
   let running = true;
-  
+
   async function loop() {
     while (running) {
       try {
         await tick(options);
-      } catch {
-        // Log and continue
+      } catch (err) {
+        console.error("Dispatcher tick failed:", err);
       }
       await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
     }
   }
-  
+
   loop();
-  
+
   return {
     stop: () => {
       running = false;
