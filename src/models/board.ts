@@ -20,17 +20,24 @@ export interface BoardWithTaskCounts extends Board {
 
 export function createBoard(slug: string, workdir: string): Board {
   const db = getDb();
-  const result = db.run(
-    "INSERT INTO boards (slug, workdir) VALUES (?, ?)",
-    [slug, workdir]
-  );
-  return {
-    id: Number(result.lastInsertRowid),
-    slug,
-    workdir,
-    created_at: Math.floor(Date.now() / 1000),
-    archived_at: null,
-  };
+  try {
+    const result = db.run(
+      "INSERT INTO boards (slug, workdir) VALUES (?, ?)",
+      [slug, workdir]
+    );
+    return {
+      id: Number(result.lastInsertRowid),
+      slug,
+      workdir,
+      created_at: Math.floor(Date.now() / 1000),
+      archived_at: null,
+    };
+  } catch (err: any) {
+    if (err.message?.includes("UNIQUE constraint failed")) {
+      throw new Error(`Board with slug "${slug}" already exists`);
+    }
+    throw err;
+  }
 }
 
 export function listBoards(): Board[] {
@@ -68,19 +75,22 @@ export function showBoard(slug: string): BoardWithTaskCounts | null {
   return {
     ...board,
     taskCounts: {
-      todo: Number(counts.todo ?? 0),
-      ready: Number(counts.ready ?? 0),
-      running: Number(counts.running ?? 0),
-      done: Number(counts.done ?? 0),
-      blocked: Number(counts.blocked ?? 0),
+      todo: counts.todo ?? 0,
+      ready: counts.ready ?? 0,
+      running: counts.running ?? 0,
+      done: counts.done ?? 0,
+      blocked: counts.blocked ?? 0,
     },
   };
 }
 
 export function archiveBoard(slug: string): void {
   const db = getDb();
-  db.run(
+  const result = db.run(
     "UPDATE boards SET archived_at = unixepoch() WHERE slug = ? AND archived_at IS NULL",
     [slug]
   );
+  if (result.changes === 0) {
+    throw new Error(`Board "${slug}" not found or already archived`);
+  }
 }
