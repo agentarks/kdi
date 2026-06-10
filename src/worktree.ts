@@ -1,7 +1,15 @@
-import { execSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { execFileSync, execSync } from "node:child_process";
+import { lstatSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+const VALID_ID_RE = /^[a-zA-Z0-9_-]+$/;
+
+function validateId(label: string, value: string): void {
+  if (!VALID_ID_RE.test(value)) {
+    throw new Error(`${label} must be alphanumeric (may include hyphens/underscores). Got: ${value}`);
+  }
+}
 
 export function createWorktree(
   repoDir: string,
@@ -9,25 +17,34 @@ export function createWorktree(
   taskId: string,
   baseRef = "origin/main",
 ): string {
+  validateId("profile", profile);
+  validateId("taskId", taskId);
+
   const branchName = `wt/${profile}/${taskId}`;
 
   // Determine the base ref to branch from
   let resolvedBaseRef: string;
   try {
-    execSync(`git rev-parse --verify ${baseRef}`, { cwd: repoDir, stdio: "pipe" });
+    execFileSync("git", ["rev-parse", "--verify", baseRef], { cwd: repoDir, stdio: "pipe" });
     resolvedBaseRef = baseRef;
   } catch {
     resolvedBaseRef = "HEAD";
   }
 
   // Create the branch
-  execSync(`git branch ${branchName} ${resolvedBaseRef}`, { cwd: repoDir });
+  execFileSync("git", ["branch", branchName, resolvedBaseRef], { cwd: repoDir });
 
   // Create a temp directory for the worktree
   const worktreePath = mkdtempSync(join(tmpdir(), `kdi-${profile}-${taskId}-`));
 
-  // Add the worktree
-  execSync(`git worktree add ${worktreePath} ${branchName}`, { cwd: repoDir });
+  try {
+    // Add the worktree
+    execFileSync("git", ["worktree", "add", worktreePath, branchName], { cwd: repoDir });
+  } catch (error) {
+    // Clean up temp directory if git worktree add fails
+    rmSync(worktreePath, { recursive: true, force: true });
+    throw error;
+  }
 
   return worktreePath;
 }
@@ -36,8 +53,12 @@ export function removeWorktree(
   repoDir: string,
   profile: string,
   taskId: string,
-): void {
+): boolean {
+  validateId("profile", profile);
+  validateId("taskId", taskId);
+
   const branchName = `wt/${profile}/${taskId}`;
+  let success = true;
 
   // Find the worktree path from the branch name
   let worktreePath: string | null = null;
@@ -59,7 +80,7 @@ export function removeWorktree(
       }
     }
   } catch {
-    // No worktrees or git error
+    success = false;
   }
 
   // Remove the worktree
@@ -67,14 +88,16 @@ export function removeWorktree(
     try {
       execSync(`git worktree remove "${worktreePath}"`, { cwd: repoDir });
     } catch {
-      // Worktree might already be removed or not exist
+      success = false;
     }
   }
 
   // Delete the branch
   try {
-    execSync(`git branch -D ${branchName}`, { cwd: repoDir });
+    execFileSync("git", ["branch", "-D", branchName], { cwd: repoDir });
   } catch {
-    // Branch might already be deleted
+    success = false;
   }
+
+  return success;
 }

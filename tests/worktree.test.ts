@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from "bun:test";
-import { mkdtempSync, rmSync, existsSync } from "node:fs";
+import { mkdtempSync, rmSync, existsSync, lstatSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execSync } from "node:child_process";
@@ -35,8 +35,10 @@ describe("worktree", () => {
     // Verify the worktree directory exists
     expect(existsSync(worktreePath)).toBe(true);
 
-    // Verify .git file exists in worktree (not a directory)
-    expect(existsSync(join(worktreePath, ".git"))).toBe(true);
+    // Verify .git is a file (not directory) for worktrees
+    const gitPath = join(worktreePath, ".git");
+    expect(existsSync(gitPath)).toBe(true);
+    expect(lstatSync(gitPath).isFile()).toBe(true);
 
     // Clean up
     removeWorktree(repoDir, "default", "task-001");
@@ -65,5 +67,31 @@ describe("worktree", () => {
     // Verify branch is removed
     const branches = execSync("git branch -a", { cwd: repoDir, encoding: "utf-8" });
     expect(branches).not.toContain("wt/default/task-003");
+  });
+
+  it("falls back to HEAD when base ref does not exist", () => {
+    const worktreePath = createWorktree(repoDir, "default", "task-004", "nonexistent-branch");
+
+    expect(existsSync(worktreePath)).toBe(true);
+    expect(lstatSync(join(worktreePath, ".git")).isFile()).toBe(true);
+
+    removeWorktree(repoDir, "default", "task-004");
+  });
+
+  it("removeWorktree is idempotent (calling twice does not throw)", () => {
+    createWorktree(repoDir, "default", "task-005");
+
+    // First removal should succeed
+    const firstResult = removeWorktree(repoDir, "default", "task-005");
+    expect(firstResult).toBe(true);
+
+    // Second removal should not throw and return false (nothing to clean up)
+    const secondResult = removeWorktree(repoDir, "default", "task-005");
+    expect(secondResult).toBe(false);
+  });
+
+  it("rejects invalid profile/taskId characters", () => {
+    expect(() => createWorktree(repoDir, "bad;profile", "task-006")).toThrow("profile must be alphanumeric");
+    expect(() => createWorktree(repoDir, "default", "bad task")).toThrow("taskId must be alphanumeric");
   });
 });
