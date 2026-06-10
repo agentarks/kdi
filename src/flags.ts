@@ -12,10 +12,13 @@ export function setFlag(flag: string, value: boolean): void {
 }
 
 export function isEnabled(flag: string): boolean {
-  // Check env var first
-  const envValue = Bun.env[flag];
-  if (envValue !== undefined) {
-    return envValue === "1" || envValue.toLowerCase() === "true";
+  // Security: only check env vars for registered flags
+  if (flagRegistry.has(flag)) {
+    const envValue = Bun.env[flag];
+    if (envValue !== undefined) {
+      const trimmed = envValue.trim();
+      return trimmed === "1" || trimmed.toLowerCase() === "true";
+    }
   }
 
   // Check programmatic override
@@ -30,6 +33,10 @@ export function isEnabled(flag: string): boolean {
 
   // Unknown flags default to false
   return false;
+}
+
+export function clearOverrides(): void {
+  flagOverrides.clear();
 }
 
 // Register built-in flags
