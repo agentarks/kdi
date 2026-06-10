@@ -1,13 +1,16 @@
-import { appendFileSync, mkdirSync } from "node:fs";
+import { appendFileSync, mkdirSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+
+const MAX_LOG_SIZE = 10 * 1024 * 1024; // 10MB
+const SLUG_RE = /^[a-zA-Z0-9_-]+$/;
 
 export interface MetricsSnapshot {
   ticks: number;
   claims: { success: number; failure: number };
   taskDurations: Record<string, { count: number; totalMs: number }>;
   agentErrors: Record<string, number>;
-  taskAges: number[];
+  taskAges: Record<string, number>;
 }
 
 let ticks = 0;
@@ -15,7 +18,13 @@ let claimsSuccess = 0;
 let claimsFailure = 0;
 const taskDurations: Record<string, { count: number; totalMs: number }> = {};
 const agentErrors: Record<string, number> = {};
-const taskAges: number[] = [];
+const taskAges: Record<string, number> = {
+  "0-1min": 0,
+  "1-5min": 0,
+  "5-15min": 0,
+  "15-60min": 0,
+  "60min+": 0,
+};
 
 export function recordTick(): void {
   ticks++;
@@ -45,9 +54,17 @@ export function recordAgentError(agent: string): void {
 }
 
 export function recordTaskAge(ageMs: number): void {
-  taskAges.push(ageMs);
-  if (taskAges.length > 1000) {
-    taskAges.shift();
+  const min = ageMs / 60000;
+  if (min <= 1) {
+    taskAges["0-1min"]++;
+  } else if (min <= 5) {
+    taskAges["1-5min"]++;
+  } else if (min <= 15) {
+    taskAges["5-15min"]++;
+  } else if (min <= 60) {
+    taskAges["15-60min"]++;
+  } else {
+    taskAges["60min+"]++;
   }
 }
 
@@ -57,7 +74,7 @@ export function getMetrics(): MetricsSnapshot {
     claims: { success: claimsSuccess, failure: claimsFailure },
     taskDurations: { ...taskDurations },
     agentErrors: { ...agentErrors },
-    taskAges: [...taskAges],
+    taskAges: { ...taskAges },
   };
 }
 
@@ -71,17 +88,34 @@ export function resetMetrics(): void {
   for (const key of Object.keys(agentErrors)) {
     delete agentErrors[key];
   }
-  taskAges.length = 0;
+  taskAges["0-1min"] = 0;
+  taskAges["1-5min"] = 0;
+  taskAges["5-15min"] = 0;
+  taskAges["15-60min"] = 0;
+  taskAges["60min+"] = 0;
 }
 
 export function getLogPath(boardSlug: string): string {
-  return join(homedir(), ".local", "share", "kdi", "logs", `${boardSlug}.log`);
+  return join(process.env.HOME || homedir(), ".local", "share", "kdi", "logs", `${boardSlug}.log`);
 }
 
 export function logToBoard(boardSlug: string, message: string): void {
+  if (!SLUG_RE.test(boardSlug)) {
+    throw new Error(`Invalid boardSlug: ${boardSlug}`);
+  }
   const logPath = getLogPath(boardSlug);
   const logDir = dirname(logPath);
   mkdirSync(logDir, { recursive: true });
+
+  try {
+    const stats = statSync(logPath);
+    if (stats.size > MAX_LOG_SIZE) {
+      writeFileSync(logPath, "");
+    }
+  } catch {
+    // File does not exist yet, which is fine
+  }
+
   const timestamp = new Date().toISOString();
   const line = `[${timestamp}] [${boardSlug}] ${message}\n`;
   appendFileSync(logPath, line);
