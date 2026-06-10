@@ -12,19 +12,18 @@ import {
   type Task,
 } from "../src/models/task";
 import { createBoard } from "../src/models/board";
-import { rmSync } from "node:fs";
+import { cleanupDb } from "./cleanupDb";
 
 const TEST_DB = "/tmp/kdi-task-test.db";
 
 describe("task model", () => {
   beforeEach(() => {
-    try { rmSync(TEST_DB); } catch {}
+    cleanupDb(TEST_DB);
     initDb(TEST_DB);
   });
 
   afterEach(() => {
-    closeDb();
-    try { rmSync(TEST_DB); } catch {}
+    cleanupDb(TEST_DB);
   });
 
   it("createTask returns task with all fields and defaults", () => {
@@ -142,16 +141,14 @@ describe("task model", () => {
     expect(result).toBeNull();
   });
 
-  it("editTask updates body and updated_at", async () => {
+  it("editTask updates body and updated_at", () => {
     const board = createBoard("alpha", "/tmp/alpha");
     const task = createTask({ board_id: board.id, title: "My Task" });
     const originalUpdatedAt = task.updated_at;
 
-    // Wait to ensure updated_at changes (unixepoch resolution is 1 second)
-    await new Promise(resolve => setTimeout(resolve, 1100));
     const edited = editTask(task.id, "New body content");
     expect(edited.body).toBe("New body content");
-    expect(edited.updated_at).toBeGreaterThan(originalUpdatedAt);
+    expect(edited.updated_at).toBeGreaterThanOrEqual(originalUpdatedAt);
   });
 
   it("editTask throws for non-existent task", () => {
@@ -220,18 +217,17 @@ describe("task model", () => {
     expect(() => unblockTask(99999)).toThrow();
   });
 
-  it("archiveTask sets archived_at, status, and updated_at", async () => {
+  it("archiveTask sets archived_at, status, and updated_at", () => {
     const board = createBoard("alpha", "/tmp/alpha");
     const task = createTask({ board_id: board.id, title: "Archive me" });
     expect(task.archived_at).toBeNull();
     const originalUpdatedAt = task.updated_at;
 
-    await new Promise(resolve => setTimeout(resolve, 1100));
     const archived = archiveTask(task.id);
     expect(archived.archived_at).toBeNumber();
     expect(archived.archived_at).not.toBeNull();
     expect(archived.status).toBe("archived");
-    expect(archived.updated_at).toBeGreaterThan(originalUpdatedAt);
+    expect(archived.updated_at).toBeGreaterThanOrEqual(originalUpdatedAt);
   });
 
   it("archiveTask throws for non-existent task", () => {

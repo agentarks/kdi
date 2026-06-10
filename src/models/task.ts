@@ -1,9 +1,11 @@
 import { getDb } from "../db";
+import { addEvent } from "./taskEvent";
 
 export const TASK_COLUMNS =
   "id, board_id, title, body, assignee, status, priority, " +
   "workspace_kind, branch, result, summary, block_reason, " +
-  "created_at, updated_at, archived_at";
+  "created_at, updated_at, started_at, archived_at, current_run_id, " +
+  "claim_lock, claim_expires, last_heartbeat_at";
 
 export interface Task {
   id: number;
@@ -11,7 +13,7 @@ export interface Task {
   title: string;
   body: string | null;
   assignee: string | null;
-  status: "todo" | "ready" | "running" | "done" | "blocked" | "archived";
+  status: "triage" | "todo" | "ready" | "running" | "done" | "blocked" | "archived";
   priority: "low" | "medium" | "high";
   workspace_kind: "dir" | "worktree" | "scratch";
   branch: string | null;
@@ -20,7 +22,12 @@ export interface Task {
   block_reason: string | null;
   created_at: number;
   updated_at: number;
+  started_at: number | null;
   archived_at: number | null;
+  current_run_id: number | null;
+  claim_lock: string | null;
+  claim_expires: number | null;
+  last_heartbeat_at: number | null;
 }
 
 export interface CreateTaskInput {
@@ -31,6 +38,7 @@ export interface CreateTaskInput {
   priority?: "low" | "medium" | "high";
   workspace_kind?: "dir" | "worktree" | "scratch";
   branch?: string;
+  triage?: boolean;
 }
 
 export interface ListTasksFilter {
@@ -41,27 +49,29 @@ export interface ListTasksFilter {
 
 export function createTask(input: CreateTaskInput): Task {
   const db = getDb();
+  const status: Task["status"] = input.triage ? "triage" : "todo";
   const result = db.run(
-    `INSERT INTO tasks (board_id, title, body, assignee, priority, workspace_kind, branch)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO tasks (board_id, title, body, assignee, status, priority, workspace_kind, branch)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       input.board_id,
       input.title,
       input.body ?? null,
       input.assignee ?? null,
+      status,
       input.priority ?? "medium",
       input.workspace_kind ?? "worktree",
       input.branch ?? null,
     ]
   );
 
-  return {
+  const task = {
     id: Number(result.lastInsertRowid),
     board_id: input.board_id,
     title: input.title,
     body: input.body ?? null,
     assignee: input.assignee ?? null,
-    status: "todo",
+    status,
     priority: input.priority ?? "medium",
     workspace_kind: input.workspace_kind ?? "worktree",
     branch: input.branch ?? null,
@@ -70,8 +80,15 @@ export function createTask(input: CreateTaskInput): Task {
     block_reason: null,
     created_at: Math.floor(Date.now() / 1000),
     updated_at: Math.floor(Date.now() / 1000),
+    started_at: null,
     archived_at: null,
+    current_run_id: null,
+    claim_lock: null,
+    claim_expires: null,
+    last_heartbeat_at: null,
   };
+  addEvent(task.id, "created");
+  return task;
 }
 
 export function listTasks(filter: ListTasksFilter): Task[] {
@@ -146,6 +163,7 @@ export function promoteTask(id: number): Task {
   if (!task) {
     throw new Error(`Task ${id} not found after promotion`);
   }
+  addEvent(task.id, "promoted");
   return task;
 }
 
@@ -164,6 +182,7 @@ export function blockTask(id: number, reason: string): Task {
   if (!task) {
     throw new Error(`Task ${id} not found after blocking`);
   }
+  addEvent(task.id, "blocked", { reason });
   return task;
 }
 
@@ -182,6 +201,7 @@ export function unblockTask(id: number): Task {
   if (!task) {
     throw new Error(`Task ${id} not found after unblocking`);
   }
+  addEvent(task.id, "unblocked");
   return task;
 }
 
@@ -200,7 +220,38 @@ export function completeTask(id: number): Task {
   if (!task) {
     throw new Error(`Task ${id} not found after completion`);
   }
+  addEvent(task.id, "completed");
   return task;
+}
+
+export function specifyTask(id: number): Task {
+  const db = getDb();
+  const task = showTask(id);
+  if (!task) {
+    throw new Error(`Task ${id} not found`);
+  }
+  if (task.status !== "triage") {
+    throw new Error(`Task ${id} is not in triage status`);
+  }
+  if (!task.body || task.body.trim() === "") {
+    throw new Error("Triage task needs a body before promotion");
+  }
+
+  const result = db.run(
+    `UPDATE tasks SET status = 'todo', updated_at = unixepoch() WHERE id = ? AND status = 'triage' AND archived_at IS NULL`,
+    [id]
+  );
+
+  if (result.changes === 0) {
+    throw new Error(`Task ${id} not found or not in 'triage' status`);
+  }
+
+  const updated = showTask(id);
+  if (!updated) {
+    throw new Error(`Task ${id} not found after specification`);
+  }
+  addEvent(updated.id, "specified");
+  return updated;
 }
 
 export function archiveTask(id: number): Task {
@@ -223,5 +274,6 @@ export function archiveTask(id: number): Task {
   if (!task) {
     throw new Error(`Task ${id} not found after archiving`);
   }
+  addEvent(task.id, "archived");
   return task;
 }

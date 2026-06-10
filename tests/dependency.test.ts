@@ -7,19 +7,18 @@ import {
   isBlockedByDependencies,
   getChildTasks,
 } from "../src/models/dependency";
-import { rmSync } from "node:fs";
+import { cleanupDb } from "./cleanupDb";
 
 const TEST_DB = "/tmp/kdi-dependency-test.db";
 
 describe("dependency model", () => {
   beforeEach(() => {
-    try { rmSync(TEST_DB); } catch {}
+    cleanupDb(TEST_DB);
     initDb(TEST_DB);
   });
 
   afterEach(() => {
-    closeDb();
-    try { rmSync(TEST_DB); } catch {}
+    cleanupDb(TEST_DB);
   });
 
   it("child is blocked when parent is not done", () => {

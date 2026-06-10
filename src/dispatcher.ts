@@ -1,6 +1,9 @@
 import { spawn } from "node:child_process";
 import { getDb } from "./db";
 import { TASK_COLUMNS, type Task } from "./models/task";
+import { finishRun } from "./models/taskRun";
+import { addEvent } from "./models/taskEvent";
+import { atomicClaim, heartbeat } from "./models/claim";
 import { isBlockedByDependencies } from "./models/dependency";
 import { getProfile, substituteCommand } from "./profiles";
 import { createWorktree, removeWorktree } from "./worktree";
@@ -131,13 +134,12 @@ function listReadyTasks(): Task[] {
   ).all() as Task[];
 }
 
-function claimTask(id: number): boolean {
-  const db = getDb();
-  const result = db.run(
-    `UPDATE tasks SET status = 'running', started_at = unixepoch(), updated_at = unixepoch() WHERE id = ? AND status = 'ready' AND archived_at IS NULL`,
-    [id]
-  );
-  return result.changes > 0;
+function claimTask(id: number, assignee: string | null): { success: boolean; runId: number | null } {
+  const result = atomicClaim(id, assignee ?? "opencode");
+  if (!result.success) {
+    return { success: false, runId: null };
+  }
+  return { success: true, runId: result.runId ?? null };
 }
 
 function getBoardWorkdir(boardId: number): string | null {
@@ -156,28 +158,58 @@ function getBoardSlug(boardId: number): string | null {
   return board?.slug ?? null;
 }
 
-function finishTask(id: number, result: string): void {
+function finishTask(id: number, result: string, runId: number | null): void {
   const db = getDb();
   db.run(
-    `UPDATE tasks SET status = 'done', result = ?, summary = ?, updated_at = unixepoch() WHERE id = ?`,
+    `UPDATE tasks SET status = 'done', result = ?, summary = ?, claim_lock = NULL, claim_expires = NULL, updated_at = unixepoch() WHERE id = ?`,
     [result, result.slice(0, 200), id]
   );
+  if (runId !== null) {
+    finishRun(runId, "completed", result.slice(0, 200), null, null);
+  }
+  addEvent(id, "finished", { outcome: "completed" }, runId ?? undefined);
 }
 
-function failTask(id: number, result: string, reason: string): void {
+function failTask(id: number, result: string, reason: string, runId: number | null): void {
   const db = getDb();
   db.run(
-    `UPDATE tasks SET status = 'blocked', result = ?, block_reason = ?, updated_at = unixepoch() WHERE id = ?`,
+    `UPDATE tasks SET status = 'blocked', result = ?, block_reason = ?, claim_lock = NULL, claim_expires = NULL, started_at = NULL, updated_at = unixepoch() WHERE id = ?`,
     [result, reason, id]
   );
+  let outcome: Parameters<typeof finishRun>[1] = "blocked";
+  if (reason.includes("spawn")) {
+    outcome = "spawn_failed";
+  } else if (reason.includes("timed out") || reason.includes("timeout")) {
+    outcome = "timed_out";
+  } else if (reason.includes("crashed")) {
+    outcome = "crashed";
+  }
+  if (runId !== null) {
+    finishRun(runId, outcome, null, null, reason);
+  }
+  addEvent(id, "finished", { outcome, reason }, runId ?? undefined);
 }
 
-function reapStuckTasks(): void {
+function reapStaleClaims(): void {
   const db = getDb();
-  const thirtyMinutesAgo = Math.floor(Date.now() / 1000) - 30 * 60;
+  const now = Math.floor(Date.now() / 1000);
+  const oneHourAgo = now - 3600;
+
+  // Find stale claims and their active runs
+  const staleTasks = db.query(
+    `SELECT id, current_run_id FROM tasks WHERE status = 'running' AND (claim_expires < ? OR (last_heartbeat_at IS NOT NULL AND last_heartbeat_at < ?))`
+  ).all(now, oneHourAgo) as { id: number; current_run_id: number | null }[];
+
+  for (const stale of staleTasks) {
+    if (stale.current_run_id) {
+      finishRun(stale.current_run_id, "reclaimed", null, null, "Reclaimed by dispatcher: stale claim");
+    }
+    addEvent(stale.id, "reclaimed", { reason: "stale claim detected by dispatcher" });
+  }
+
   db.run(
-    `UPDATE tasks SET status = 'ready', started_at = NULL, updated_at = unixepoch() WHERE status = 'running' AND started_at < ?`,
-    [thirtyMinutesAgo]
+    `UPDATE tasks SET status = 'ready', started_at = NULL, claim_lock = NULL, claim_expires = NULL, updated_at = unixepoch() WHERE status = 'running' AND (claim_expires < ? OR (last_heartbeat_at IS NOT NULL AND last_heartbeat_at < ?))`,
+    [now, oneHourAgo]
   );
 }
 
@@ -192,7 +224,7 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
     return { processed: 0 };
   }
 
-  reapStuckTasks();
+  reapStaleClaims();
 
   const tasks = listReadyTasks();
   let processed = 0;
@@ -205,15 +237,19 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
     const taskAgeMs = Date.now() - task.created_at * 1000;
     recordTaskAge(taskAgeMs);
 
-    const claimed = claimTask(task.id);
-    recordClaim(claimed);
-    if (!claimed) {
+    const claimResult = claimTask(task.id, task.assignee);
+    recordClaim(claimResult.success);
+    if (!claimResult.success) {
       continue;
     }
+    const runId = claimResult.runId;
+
+    // Record initial heartbeat for worker liveness
+    heartbeat(task.id);
 
     const workdir = getBoardWorkdir(task.board_id);
     if (!workdir) {
-      failTask(task.id, "", "Board not found or archived");
+      failTask(task.id, "", "Board not found or archived", runId);
       processed++;
       continue;
     }
@@ -222,7 +258,7 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
     try {
       profile = getProfile(task.assignee ?? "opencode");
     } catch {
-      failTask(task.id, "", `Unknown profile: ${task.assignee ?? "opencode"}`);
+      failTask(task.id, "", `Unknown profile: ${task.assignee ?? "opencode"}`, runId);
       processed++;
       continue;
     }
@@ -231,7 +267,7 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
     try {
       worktreePath = doCreateWorktree(workdir, profile.name, String(task.id));
     } catch (err: any) {
-      failTask(task.id, "", `Worktree creation failed: ${err.message}`);
+      failTask(task.id, "", `Worktree creation failed: ${err.message}`, runId);
       processed++;
       continue;
     }
@@ -250,16 +286,16 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
       recordTaskDuration(profile.agent ?? profile.name, harnessDuration);
 
       if (exitCode === 0) {
-        finishTask(task.id, stdout);
+        finishTask(task.id, stdout, runId);
       } else {
         recordAgentError(profile.agent ?? profile.name);
-        failTask(task.id, stdout, `Harness failed (exit ${exitCode}): ${stderr || "unknown error"}`);
+        failTask(task.id, stdout, `Harness failed (exit ${exitCode}): ${stderr || "unknown error"}`, runId);
       }
 
       processed++;
     } catch (err: any) {
       recordAgentError(profile.agent ?? profile.name);
-      failTask(task.id, "", `Harness execution failed: ${err.message}`);
+      failTask(task.id, "", `Harness execution failed: ${err.message}`, runId);
       processed++;
     } finally {
       try {

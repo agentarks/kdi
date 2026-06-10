@@ -9,10 +9,14 @@ import {
   blockTask,
   unblockTask,
   archiveTask,
+  specifyTask,
 } from "../models/task";
 import { addComment, getComments } from "../models/comment";
+import { getRuns } from "../models/taskRun";
+import { getEvents, tailEvents, getRecentEvents, getEventsAfter } from "../models/taskEvent";
+import { atomicClaim, reclaimTask, heartbeat } from "../models/claim";
 
-const VALID_STATUSES = ["todo", "ready", "running", "done", "blocked"];
+const VALID_STATUSES = ["triage", "todo", "ready", "running", "done", "blocked"];
 
 function getBoardIdBySlug(slug: string): number {
   const board = showBoard(slug, false);
@@ -36,7 +40,8 @@ export const createTaskCommand = new Command("create")
   .requiredOption("--board <slug>", "Board slug")
   .option("--assignee <profile>", "Assignee profile")
   .option("--body <text>", "Task body")
-  .action((title: string, options: { board: string; assignee?: string; body?: string }) => {
+  .option("--triage", "Park in triage status instead of todo")
+  .action((title: string, options: { board: string; assignee?: string; body?: string; triage?: boolean }) => {
     try {
       if (!title || title.trim() === "") {
         throw new Error("Title is required.");
@@ -47,6 +52,7 @@ export const createTaskCommand = new Command("create")
         title,
         assignee: options.assignee,
         body: options.body,
+        triage: options.triage,
       });
       console.log(task.id);
     } catch (err: any) {
@@ -195,6 +201,48 @@ export const unblockTaskCommand = new Command("unblock")
     }
   });
 
+export const specifyTaskCommand = new Command("specify")
+  .description("Promote a triage task to todo")
+  .argument("[task_id]", "Task ID")
+  .option("--all", "Promote all triage tasks for the current board")
+  .requiredOption("--board <slug>", "Board slug")
+  .action((taskId: string | undefined, options: { all?: boolean; board: string }) => {
+    try {
+      const boardId = getBoardIdBySlug(options.board);
+
+      if (options.all) {
+        const tasks = listTasks({ board_id: boardId, status: "triage" });
+        if (tasks.length === 0) {
+          console.log("No triage tasks to specify.");
+          return;
+        }
+        let specified = 0;
+        for (const task of tasks) {
+          try {
+            specifyTask(task.id);
+            console.log(`Specified task ${task.id}: ${task.title}`);
+            specified++;
+          } catch (err: any) {
+            console.error(`Skipped task ${task.id}: ${err.message}`);
+          }
+        }
+        console.log(`Specified ${specified}/${tasks.length} tasks.`);
+        return;
+      }
+
+      if (!taskId) {
+        throw new Error("Task ID is required (or use --all).");
+      }
+
+      const id = parseTaskId(taskId);
+      const task = specifyTask(id);
+      console.log(`Specified task ${task.id}: ${task.title}`);
+    } catch (err: any) {
+      console.error(`Error: ${err.message}`);
+      process.exit(1);
+    }
+  });
+
 export const archiveTaskCommand = new Command("archive")
   .description("Archive a task")
   .argument("<task_id>", "Task ID")
@@ -203,6 +251,167 @@ export const archiveTaskCommand = new Command("archive")
       const id = parseTaskId(taskId);
       const task = archiveTask(id);
       console.log(`Archived task ${task.id}.`);
+    } catch (err: any) {
+      console.error(`Error: ${err.message}`);
+      process.exit(1);
+    }
+  });
+
+export const tailTaskCommand = new Command("tail")
+  .description("Tail events for a task")
+  .argument("<task_id>", "Task ID")
+  .action(async (taskId: string) => {
+    try {
+      const id = parseTaskId(taskId);
+      const task = showTask(id);
+      if (!task) {
+        console.error(`Task ${id} not found.`);
+        process.exit(1);
+      }
+
+      const events = getEvents(id);
+      let maxId = 0;
+      for (const event of events.slice().reverse()) {
+        const ts = new Date(event.created_at * 1000).toISOString();
+        const payload = event.payload ? ` ${event.payload}` : "";
+        console.log(`[${ts}] ${event.kind}${payload}`);
+        if (event.id > maxId) maxId = event.id;
+      }
+
+      while (true) {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        const newEvents = tailEvents(id, maxId);
+        for (const event of newEvents) {
+          const ts = new Date(event.created_at * 1000).toISOString();
+          const payload = event.payload ? ` ${event.payload}` : "";
+          console.log(`[${ts}] ${event.kind}${payload}`);
+          if (event.id > maxId) maxId = event.id;
+        }
+      }
+    } catch (err: any) {
+      console.error(`Error: ${err.message}`);
+      process.exit(1);
+    }
+  });
+
+export const watchCommand = new Command("watch")
+  .description("Watch board-wide events")
+  .action(async () => {
+    try {
+      const events = getRecentEvents(50);
+      let maxId = 0;
+      for (const event of events.slice().reverse()) {
+        const ts = new Date(event.created_at * 1000).toISOString();
+        console.log(`${event.task_id}\t${event.kind}\t${ts}`);
+        if (event.id > maxId) maxId = event.id;
+      }
+
+      while (true) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        const newEvents = getEventsAfter(maxId);
+        for (const event of newEvents) {
+          const ts = new Date(event.created_at * 1000).toISOString();
+          console.log(`${event.task_id}\t${event.kind}\t${ts}`);
+          if (event.id > maxId) maxId = event.id;
+        }
+      }
+    } catch (err: any) {
+      console.error(`Error: ${err.message}`);
+      process.exit(1);
+    }
+  });
+
+export const claimTaskCommand = new Command("claim")
+  .description("Atomically claim a ready task")
+  .argument("<task_id>", "Task ID")
+  .option("--ttl <seconds>", "Claim TTL in seconds")
+  .action((taskId: string, options: { ttl?: string }) => {
+    try {
+      const id = parseTaskId(taskId);
+      const ttl = options.ttl ? parseInt(options.ttl, 10) : undefined;
+      if (options.ttl && (isNaN(ttl!) || ttl! <= 0)) {
+        throw new Error("TTL must be a positive integer");
+      }
+
+      const profile = process.env.KDI_PROFILE || "user";
+      const result = atomicClaim(id, profile, ttl);
+      if (!result.success) {
+        console.error(`Task ${id} is not available for claim (not ready or already claimed).`);
+        process.exit(1);
+      }
+      console.log(`Claimed task ${id}`);
+      console.log(`claim_lock: ${profile}`);
+      console.log(`expires_at: ${result.expiresAt}`);
+      if (result.runId) {
+        console.log(`run_id: ${result.runId}`);
+      }
+    } catch (err: any) {
+      console.error(`Error: ${err.message}`);
+      process.exit(1);
+    }
+  });
+
+export const reclaimTaskCommand = new Command("reclaim")
+  .description("Release an active claim on a running task")
+  .argument("<task_id>", "Task ID")
+  .option("--reason <text>", "Reason for reclaim")
+  .action((taskId: string, options: { reason?: string }) => {
+    try {
+      const id = parseTaskId(taskId);
+      const ok = reclaimTask(id, options.reason);
+      if (!ok) {
+        console.error(`Task ${id} is not running or has no active claim.`);
+        process.exit(1);
+      }
+      console.log(`Reclaimed task ${id}.`);
+    } catch (err: any) {
+      console.error(`Error: ${err.message}`);
+      process.exit(1);
+    }
+  });
+
+export const heartbeatTaskCommand = new Command("heartbeat")
+  .description("Emit a heartbeat for a running task")
+  .argument("<task_id>", "Task ID")
+  .option("--note <text>", "Optional note")
+  .action((taskId: string, options: { note?: string }) => {
+    try {
+      const id = parseTaskId(taskId);
+      const ok = heartbeat(id, options.note);
+      if (!ok) {
+        console.error(`Task ${id} is not running.`);
+        process.exit(1);
+      }
+      console.log(`Heartbeat recorded for task ${id}.`);
+    } catch (err: any) {
+      console.error(`Error: ${err.message}`);
+      process.exit(1);
+    }
+  });
+
+export const listRunsCommand = new Command("runs")
+  .description("Show task run history")
+  .argument("<task_id>", "Task ID")
+  .action((taskId: string) => {
+    try {
+      const id = parseTaskId(taskId);
+      const runs = getRuns(id);
+      if (runs.length === 0) {
+        console.log("No runs found for this task.");
+        return;
+      }
+      for (const run of runs) {
+        const started = new Date(run.started_at * 1000).toISOString();
+        const ended = run.ended_at ? new Date(run.ended_at * 1000).toISOString() : null;
+        let line = `Run #${run.id}: status=${run.status}`;
+        if (run.outcome) line += ` outcome=${run.outcome}`;
+        if (run.profile) line += ` profile=${run.profile}`;
+        line += ` started=${started}`;
+        if (ended) line += ` ended=${ended}`;
+        if (run.summary) line += ` summary="${run.summary}"`;
+        if (run.error) line += ` error="${run.error}"`;
+        console.log(line);
+      }
     } catch (err: any) {
       console.error(`Error: ${err.message}`);
       process.exit(1);

@@ -1,19 +1,18 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { initDb, closeDb, getDb } from "../src/db";
 import { createBoard, listBoards, showBoard, archiveBoard } from "../src/models/board";
-import { rmSync } from "node:fs";
+import { cleanupDb } from "./cleanupDb";
 
 const TEST_DB = "/tmp/kdi-board-test.db";
 
 describe("board model", () => {
   beforeEach(() => {
-    try { rmSync(TEST_DB); } catch {}
+    cleanupDb(TEST_DB);
     initDb(TEST_DB);
   });
 
   afterEach(() => {
-    closeDb();
-    try { rmSync(TEST_DB); } catch {}
+    cleanupDb(TEST_DB);
   });
 
   it("createBoard returns board with id, slug, workdir, archived_at=null", () => {

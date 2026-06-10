@@ -3,19 +3,18 @@ import { initDb, closeDb } from "../src/db";
 import { createBoard } from "../src/models/board";
 import { createTask } from "../src/models/task";
 import { addComment, getComments, type Comment } from "../src/models/comment";
-import { rmSync } from "node:fs";
+import { cleanupDb } from "./cleanupDb";
 
 const TEST_DB = "/tmp/kdi-comment-test.db";
 
 describe("comment model", () => {
   beforeEach(() => {
-    try { rmSync(TEST_DB); } catch {}
+    cleanupDb(TEST_DB);
     initDb(TEST_DB);
   });
 
   afterEach(() => {
-    closeDb();
-    try { rmSync(TEST_DB); } catch {}
+    cleanupDb(TEST_DB);
   });
 
   it("addComment returns comment with id, task_id, text, created_at", () => {

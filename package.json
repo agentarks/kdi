@@ -1,0 +1,27 @@
+{
+  "name": "kdi",
+  "version": "0.1.0",
+  "description": "Multi-Agent Kanban Dispatch for Coding Agents",
+  "module": "src/index.ts",
+  "type": "module",
+  "bin": {
+    "kdi": "./src/index.ts"
+  },
+  "scripts": {
+    "dev": "bun run src/index.ts",
+    "build": "bun build src/index.ts --compile --outfile kdi",
+    "test": "bun test",
+    "lint": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "commander": "^12.0.0",
+    "yaml": "^2.4.0"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  }
+}

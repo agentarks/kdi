@@ -1,18 +1,17 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { Database } from "bun:sqlite";
 import { initDb, getDb, closeDb } from "../src/db";
-import { rmSync } from "node:fs";
+import { cleanupDb } from "./cleanupDb";
 
 const TEST_DB = "/tmp/kdi-test.db";
 
 describe("db", () => {
   beforeEach(() => {
-    try { rmSync(TEST_DB); } catch {}
+    cleanupDb(TEST_DB);
   });
 
   afterEach(() => {
-    closeDb();
-    try { rmSync(TEST_DB); } catch {}
+    cleanupDb(TEST_DB);
   });
 
   it("creates schema and returns a Database instance", () => {
@@ -34,12 +33,20 @@ describe("db", () => {
     expect(names).toContain("tasks");
     expect(names).toContain("comments");
     expect(names).toContain("dependencies");
+    expect(names).toContain("task_events");
+
+    // Verify task_runs table exists
+    expect(names).toContain("task_runs");
 
     // Verify indexes exist
     const indexes = db.query("SELECT name FROM sqlite_master WHERE type='index'").all();
     const indexNames = indexes.map((i: any) => i.name);
     expect(indexNames).toContain("idx_tasks_board_status");
     expect(indexNames).toContain("idx_tasks_assignee");
+    expect(indexNames).toContain("idx_events_task");
+    expect(indexNames).toContain("idx_events_run");
+    expect(indexNames).toContain("idx_runs_task");
+    expect(indexNames).toContain("idx_runs_status");
   });
 
   it("returns the same instance on subsequent calls, then creates a new instance after closeDb", () => {

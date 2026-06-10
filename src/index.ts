@@ -12,6 +12,13 @@ import {
   blockTaskCommand,
   unblockTaskCommand,
   archiveTaskCommand,
+  specifyTaskCommand,
+  listRunsCommand,
+  tailTaskCommand,
+  watchCommand,
+  claimTaskCommand,
+  reclaimTaskCommand,
+  heartbeatTaskCommand,
 } from "./commands/tasks";
 import { dispatchCommand } from "./commands/dispatch";
 const program = new Command();
@@ -38,6 +45,13 @@ program.addCommand(promoteTaskCommand);
 program.addCommand(blockTaskCommand);
 program.addCommand(unblockTaskCommand);
 program.addCommand(archiveTaskCommand);
+program.addCommand(specifyTaskCommand);
+program.addCommand(listRunsCommand);
+program.addCommand(tailTaskCommand);
+program.addCommand(watchCommand);
+program.addCommand(claimTaskCommand);
+program.addCommand(reclaimTaskCommand);
+program.addCommand(heartbeatTaskCommand);
 program.addCommand(dispatchCommand);
 
 program.parse();

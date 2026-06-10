@@ -5,21 +5,20 @@ import { createTask, promoteTask, showTask } from "../src/models/task";
 import { addDependency } from "../src/models/dependency";
 import { setFlag, clearOverrides } from "../src/flags";
 import { tick, startDispatcher } from "../src/dispatcher";
-import { rmSync } from "node:fs";
+import { cleanupDb } from "./cleanupDb";
 
 const TEST_DB = "/tmp/kdi-dispatcher-test.db";
 
 describe("dispatcher", () => {
   beforeEach(() => {
-    try { rmSync(TEST_DB); } catch {}
+    cleanupDb(TEST_DB);
     initDb(TEST_DB);
     setFlag("FF_ENABLE_KANBAN_DISPATCH", true);
   });
 
   afterEach(() => {
     clearOverrides();
-    closeDb();
-    try { rmSync(TEST_DB); } catch {}
+    cleanupDb(TEST_DB);
   });
 
   it("returns early when flag is disabled", async () => {

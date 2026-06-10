@@ -4,6 +4,7 @@ import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 
 let dbInstance: Database | null = null;
+let currentDbPath: string | null = null;
 
 export function defaultDbPath(): string {
   return process.env.KDI_DB || `${homedir()}/.local/share/kdi/kdi.db`;
@@ -24,7 +25,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   title TEXT NOT NULL,
   body TEXT,
   assignee TEXT,
-  status TEXT NOT NULL DEFAULT 'todo' CHECK (status IN ('todo', 'ready', 'running', 'done', 'blocked', 'archived')),
+  status TEXT NOT NULL DEFAULT 'todo' CHECK (status IN ('triage', 'todo', 'ready', 'running', 'done', 'blocked', 'archived')),
   priority TEXT DEFAULT 'medium' CHECK (priority IN ('low', 'medium', 'high')),
   workspace_kind TEXT DEFAULT 'worktree' CHECK (workspace_kind IN ('dir', 'worktree', 'scratch')),
   branch TEXT,
@@ -34,7 +35,10 @@ CREATE TABLE IF NOT EXISTS tasks (
   created_at INTEGER NOT NULL DEFAULT (unixepoch()),
   updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
   started_at INTEGER,
-  archived_at INTEGER
+  archived_at INTEGER,
+  claim_lock TEXT,
+  claim_expires INTEGER,
+  last_heartbeat_at INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS comments (
@@ -50,20 +54,53 @@ CREATE TABLE IF NOT EXISTS dependencies (
   PRIMARY KEY (parent_id, child_id)
 );
 
+CREATE TABLE IF NOT EXISTS task_runs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  task_id INTEGER NOT NULL REFERENCES tasks(id),
+  profile TEXT,
+  step_key TEXT,
+  status TEXT NOT NULL CHECK (status IN ('running', 'done', 'blocked', 'crashed', 'timed_out', 'failed', 'released')),
+  claim_lock TEXT,
+  claim_expires INTEGER,
+  worker_pid INTEGER,
+  max_runtime_seconds INTEGER,
+  last_heartbeat_at INTEGER,
+  started_at INTEGER NOT NULL,
+  ended_at INTEGER,
+  outcome TEXT CHECK (outcome IN ('completed', 'blocked', 'crashed', 'timed_out', 'spawn_failed', 'gave_up', 'reclaimed')),
+  summary TEXT,
+  metadata TEXT,
+  error TEXT
+);
+
+CREATE TABLE IF NOT EXISTS task_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  task_id INTEGER NOT NULL REFERENCES tasks(id),
+  run_id INTEGER,
+  kind TEXT NOT NULL,
+  payload TEXT,
+  created_at INTEGER NOT NULL DEFAULT (unixepoch())
+);
+
 CREATE INDEX IF NOT EXISTS idx_tasks_board_status ON tasks(board_id, status);
 CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks(assignee);
+CREATE INDEX IF NOT EXISTS idx_runs_task ON task_runs(task_id, started_at);
+CREATE INDEX IF NOT EXISTS idx_runs_status ON task_runs(status);
+CREATE INDEX IF NOT EXISTS idx_events_task ON task_events(task_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_events_run ON task_events(run_id, id);
 `;
 
 export function initDb(path?: string): Database {
-  if (dbInstance) return dbInstance;
-
   const dbPath = path || defaultDbPath();
+  if (dbInstance && currentDbPath === dbPath) return dbInstance;
+
   mkdirSync(dirname(dbPath), { recursive: true });
 
   dbInstance = new Database(dbPath, { create: true });
   dbInstance.exec("PRAGMA journal_mode = WAL");
   dbInstance.exec("PRAGMA busy_timeout = 5000");
   dbInstance.exec(SCHEMA);
+  currentDbPath = dbPath;
 
   // Migrate: add started_at column if missing
   const tableInfo = dbInstance.query("PRAGMA table_info(tasks)").all() as any[];
@@ -71,7 +108,66 @@ export function initDb(path?: string): Database {
   if (!hasStartedAt) {
     dbInstance.exec("ALTER TABLE tasks ADD COLUMN started_at INTEGER");
   }
-  
+
+  // Migrate: add current_run_id column if missing
+  const hasCurrentRunId = tableInfo.some((col) => col.name === "current_run_id");
+  if (!hasCurrentRunId) {
+    dbInstance.exec("ALTER TABLE tasks ADD COLUMN current_run_id INTEGER");
+  }
+
+  // Migrate: add claim_lock, claim_expires, last_heartbeat_at if missing
+  const hasClaimLock = tableInfo.some((col) => col.name === "claim_lock");
+  if (!hasClaimLock) {
+    dbInstance.exec("ALTER TABLE tasks ADD COLUMN claim_lock TEXT");
+  }
+  const hasClaimExpires = tableInfo.some((col) => col.name === "claim_expires");
+  if (!hasClaimExpires) {
+    dbInstance.exec("ALTER TABLE tasks ADD COLUMN claim_expires INTEGER");
+  }
+  const hasLastHeartbeat = tableInfo.some((col) => col.name === "last_heartbeat_at");
+  if (!hasLastHeartbeat) {
+    dbInstance.exec("ALTER TABLE tasks ADD COLUMN last_heartbeat_at INTEGER");
+  }
+
+  // Migrate: add 'triage' to status CHECK constraint via table recreation
+  const createSql = dbInstance.query(
+    "SELECT sql FROM sqlite_master WHERE type='table' AND name='tasks'"
+  ).get() as { sql: string } | undefined;
+  const hasTriage = createSql?.sql?.includes("'triage'");
+  if (!hasTriage) {
+    dbInstance.exec(`
+      BEGIN TRANSACTION;
+      CREATE TABLE tasks_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        board_id INTEGER NOT NULL REFERENCES boards(id),
+        title TEXT NOT NULL,
+        body TEXT,
+        assignee TEXT,
+        status TEXT NOT NULL DEFAULT 'todo' CHECK (status IN ('triage', 'todo', 'ready', 'running', 'done', 'blocked', 'archived')),
+        priority TEXT DEFAULT 'medium' CHECK (priority IN ('low', 'medium', 'high')),
+        workspace_kind TEXT DEFAULT 'worktree' CHECK (workspace_kind IN ('dir', 'worktree', 'scratch')),
+        branch TEXT,
+        result TEXT,
+        summary TEXT,
+        block_reason TEXT,
+        created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+        updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
+        started_at INTEGER,
+        archived_at INTEGER,
+        current_run_id INTEGER,
+        claim_lock TEXT,
+        claim_expires INTEGER,
+        last_heartbeat_at INTEGER
+      );
+      INSERT INTO tasks_new SELECT * FROM tasks;
+      DROP TABLE tasks;
+      ALTER TABLE tasks_new RENAME TO tasks;
+      CREATE INDEX IF NOT EXISTS idx_tasks_board_status ON tasks(board_id, status);
+      CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks(assignee);
+      COMMIT;
+    `);
+  }
+
   return dbInstance;
 }
 
@@ -84,5 +180,6 @@ export function closeDb(): void {
   if (dbInstance) {
     dbInstance.close();
     dbInstance = null;
+    currentDbPath = null;
   }
 }

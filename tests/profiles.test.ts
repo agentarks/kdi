@@ -59,10 +59,10 @@ describe("profiles", () => {
   });
 
   it("getProfile returns correct profile", () => {
-    loadProfiles();
-    const profile = getProfile("opencode");
-    expect(profile.name).toBe("opencode");
-    expect(profile.command).toContain("opencode");
+    const profiles = loadProfiles("/nonexistent/path.yaml");
+    const profile = profiles.find((p: any) => p.name === "opencode");
+    expect(profile!.name).toBe("opencode");
+    expect(profile!.command).toContain("opencode");
   });
 
   it("rejects profiles missing command field", () => {
