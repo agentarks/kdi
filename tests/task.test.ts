@@ -220,14 +220,18 @@ describe("task model", () => {
     expect(() => unblockTask(99999)).toThrow();
   });
 
-  it("archiveTask sets archived_at", () => {
+  it("archiveTask sets archived_at, status, and updated_at", async () => {
     const board = createBoard("alpha", "/tmp/alpha");
     const task = createTask({ board_id: board.id, title: "Archive me" });
     expect(task.archived_at).toBeNull();
+    const originalUpdatedAt = task.updated_at;
 
+    await new Promise(resolve => setTimeout(resolve, 1100));
     const archived = archiveTask(task.id);
     expect(archived.archived_at).toBeNumber();
     expect(archived.archived_at).not.toBeNull();
+    expect(archived.status).toBe("archived");
+    expect(archived.updated_at).toBeGreaterThan(originalUpdatedAt);
   });
 
   it("archiveTask throws for non-existent task", () => {

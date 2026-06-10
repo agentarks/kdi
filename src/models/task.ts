@@ -142,10 +142,7 @@ export function promoteTask(id: number): Task {
     throw new Error(`Task ${id} not found or not in 'todo' status`);
   }
 
-  const task = db.query(
-    `SELECT ${TASK_COLUMNS} FROM tasks WHERE id = ?`
-  ).get(id) as Task | undefined;
-
+  const task = showTask(id);
   if (!task) {
     throw new Error(`Task ${id} not found after promotion`);
   }
@@ -181,10 +178,7 @@ export function unblockTask(id: number): Task {
     throw new Error(`Task ${id} not found or not in 'blocked' status`);
   }
 
-  const task = db.query(
-    `SELECT ${TASK_COLUMNS} FROM tasks WHERE id = ?`
-  ).get(id) as Task | undefined;
-
+  const task = showTask(id);
   if (!task) {
     throw new Error(`Task ${id} not found after unblocking`);
   }
@@ -194,7 +188,7 @@ export function unblockTask(id: number): Task {
 export function archiveTask(id: number): Task {
   const db = getDb();
   const result = db.run(
-    `UPDATE tasks SET archived_at = unixepoch() WHERE id = ? AND archived_at IS NULL`,
+    `UPDATE tasks SET status = 'archived', updated_at = unixepoch(), archived_at = unixepoch() WHERE id = ? AND archived_at IS NULL`,
     [id]
   );
 
