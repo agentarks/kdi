@@ -14,12 +14,15 @@ export function addComment(taskId: number, text: string): Comment {
     [taskId, text]
   );
 
-  return {
-    id: Number(result.lastInsertRowid),
-    task_id: taskId,
-    text,
-    created_at: Math.floor(Date.now() / 1000),
-  };
+  const comment = db.query(
+    "SELECT id, task_id, text, created_at FROM comments WHERE id = ?"
+  ).get(Number(result.lastInsertRowid)) as Comment | undefined;
+
+  if (!comment) {
+    throw new Error(`Comment not found after insert`);
+  }
+
+  return comment;
 }
 
 export function getComments(taskId: number): Comment[] {
