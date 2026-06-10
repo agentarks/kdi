@@ -241,7 +241,21 @@ describe("kdi e2e acceptance", () => {
       const start = Date.now();
       let allDone = false;
       while (Date.now() - start < 60000) {
-        const output = runKdi(`list --board myproj --status done`, env);
+        let output = "";
+        let retries = 0;
+        while (retries < 5) {
+          try {
+            output = runKdi(`list --board myproj --status done`, env);
+            break;
+          } catch (e: any) {
+            if (e.message && e.message.includes("database is locked")) {
+              retries++;
+              await new Promise((r) => setTimeout(r, 200));
+            } else {
+              throw e;
+            }
+          }
+        }
         const count = output.includes("No tasks.") ? 0 : output.split("\n").filter((l) => l.trim().length > 0).length;
         if (count === 100) {
           allDone = true;
