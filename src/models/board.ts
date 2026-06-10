@@ -40,10 +40,11 @@ export function createBoard(slug: string, workdir: string): Board {
   }
 }
 
-export function listBoards(): Board[] {
+export function listBoards(includeArchived: boolean = false): Board[] {
   const db = getDb();
+  const whereClause = includeArchived ? "" : "WHERE archived_at IS NULL";
   return db.query(
-    "SELECT id, slug, workdir, created_at, archived_at FROM boards WHERE archived_at IS NULL ORDER BY created_at DESC"
+    `SELECT id, slug, workdir, created_at, archived_at FROM boards ${whereClause} ORDER BY created_at DESC`
   ).all() as Board[];
 }
 

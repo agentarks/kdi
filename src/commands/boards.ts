@@ -15,16 +15,17 @@ boardsCommand
 
 boardsCommand
   .command("list")
-  .description("List all active boards")
+  .description("List all boards")
   .action(() => {
-    const boards = listBoards();
+    const boards = listBoards(true);
     if (boards.length === 0) {
-      console.log("No active boards.");
+      console.log("No boards.");
       return;
     }
     console.log("Boards:");
     for (const board of boards) {
-      console.log(`  ${board.slug}  ${board.workdir}`);
+      const archived = board.archived_at ? " (archived)" : "";
+      console.log(`  ${board.slug}  ${board.workdir}${archived}`);
     }
   });
 
