@@ -2,6 +2,17 @@
 import { Command } from "commander";
 import { initDb } from "./db";
 import { boardsCommand } from "./commands/boards";
+import {
+  createTaskCommand,
+  listTasksCommand,
+  showTaskCommand,
+  editTaskCommand,
+  commentTaskCommand,
+  promoteTaskCommand,
+  blockTaskCommand,
+  unblockTaskCommand,
+  archiveTaskCommand,
+} from "./commands/tasks";
 import { homedir } from "node:os";
 import { mkdirSync } from "node:fs";
 
@@ -25,5 +36,14 @@ try {
 }
 
 program.addCommand(boardsCommand);
+program.addCommand(createTaskCommand);
+program.addCommand(listTasksCommand);
+program.addCommand(showTaskCommand);
+program.addCommand(editTaskCommand);
+program.addCommand(commentTaskCommand);
+program.addCommand(promoteTaskCommand);
+program.addCommand(blockTaskCommand);
+program.addCommand(unblockTaskCommand);
+program.addCommand(archiveTaskCommand);
 
 program.parse();
