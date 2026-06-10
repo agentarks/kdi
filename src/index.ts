@@ -15,13 +15,14 @@ program
 const dbDir = `${homedir()}/.local/share/kdi`;
 const dbPath = `${dbDir}/kdi.db`;
 
-try {
-  mkdirSync(dbDir, { recursive: true });
-} catch {
-  // ignore
-}
+mkdirSync(dbDir, { recursive: true });
 
-initDb(dbPath);
+try {
+  initDb(dbPath);
+} catch (err: any) {
+  console.error(`Failed to initialize database: ${err.message}`);
+  process.exit(1);
+}
 
 program.addCommand(boardsCommand);
 

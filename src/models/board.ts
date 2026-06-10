@@ -48,10 +48,11 @@ export function listBoards(includeArchived: boolean = false): Board[] {
   ).all() as Board[];
 }
 
-export function showBoard(slug: string): BoardWithTaskCounts | null {
+export function showBoard(slug: string, includeArchived: boolean = false): BoardWithTaskCounts | null {
   const db = getDb();
+  const archivedClause = includeArchived ? "" : "AND archived_at IS NULL";
   const board = db.query(
-    "SELECT id, slug, workdir, created_at, archived_at FROM boards WHERE slug = ? AND archived_at IS NULL"
+    `SELECT id, slug, workdir, created_at, archived_at FROM boards WHERE slug = ? ${archivedClause}`
   ).get(slug) as Board | undefined;
 
   if (!board) return null;
