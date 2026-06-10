@@ -5,6 +5,14 @@ import { isBlockedByDependencies } from "./models/dependency";
 import { getProfile, substituteCommand } from "./profiles";
 import { createWorktree, removeWorktree } from "./worktree";
 import { isEnabled, FF_ENABLE_KANBAN_DISPATCH } from "./flags";
+import {
+  recordTick,
+  recordClaim,
+  recordTaskDuration,
+  recordAgentError,
+  recordTaskAge,
+  logToBoard,
+} from "./observability";
 
 export interface HarnessResult {
   stdout: string;
@@ -140,6 +148,14 @@ function getBoardWorkdir(boardId: number): string | null {
   return board?.workdir ?? null;
 }
 
+function getBoardSlug(boardId: number): string | null {
+  const db = getDb();
+  const board = db.query(
+    `SELECT slug FROM boards WHERE id = ? AND archived_at IS NULL`
+  ).get(boardId) as { slug: string } | undefined;
+  return board?.slug ?? null;
+}
+
 function finishTask(id: number, result: string): void {
   const db = getDb();
   db.run(
@@ -170,6 +186,8 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
   const doCreateWorktree = options.createWorktree ?? createWorktree;
   const doRemoveWorktree = options.removeWorktree ?? removeWorktree;
 
+  recordTick();
+
   if (!isEnabled(FF_ENABLE_KANBAN_DISPATCH)) {
     return { processed: 0 };
   }
@@ -184,7 +202,11 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
       continue;
     }
 
+    const taskAgeMs = Date.now() - task.created_at * 1000;
+    recordTaskAge(taskAgeMs);
+
     const claimed = claimTask(task.id);
+    recordClaim(claimed);
     if (!claimed) {
       continue;
     }
@@ -222,16 +244,21 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
         agent: profile.agent ?? profile.name,
       });
 
+      const harnessStart = Date.now();
       const { stdout, stderr, exitCode } = await doSpawnHarness(command, worktreePath);
+      const harnessDuration = Date.now() - harnessStart;
+      recordTaskDuration(profile.agent ?? profile.name, harnessDuration);
 
       if (exitCode === 0) {
         finishTask(task.id, stdout);
       } else {
+        recordAgentError(profile.agent ?? profile.name);
         failTask(task.id, stdout, `Harness failed (exit ${exitCode}): ${stderr || "unknown error"}`);
       }
 
       processed++;
     } catch (err: any) {
+      recordAgentError(profile.agent ?? profile.name);
       failTask(task.id, "", `Harness execution failed: ${err.message}`);
       processed++;
     } finally {
@@ -239,6 +266,15 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
         doRemoveWorktree(workdir, profile.name, String(task.id));
       } catch {
         // Best effort cleanup
+      }
+    }
+
+    const boardSlug = getBoardSlug(task.board_id);
+    if (boardSlug) {
+      const updated = (await import("./models/task")).showTask(task.id);
+      if (updated) {
+        const message = `Task #${task.id} "${task.title}" completed with status=${updated.status}`;
+        logToBoard(boardSlug, message);
       }
     }
   }
