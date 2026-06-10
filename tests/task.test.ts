@@ -84,9 +84,8 @@ describe("task model", () => {
     createTask({ board_id: board.id, title: "Todo Task" });
     const readyTask = createTask({ board_id: board.id, title: "Ready Task" });
     
-    // Manually update status for filtering test
-    const db = require("../src/db").getDb();
-    db.run("UPDATE tasks SET status = ? WHERE id = ?", ["ready", readyTask.id]);
+    // Promote to ready using public API
+    promoteTask(readyTask.id);
 
     const todoTasks = listTasks({ board_id: board.id, status: "todo" });
     const readyTasks = listTasks({ board_id: board.id, status: "ready" });
@@ -176,6 +175,10 @@ describe("task model", () => {
     expect(() => promoteTask(task.id)).toThrow();
   });
 
+  it("promoteTask throws for non-existent task", () => {
+    expect(() => promoteTask(99999)).toThrow();
+  });
+
   it("blockTask marks task as blocked with reason", () => {
     const board = createBoard("alpha", "/tmp/alpha");
     const task = createTask({ board_id: board.id, title: "Block me" });
@@ -187,6 +190,13 @@ describe("task model", () => {
 
   it("blockTask throws for non-existent task", () => {
     expect(() => blockTask(99999, "reason")).toThrow();
+  });
+
+  it("blockTask throws for archived task", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Archived task" });
+    archiveTask(task.id);
+    expect(() => blockTask(task.id, "reason")).toThrow();
   });
 
   it("unblockTask moves blocked to todo", () => {
@@ -206,6 +216,10 @@ describe("task model", () => {
     expect(() => unblockTask(task.id)).toThrow();
   });
 
+  it("unblockTask throws for non-existent task", () => {
+    expect(() => unblockTask(99999)).toThrow();
+  });
+
   it("archiveTask sets archived_at", () => {
     const board = createBoard("alpha", "/tmp/alpha");
     const task = createTask({ board_id: board.id, title: "Archive me" });
@@ -218,5 +232,19 @@ describe("task model", () => {
 
   it("archiveTask throws for non-existent task", () => {
     expect(() => archiveTask(99999)).toThrow();
+  });
+
+  it("archiveTask throws for already-archived task", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Already archived" });
+    archiveTask(task.id);
+    expect(() => archiveTask(task.id)).toThrow();
+  });
+
+  it("editTask throws for archived task", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Archived task" });
+    archiveTask(task.id);
+    expect(() => editTask(task.id, "new body")).toThrow();
   });
 });

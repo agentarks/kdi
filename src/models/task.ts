@@ -1,5 +1,10 @@
 import { getDb } from "../db";
 
+const TASK_COLUMNS =
+  "id, board_id, title, body, assignee, status, priority, " +
+  "workspace_kind, branch, result, summary, block_reason, " +
+  "created_at, updated_at, archived_at";
+
 export interface Task {
   id: number;
   board_id: number;
@@ -88,9 +93,7 @@ export function listTasks(filter: ListTasksFilter): Task[] {
   }
 
   const query = `
-    SELECT id, board_id, title, body, assignee, status, priority,
-           workspace_kind, branch, result, summary, block_reason,
-           created_at, updated_at, archived_at
+    SELECT ${TASK_COLUMNS}
     FROM tasks
     WHERE ${conditions.join(" AND ")}
     ORDER BY created_at DESC
@@ -102,9 +105,7 @@ export function listTasks(filter: ListTasksFilter): Task[] {
 export function showTask(id: number): Task | null {
   const db = getDb();
   const task = db.query(
-    `SELECT id, board_id, title, body, assignee, status, priority,
-            workspace_kind, branch, result, summary, block_reason,
-            created_at, updated_at, archived_at
+    `SELECT ${TASK_COLUMNS}
      FROM tasks
      WHERE id = ? AND archived_at IS NULL`
   ).get(id) as Task | undefined;
@@ -132,20 +133,19 @@ export function editTask(id: number, body: string): Task {
 
 export function promoteTask(id: number): Task {
   const db = getDb();
-  const current = showTask(id);
-  if (!current) {
-    throw new Error(`Task ${id} not found`);
-  }
-  if (current.status !== "todo") {
-    throw new Error(`Task ${id} must be in 'todo' status to promote, current status: ${current.status}`);
-  }
-
-  db.run(
-    `UPDATE tasks SET status = 'ready', updated_at = unixepoch() WHERE id = ?`,
+  const result = db.run(
+    `UPDATE tasks SET status = 'ready', updated_at = unixepoch() WHERE id = ? AND status = 'todo' AND archived_at IS NULL`,
     [id]
   );
 
-  const task = showTask(id);
+  if (result.changes === 0) {
+    throw new Error(`Task ${id} not found or not in 'todo' status`);
+  }
+
+  const task = db.query(
+    `SELECT ${TASK_COLUMNS} FROM tasks WHERE id = ?`
+  ).get(id) as Task | undefined;
+
   if (!task) {
     throw new Error(`Task ${id} not found after promotion`);
   }
@@ -172,20 +172,19 @@ export function blockTask(id: number, reason: string): Task {
 
 export function unblockTask(id: number): Task {
   const db = getDb();
-  const current = showTask(id);
-  if (!current) {
-    throw new Error(`Task ${id} not found`);
-  }
-  if (current.status !== "blocked") {
-    throw new Error(`Task ${id} must be in 'blocked' status to unblock, current status: ${current.status}`);
-  }
-
-  db.run(
-    `UPDATE tasks SET status = 'todo', block_reason = NULL, updated_at = unixepoch() WHERE id = ?`,
+  const result = db.run(
+    `UPDATE tasks SET status = 'todo', block_reason = NULL, updated_at = unixepoch() WHERE id = ? AND status = 'blocked' AND archived_at IS NULL`,
     [id]
   );
 
-  const task = showTask(id);
+  if (result.changes === 0) {
+    throw new Error(`Task ${id} not found or not in 'blocked' status`);
+  }
+
+  const task = db.query(
+    `SELECT ${TASK_COLUMNS} FROM tasks WHERE id = ?`
+  ).get(id) as Task | undefined;
+
   if (!task) {
     throw new Error(`Task ${id} not found after unblocking`);
   }
@@ -204,9 +203,7 @@ export function archiveTask(id: number): Task {
   }
 
   const task = db.query(
-    `SELECT id, board_id, title, body, assignee, status, priority,
-            workspace_kind, branch, result, summary, block_reason,
-            created_at, updated_at, archived_at
+    `SELECT ${TASK_COLUMNS}
      FROM tasks
      WHERE id = ?`
   ).get(id) as Task | undefined;
