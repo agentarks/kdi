@@ -1,15 +1,15 @@
 import { describe, it, expect, beforeAll, afterAll } from "bun:test";
-import { mkdtempSync, rmSync, existsSync, lstatSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, existsSync, lstatSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { createWorktree, removeWorktree } from "../src/worktree";
 
 let tempDir: string;
 let repoDir: string;
 
-function git(args: string, cwd?: string) {
-  execSync(`git ${args}`, { cwd: cwd || repoDir });
+function git(args: string[], cwd?: string) {
+  execFileSync("git", args, { cwd: cwd || repoDir, stdio: "pipe" });
 }
 
 describe("worktree", () => {
@@ -18,11 +18,11 @@ describe("worktree", () => {
     repoDir = join(tempDir, "repo");
 
     // Create a temp git repo
-    execSync(`mkdir -p ${repoDir}`);
-    git("init");
-    git("config user.email 'test@test.com'");
-    git("config user.name 'Test User'");
-    git("commit --allow-empty -m 'initial commit'");
+    mkdirSync(repoDir, { recursive: true });
+    git(["init"]);
+    git(["config", "user.email", "test@test.com"]);
+    git(["config", "user.name", "Test User"]);
+    git(["commit", "--allow-empty", "-m", "initial commit"]);
   });
 
   afterAll(() => {
@@ -47,7 +47,7 @@ describe("worktree", () => {
   it("branch name is wt/<profile>/<taskId>", () => {
     createWorktree(repoDir, "default", "task-002");
 
-    const branches = execSync("git branch -a", { cwd: repoDir, encoding: "utf-8" });
+    const branches = execFileSync("git", ["branch", "-a"], { cwd: repoDir, encoding: "utf-8", stdio: "pipe" });
     expect(branches).toContain("wt/default/task-002");
 
     removeWorktree(repoDir, "default", "task-002");
@@ -65,7 +65,7 @@ describe("worktree", () => {
     expect(existsSync(worktreePath)).toBe(false);
 
     // Verify branch is removed
-    const branches = execSync("git branch -a", { cwd: repoDir, encoding: "utf-8" });
+    const branches = execFileSync("git", ["branch", "-a"], { cwd: repoDir, encoding: "utf-8", stdio: "pipe" });
     expect(branches).not.toContain("wt/default/task-003");
   });
 

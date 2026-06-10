@@ -1,4 +1,4 @@
-import { execFileSync, execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { lstatSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -32,16 +32,21 @@ export function createWorktree(
   }
 
   // Create the branch
-  execFileSync("git", ["branch", branchName, resolvedBaseRef], { cwd: repoDir });
+  execFileSync("git", ["branch", branchName, resolvedBaseRef], { cwd: repoDir, stdio: "pipe" });
 
   // Create a temp directory for the worktree
   const worktreePath = mkdtempSync(join(tmpdir(), `kdi-${profile}-${taskId}-`));
 
   try {
     // Add the worktree
-    execFileSync("git", ["worktree", "add", worktreePath, branchName], { cwd: repoDir });
+    execFileSync("git", ["worktree", "add", worktreePath, branchName], { cwd: repoDir, stdio: "pipe" });
   } catch (error) {
-    // Clean up temp directory if git worktree add fails
+    // Clean up orphaned branch and temp directory if git worktree add fails
+    try {
+      execFileSync("git", ["branch", "-D", branchName], { cwd: repoDir, stdio: "pipe" });
+    } catch {
+      // ignore branch deletion errors
+    }
     rmSync(worktreePath, { recursive: true, force: true });
     throw error;
   }
@@ -63,9 +68,10 @@ export function removeWorktree(
   // Find the worktree path from the branch name
   let worktreePath: string | null = null;
   try {
-    const output = execSync("git worktree list --porcelain", {
+    const output = execFileSync("git", ["worktree", "list", "--porcelain"], {
       cwd: repoDir,
       encoding: "utf-8",
+      stdio: "pipe",
     });
 
     const lines = output.split("\n");
@@ -86,7 +92,7 @@ export function removeWorktree(
   // Remove the worktree
   if (worktreePath) {
     try {
-      execSync(`git worktree remove "${worktreePath}"`, { cwd: repoDir });
+      execFileSync("git", ["worktree", "remove", worktreePath], { cwd: repoDir, stdio: "pipe" });
     } catch {
       success = false;
     }
@@ -94,7 +100,7 @@ export function removeWorktree(
 
   // Delete the branch
   try {
-    execFileSync("git", ["branch", "-D", branchName], { cwd: repoDir });
+    execFileSync("git", ["branch", "-D", branchName], { cwd: repoDir, stdio: "pipe" });
   } catch {
     success = false;
   }
