@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { initDb, closeDb } from "../src/db";
+import { initDb, closeDb, getDb } from "../src/db";
 import { createBoard, listBoards, showBoard, archiveBoard } from "../src/models/board";
 import { rmSync } from "node:fs";
 
@@ -56,7 +56,7 @@ describe("board model", () => {
 
   it("showBoard returns board details with task counts per status", () => {
     const board = createBoard("alpha", "/tmp/alpha");
-    const db = initDb(TEST_DB);
+    const db = getDb();
     // Insert tasks with different statuses
     db.run("INSERT INTO tasks (board_id, title, status) VALUES (?, ?, ?)", [board.id, "Task 1", "todo"]);
     db.run("INSERT INTO tasks (board_id, title, status) VALUES (?, ?, ?)", [board.id, "Task 2", "ready"]);
@@ -76,7 +76,7 @@ describe("board model", () => {
 
   it("showBoard excludes archived tasks from counts", () => {
     const board = createBoard("alpha", "/tmp/alpha");
-    const db = initDb(TEST_DB);
+    const db = getDb();
     db.run("INSERT INTO tasks (board_id, title, status) VALUES (?, ?, ?)", [board.id, "Active", "todo"]);
     db.run("INSERT INTO tasks (board_id, title, status, archived_at) VALUES (?, ?, ?, unixepoch())", [board.id, "Archived", "done"]);
 
@@ -91,5 +91,14 @@ describe("board model", () => {
     archiveBoard("alpha");
     const result = showBoard("alpha");
     expect(result).toBeNull();
+  });
+
+  it("createBoard throws on duplicate slug", () => {
+    createBoard("alpha", "/tmp/alpha");
+    expect(() => createBoard("alpha", "/tmp/alpha2")).toThrow();
+  });
+
+  it("archiveBoard throws on non-existent slug", () => {
+    expect(() => archiveBoard("nonexistent")).toThrow();
   });
 });
