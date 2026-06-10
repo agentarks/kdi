@@ -96,6 +96,8 @@ export const showTaskCommand = new Command("show")
       console.log(`Priority: ${task.priority}`);
       if (task.assignee) console.log(`Assignee: ${task.assignee}`);
       if (task.body) console.log(`Body: ${task.body}`);
+      if (task.result) console.log(`Result: ${task.result}`);
+      if (task.summary) console.log(`Summary: ${task.summary}`);
       if (task.block_reason) console.log(`Block reason: ${task.block_reason}`);
 
       const comments = getComments(id);
