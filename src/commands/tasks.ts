@@ -1,7 +1,4 @@
 import { Command } from "commander";
-import { homedir } from "node:os";
-import { mkdirSync } from "node:fs";
-import { initDb } from "../db";
 import { showBoard } from "../models/board";
 import {
   createTask,
@@ -15,12 +12,7 @@ import {
 } from "../models/task";
 import { addComment, getComments } from "../models/comment";
 
-function ensureDb() {
-  const dbDir = `${homedir()}/.local/share/kdi`;
-  const dbPath = `${dbDir}/kdi.db`;
-  mkdirSync(dbDir, { recursive: true });
-  initDb(dbPath);
-}
+const VALID_STATUSES = ["todo", "ready", "running", "done", "blocked"];
 
 function getBoardIdBySlug(slug: string): number {
   const board = showBoard(slug, false);
@@ -28,6 +20,14 @@ function getBoardIdBySlug(slug: string): number {
     throw new Error(`Board "${slug}" not found.`);
   }
   return board.id;
+}
+
+function parseTaskId(raw: string): number {
+  const id = parseInt(raw, 10);
+  if (isNaN(id) || id <= 0 || !Number.isInteger(id)) {
+    throw new Error(`Invalid task ID: ${raw}`);
+  }
+  return id;
 }
 
 export const createTaskCommand = new Command("create")
@@ -38,7 +38,9 @@ export const createTaskCommand = new Command("create")
   .option("--body <text>", "Task body")
   .action((title: string, options: { board: string; assignee?: string; body?: string }) => {
     try {
-      ensureDb();
+      if (!title || title.trim() === "") {
+        throw new Error("Title is required.");
+      }
       const boardId = getBoardIdBySlug(options.board);
       const task = createTask({
         board_id: boardId,
@@ -59,7 +61,9 @@ export const listTasksCommand = new Command("list")
   .option("--status <status>", "Filter by status")
   .action((options: { board: string; status?: string }) => {
     try {
-      ensureDb();
+      if (options.status && !VALID_STATUSES.includes(options.status)) {
+        throw new Error(`Invalid status "${options.status}". Valid: ${VALID_STATUSES.join(", ")}`);
+      }
       const boardId = getBoardIdBySlug(options.board);
       const tasks = listTasks({ board_id: boardId, status: options.status as any });
       if (tasks.length === 0) {
@@ -80,11 +84,7 @@ export const showTaskCommand = new Command("show")
   .argument("<task_id>", "Task ID")
   .action((taskId: string) => {
     try {
-      ensureDb();
-      const id = parseInt(taskId, 10);
-      if (isNaN(id)) {
-        throw new Error(`Invalid task ID: ${taskId}`);
-      }
+      const id = parseTaskId(taskId);
       const task = showTask(id);
       if (!task) {
         console.error(`Task ${id} not found.`);
@@ -117,10 +117,9 @@ export const editTaskCommand = new Command("edit")
   .requiredOption("--body <text>", "New body text")
   .action((taskId: string, options: { body: string }) => {
     try {
-      ensureDb();
-      const id = parseInt(taskId, 10);
-      if (isNaN(id)) {
-        throw new Error(`Invalid task ID: ${taskId}`);
+      const id = parseTaskId(taskId);
+      if (!options.body || options.body.trim() === "") {
+        throw new Error("Body is required.");
       }
       const task = editTask(id, options.body);
       console.log(`Updated task ${task.id}.`);
@@ -136,10 +135,9 @@ export const commentTaskCommand = new Command("comment")
   .argument("<text>", "Comment text")
   .action((taskId: string, text: string) => {
     try {
-      ensureDb();
-      const id = parseInt(taskId, 10);
-      if (isNaN(id)) {
-        throw new Error(`Invalid task ID: ${taskId}`);
+      const id = parseTaskId(taskId);
+      if (!text || text.trim() === "") {
+        throw new Error("Comment text is required.");
       }
       const comment = addComment(id, text);
       console.log(`Added comment ${comment.id} to task ${id}.`);
@@ -154,11 +152,7 @@ export const promoteTaskCommand = new Command("promote")
   .argument("<task_id>", "Task ID")
   .action((taskId: string) => {
     try {
-      ensureDb();
-      const id = parseInt(taskId, 10);
-      if (isNaN(id)) {
-        throw new Error(`Invalid task ID: ${taskId}`);
-      }
+      const id = parseTaskId(taskId);
       const task = promoteTask(id);
       console.log(`Promoted task ${task.id} to ready.`);
     } catch (err: any) {
@@ -173,10 +167,9 @@ export const blockTaskCommand = new Command("block")
   .requiredOption("--reason <text>", "Block reason")
   .action((taskId: string, options: { reason: string }) => {
     try {
-      ensureDb();
-      const id = parseInt(taskId, 10);
-      if (isNaN(id)) {
-        throw new Error(`Invalid task ID: ${taskId}`);
+      const id = parseTaskId(taskId);
+      if (!options.reason || options.reason.trim() === "") {
+        throw new Error("Block reason is required.");
       }
       const task = blockTask(id, options.reason);
       console.log(`Blocked task ${task.id}.`);
@@ -191,11 +184,7 @@ export const unblockTaskCommand = new Command("unblock")
   .argument("<task_id>", "Task ID")
   .action((taskId: string) => {
     try {
-      ensureDb();
-      const id = parseInt(taskId, 10);
-      if (isNaN(id)) {
-        throw new Error(`Invalid task ID: ${taskId}`);
-      }
+      const id = parseTaskId(taskId);
       const task = unblockTask(id);
       console.log(`Unblocked task ${task.id}.`);
     } catch (err: any) {
@@ -209,11 +198,7 @@ export const archiveTaskCommand = new Command("archive")
   .argument("<task_id>", "Task ID")
   .action((taskId: string) => {
     try {
-      ensureDb();
-      const id = parseInt(taskId, 10);
-      if (isNaN(id)) {
-        throw new Error(`Invalid task ID: ${taskId}`);
-      }
+      const id = parseTaskId(taskId);
       const task = archiveTask(id);
       console.log(`Archived task ${task.id}.`);
     } catch (err: any) {
