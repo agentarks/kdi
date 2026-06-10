@@ -22,15 +22,20 @@ boardsCommand
   .command("list")
   .description("List all boards")
   .action(() => {
-    const boards = listBoards(true);
-    if (boards.length === 0) {
-      console.log("No boards.");
-      return;
-    }
-    console.log("Boards:");
-    for (const board of boards) {
-      const archived = board.archived_at ? " (archived)" : "";
-      console.log(`  ${board.slug}  ${board.workdir}${archived}`);
+    try {
+      const boards = listBoards(true);
+      if (boards.length === 0) {
+        console.log("No boards.");
+        return;
+      }
+      console.log("Boards:");
+      for (const board of boards) {
+        const archived = board.archived_at ? " (archived)" : "";
+        console.log(`  ${board.slug}  ${board.workdir}${archived}`);
+      }
+    } catch (err: any) {
+      console.error(`Error: ${err.message}`);
+      process.exit(1);
     }
   });
 
