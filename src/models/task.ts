@@ -1,6 +1,6 @@
 import { getDb } from "../db";
 
-const TASK_COLUMNS =
+export const TASK_COLUMNS =
   "id, board_id, title, body, assignee, status, priority, " +
   "workspace_kind, branch, result, summary, block_reason, " +
   "created_at, updated_at, archived_at";
@@ -181,6 +181,24 @@ export function unblockTask(id: number): Task {
   const task = showTask(id);
   if (!task) {
     throw new Error(`Task ${id} not found after unblocking`);
+  }
+  return task;
+}
+
+export function completeTask(id: number): Task {
+  const db = getDb();
+  const result = db.run(
+    `UPDATE tasks SET status = 'done', updated_at = unixepoch() WHERE id = ? AND archived_at IS NULL`,
+    [id]
+  );
+
+  if (result.changes === 0) {
+    throw new Error(`Task ${id} not found or already archived`);
+  }
+
+  const task = showTask(id);
+  if (!task) {
+    throw new Error(`Task ${id} not found after completion`);
   }
   return task;
 }

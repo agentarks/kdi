@@ -1,12 +1,39 @@
 import { getDb } from "../db";
 import type { Task } from "./task";
+import { TASK_COLUMNS } from "./task";
 
-const TASK_COLUMNS =
-  "id, board_id, title, body, assignee, status, priority, " +
-  "workspace_kind, branch, result, summary, block_reason, " +
-  "created_at, updated_at, archived_at";
+function hasDependencyPath(fromId: number, toId: number): boolean {
+  const db = getDb();
+  const visited = new Set<number>();
+  const queue = [fromId];
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    if (current === toId) return true;
+    if (visited.has(current)) continue;
+    visited.add(current);
+
+    const rows = db.query(
+      "SELECT child_id FROM dependencies WHERE parent_id = ?"
+    ).all(current) as { child_id: number }[];
+
+    for (const row of rows) {
+      queue.push(row.child_id);
+    }
+  }
+
+  return false;
+}
 
 export function addDependency(parentId: number, childId: number): void {
+  if (parentId === childId) {
+    throw new Error("Self-dependency is not allowed");
+  }
+
+  if (hasDependencyPath(childId, parentId)) {
+    throw new Error("Circular dependency is not allowed");
+  }
+
   const db = getDb();
   db.run(
     "INSERT INTO dependencies (parent_id, child_id) VALUES (?, ?)",
