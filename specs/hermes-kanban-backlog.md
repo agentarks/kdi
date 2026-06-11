@@ -282,14 +282,15 @@
   - Claim TTL default 15min, env override `KDI_CLAIM_TTL_SECONDS`
   - `kdi claim --ttl <seconds>` — per-claim TTL override
 
-- [ ] **KDI-000d: Cross-process init lock**
-  - File-based lock (`kdi.db.init.lock`) to serialize schema setup across concurrent processes
-  - Released after migrations complete
+- [x] **KDI-000d: Cross-process init lock**
+  - File-based lock (`<dbPath>.init.lock`) to serialize schema setup across concurrent processes
+  - Stale lock detection via PID liveness check; released after migrations complete
 
-- [ ] **KDI-000e: `task_runs` status column**
+- [x] **KDI-000e: `task_runs` status column**
   - `status` on `task_runs`: `running | done | blocked | crashed | timed_out | failed | released`
   - Distinct from `outcome` (which is terminal classification)
   - Indexed: `idx_runs_status`
+  - `finishRun` maps each outcome to its corresponding status (e.g., `crashed` → `crashed`, `reclaimed` → `released`)
 
 ### Phase 1 — Task Lifecycle Expansion
 - [x] **KDI-001: Triage status**
@@ -299,11 +300,11 @@
   - `kdi specify --all` — sweep entire triage column
   - `kdi specify --tenant <name>` — tenant-restricted sweep
 
-- [ ] **KDI-001b: `create --initial-status`**
-  - `kdi create --initial-status blocked|running` (default: running)
+- [x] **KDI-001b: `create --initial-status`**
+  - `kdi create --initial-status <status>` (default: todo)
   - `blocked` skips the brief running→blocked transition for ops-gated tasks
 
-- [ ] **KDI-001c: Idempotency key**
+- [x] **KDI-001c: Idempotency key**
   - `kdi create --idempotency-key <key>`
   - If non-archived task with key exists, return its id instead of creating duplicate
   - Index: `idx_tasks_idempotency`
@@ -563,8 +564,8 @@
 | `boards list --all` | `kdi boards list --all` | **Done** | KDI-012b |
 | `boards rm --delete` | `kdi boards rm --delete` | Missing | KDI-012c |
 | `boards create --switch` | `kdi boards create --switch` | Missing | KDI-012 |
-| `create --idempotency-key` | `kdi create --idempotency-key` | Missing | KDI-001c |
-| `create --initial-status` | `kdi create --initial-status` | Missing | KDI-001b |
+| `create --idempotency-key` | `kdi create --idempotency-key` | **Done** | KDI-001c |
+| `create --initial-status` | `kdi create --initial-status` | **Done** | KDI-001b |
 | `list --mine` | `kdi list --mine` | Missing | KDI-030 |
 | `list --session` | `kdi list --session` | Missing | KDI-030 |
 | `list --archived` | `kdi list --archived` | Missing | KDI-030 |
@@ -613,7 +614,7 @@
 2. ~~KDI-000b~~: Task events table
 3. ~~KDI-000c~~: CAS claim system (claim_lock + TTL + reclaim)
 4. **KDI-000d**: Cross-process init lock
-5. **KDI-000e**: `task_runs.status` column
+5. ~~KDI-000e~~: `task_runs.status` column
 6. ~~Board Management~~: `create`, `list`, `show`, `archive` (basic)
 7. ~~Harness Profiles~~: Registry, built-ins, templates, validation
 8. ~~Dispatcher~~: Tick function, CAS claim, profile resolution, worktree spawn, log capture
@@ -701,5 +702,5 @@ Dispatched 4 parallel `pi` agents via cmux. All 135 tests pass. Work committed t
 - Board switch / resolution chain (`--board`, `KDI_BOARD`, `~/.local/share/kdi/current`) — not implemented
 - `kdi dispatch` is a tick function, not a long-running daemon
 - `kdi log <task_id>` CLI missing (logs written to disk but no read command)
-- `task_runs.status` column missing (only `outcome` exists)
-- Cross-process init lock missing
+- ~~`task_runs.status` column missing (only `outcome` exists)~~ — implemented in KDI-000e
+- ~~Cross-process init lock missing~~ — implemented in KDI-000d

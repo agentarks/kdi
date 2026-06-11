@@ -90,7 +90,7 @@ describe("taskRun model", () => {
     expect(updatedTask!.current_run_id).toBeNull();
   });
 
-  it("finishRun with no endedAt uses current time", () => {
+  it("finishRun maps crashed outcome to crashed status", () => {
     const board = createBoard("alpha", "/tmp/alpha");
     const task = createTask({ board_id: board.id, title: "Finish now" });
     const run = createRun({ task_id: task.id, status: "running", started_at: 1000 });
@@ -98,9 +98,38 @@ describe("taskRun model", () => {
     finishRun(run.id, "crashed", null, null, "boom");
 
     const finished = getRun(run.id);
-    expect(finished!.status).toBe("done");
+    expect(finished!.status).toBe("crashed");
     expect(finished!.outcome).toBe("crashed");
     expect(finished!.error).toBe("boom");
     expect(finished!.ended_at).toBeNumber();
+  });
+
+  it("finishRun maps outcomes to correct statuses", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Mapping" });
+
+    const runCompleted = createRun({ task_id: task.id, status: "running", started_at: 1000 });
+    finishRun(runCompleted.id, "completed");
+    expect(getRun(runCompleted.id)!.status).toBe("done");
+
+    const runBlocked = createRun({ task_id: task.id, status: "running", started_at: 1001 });
+    finishRun(runBlocked.id, "blocked");
+    expect(getRun(runBlocked.id)!.status).toBe("blocked");
+
+    const runTimedOut = createRun({ task_id: task.id, status: "running", started_at: 1002 });
+    finishRun(runTimedOut.id, "timed_out");
+    expect(getRun(runTimedOut.id)!.status).toBe("timed_out");
+
+    const runSpawnFailed = createRun({ task_id: task.id, status: "running", started_at: 1003 });
+    finishRun(runSpawnFailed.id, "spawn_failed");
+    expect(getRun(runSpawnFailed.id)!.status).toBe("failed");
+
+    const runGaveUp = createRun({ task_id: task.id, status: "running", started_at: 1004 });
+    finishRun(runGaveUp.id, "gave_up");
+    expect(getRun(runGaveUp.id)!.status).toBe("failed");
+
+    const runReclaimed = createRun({ task_id: task.id, status: "running", started_at: 1005 });
+    finishRun(runReclaimed.id, "reclaimed");
+    expect(getRun(runReclaimed.id)!.status).toBe("released");
   });
 });

@@ -5,7 +5,7 @@ export const TASK_COLUMNS =
   "id, board_id, title, body, assignee, status, priority, " +
   "workspace_kind, branch, result, summary, block_reason, " +
   "created_at, updated_at, started_at, archived_at, current_run_id, " +
-  "claim_lock, claim_expires, last_heartbeat_at";
+  "claim_lock, claim_expires, last_heartbeat_at, idempotency_key";
 
 export interface Task {
   id: number;
@@ -28,7 +28,10 @@ export interface Task {
   claim_lock: string | null;
   claim_expires: number | null;
   last_heartbeat_at: number | null;
+  idempotency_key: string | null;
 }
+
+export type InitialTaskStatus = Exclude<Task["status"], "archived">;
 
 export interface CreateTaskInput {
   board_id: number;
@@ -39,6 +42,8 @@ export interface CreateTaskInput {
   workspace_kind?: "dir" | "worktree" | "scratch";
   branch?: string;
   triage?: boolean;
+  initialStatus?: InitialTaskStatus;
+  idempotency_key?: string;
 }
 
 export interface ListTasksFilter {
@@ -49,10 +54,27 @@ export interface ListTasksFilter {
 
 export function createTask(input: CreateTaskInput): Task {
   const db = getDb();
-  const status: Task["status"] = input.triage ? "triage" : "todo";
+
+  if (input.idempotency_key) {
+    const existing = db.query(
+      `SELECT ${TASK_COLUMNS} FROM tasks WHERE board_id = ? AND idempotency_key = ? AND archived_at IS NULL`
+    ).get(input.board_id, input.idempotency_key) as Task | undefined;
+    if (existing) {
+      return existing;
+    }
+  }
+
+  let status: Task["status"];
+  if (input.initialStatus) {
+    status = input.initialStatus;
+  } else if (input.triage) {
+    status = "triage";
+  } else {
+    status = "todo";
+  }
   const result = db.run(
-    `INSERT INTO tasks (board_id, title, body, assignee, status, priority, workspace_kind, branch)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO tasks (board_id, title, body, assignee, status, priority, workspace_kind, branch, idempotency_key)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       input.board_id,
       input.title,
@@ -62,6 +84,7 @@ export function createTask(input: CreateTaskInput): Task {
       input.priority ?? "medium",
       input.workspace_kind ?? "worktree",
       input.branch ?? null,
+      input.idempotency_key ?? null,
     ]
   );
 
@@ -86,6 +109,7 @@ export function createTask(input: CreateTaskInput): Task {
     claim_lock: null,
     claim_expires: null,
     last_heartbeat_at: null,
+    idempotency_key: input.idempotency_key ?? null,
   };
   addEvent(task.id, "created");
   return task;

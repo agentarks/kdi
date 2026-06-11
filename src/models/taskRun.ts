@@ -163,6 +163,24 @@ export function updateRun(id: number, updates: UpdateRunInput): TaskRun {
   return updated;
 }
 
+function outcomeToStatus(outcome: NonNullable<TaskRun["outcome"]>): TaskRun["status"] {
+  switch (outcome) {
+    case "completed":
+      return "done";
+    case "blocked":
+      return "blocked";
+    case "crashed":
+      return "crashed";
+    case "timed_out":
+      return "timed_out";
+    case "spawn_failed":
+    case "gave_up":
+      return "failed";
+    case "reclaimed":
+      return "released";
+  }
+}
+
 export function finishRun(
   id: number,
   outcome: TaskRun["outcome"],
@@ -173,12 +191,13 @@ export function finishRun(
 ): TaskRun {
   const db = getDb();
   const now = endedAt ?? Math.floor(Date.now() / 1000);
+  const status = outcome ? outcomeToStatus(outcome) : "done";
 
   db.run(
     `UPDATE task_runs
-     SET status = 'done', outcome = ?, summary = ?, metadata = ?, error = ?, ended_at = ?
+     SET status = ?, outcome = ?, summary = ?, metadata = ?, error = ?, ended_at = ?
      WHERE id = ?`,
-    [outcome, summary ?? null, metadata ?? null, error ?? null, now, id]
+    [status, outcome, summary ?? null, metadata ?? null, error ?? null, now, id]
   );
 
   // Clear tasks.current_run_id if this was the active run

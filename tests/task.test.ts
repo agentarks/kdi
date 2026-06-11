@@ -67,6 +67,55 @@ describe("task model", () => {
     expect(task.branch).toBe("feature-123");
   });
 
+  it("createTask with triage flag parks in triage", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Triage me", triage: true });
+    expect(task.status).toBe("triage");
+  });
+
+  it("createTask with initialStatus sets the status", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const blocked = createTask({ board_id: board.id, title: "Blocked", initialStatus: "blocked" });
+    const running = createTask({ board_id: board.id, title: "Running", initialStatus: "running" });
+    const ready = createTask({ board_id: board.id, title: "Ready", initialStatus: "ready" });
+
+    expect(blocked.status).toBe("blocked");
+    expect(running.status).toBe("running");
+    expect(ready.status).toBe("ready");
+  });
+
+  it("createTask initialStatus takes precedence over triage", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Ready", triage: true, initialStatus: "ready" });
+    expect(task.status).toBe("ready");
+  });
+
+  it("createTask with idempotency key returns existing task on duplicate", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const first = createTask({ board_id: board.id, title: "First", idempotency_key: "abc-123" });
+    const second = createTask({ board_id: board.id, title: "Second", idempotency_key: "abc-123" });
+
+    expect(second.id).toBe(first.id);
+  });
+
+  it("createTask with different idempotency keys creates separate tasks", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const first = createTask({ board_id: board.id, title: "First", idempotency_key: "key-1" });
+    const second = createTask({ board_id: board.id, title: "Second", idempotency_key: "key-2" });
+
+    expect(second.id).not.toBe(first.id);
+  });
+
+  it("createTask reuses idempotency key only when task is not archived", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const first = createTask({ board_id: board.id, title: "First", idempotency_key: "reuse-key" });
+    archiveTask(first.id);
+
+    const second = createTask({ board_id: board.id, title: "Second", idempotency_key: "reuse-key" });
+
+    expect(second.id).not.toBe(first.id);
+  });
+
   it("listTasks returns all tasks for a board", () => {
     const board = createBoard("alpha", "/tmp/alpha");
     createTask({ board_id: board.id, title: "Task 1" });
