@@ -1,6 +1,12 @@
 import { describe, it, expect } from "bun:test";
-import { loadProfiles, getProfile, substituteCommand } from "../src/profiles";
-import { writeFileSync, unlinkSync } from "node:fs";
+import {
+  loadProfiles,
+  getProfile,
+  substituteCommand,
+  ensureProfiles,
+  validateProfile,
+} from "../src/profiles";
+import { writeFileSync, unlinkSync, existsSync, readFileSync, rmdirSync } from "node:fs";
 
 const TEST_PROFILES_PATH = "/tmp/kdi-test-profiles.yaml";
 
@@ -95,6 +101,110 @@ describe("profiles", () => {
       expect(names).toContain("custom");
       const opencode = profiles.find((p: any) => p.name === "opencode");
       expect(opencode!.command).toBe("custom-opencode-cmd");
+    } finally {
+      unlinkSync(TEST_PROFILES_PATH);
+    }
+  });
+
+  it("ensureProfiles writes built-in profiles when file is missing", () => {
+    const testPath = "/tmp/kdi-ensure-profiles.yaml";
+    if (existsSync(testPath)) {
+      unlinkSync(testPath);
+    }
+    ensureProfiles(testPath);
+    try {
+      expect(existsSync(testPath)).toBe(true);
+      const content = readFileSync(testPath, "utf-8");
+      expect(content).toContain("opencode");
+      expect(content).toContain("claude");
+      expect(content).toContain("codex");
+      expect(content).toContain("pi");
+    } finally {
+      unlinkSync(testPath);
+    }
+  });
+
+  it("ensureProfiles is a no-op when file already exists", () => {
+    const testPath = "/tmp/kdi-ensure-existing.yaml";
+    writeFileSync(testPath, "custom: true\n");
+    ensureProfiles(testPath);
+    try {
+      const content = readFileSync(testPath, "utf-8");
+      expect(content).toBe("custom: true\n");
+    } finally {
+      unlinkSync(testPath);
+    }
+  });
+
+  it("validateProfile rejects missing name", () => {
+    expect(() => validateProfile({ command: "echo" }, 0)).toThrow("name");
+  });
+
+  it("validateProfile rejects empty name", () => {
+    expect(() => validateProfile({ name: "", command: "echo" }, 0)).toThrow("name");
+  });
+
+  it("validateProfile rejects missing command", () => {
+    expect(() => validateProfile({ name: "test" }, 0)).toThrow("command");
+  });
+
+  it("validateProfile rejects empty command", () => {
+    expect(() => validateProfile({ name: "test", command: "   " }, 0)).toThrow("command");
+  });
+
+  it("validateProfile rejects non-string agent", () => {
+    expect(() => validateProfile({ name: "test", command: "echo", agent: 123 }, 0)).toThrow(
+      "agent"
+    );
+  });
+
+  it("validateProfile rejects non-object env", () => {
+    expect(() => validateProfile({ name: "test", command: "echo", env: "bad" }, 0)).toThrow(
+      "env"
+    );
+  });
+
+  it("validateProfile rejects non-string env values", () => {
+    expect(() =>
+      validateProfile({ name: "test", command: "echo", env: { FOO: 123 } }, 0)
+    ).toThrow("env");
+  });
+
+  it("validateProfile rejects unknown fields", () => {
+    expect(() =>
+      validateProfile({ name: "test", command: "echo", extra: "bad" }, 0)
+    ).toThrow("unknown field");
+  });
+
+  it("validateProfile rejects unknown template variables", () => {
+    expect(() =>
+      validateProfile({ name: "test", command: "echo {{unknown}}" }, 0)
+    ).toThrow("unknown template variable");
+  });
+
+  it("validateProfile allows known template variables", () => {
+    const p = validateProfile(
+      { name: "test", command: "echo {{workdir}} {{branch}} {{task_id}} {{agent}}" },
+      0
+    );
+    expect(p.name).toBe("test");
+    expect(p.command).toBe("echo {{workdir}} {{branch}} {{task_id}} {{agent}}");
+  });
+
+  it("loadProfiles falls back to built-ins for empty file", () => {
+    writeFileSync(TEST_PROFILES_PATH, "");
+    try {
+      const profiles = loadProfiles(TEST_PROFILES_PATH);
+      expect(profiles).toHaveLength(4);
+    } finally {
+      unlinkSync(TEST_PROFILES_PATH);
+    }
+  });
+
+  it("loadProfiles throws for non-array YAML", () => {
+    writeFileSync(TEST_PROFILES_PATH, "foo: bar");
+    try {
+      expect(() => loadProfiles(TEST_PROFILES_PATH)).toThrow("YAML array");
     } finally {
       unlinkSync(TEST_PROFILES_PATH);
     }

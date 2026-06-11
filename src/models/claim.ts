@@ -106,6 +106,18 @@ export function heartbeat(taskId: number, note?: string): boolean {
     return false;
   }
 
+  // Also update active task_run
+  const task = db.query(
+    `SELECT current_run_id FROM tasks WHERE id = ?`
+  ).get(taskId) as { current_run_id: number | null } | undefined;
+
+  if (task?.current_run_id) {
+    db.run(
+      `UPDATE task_runs SET last_heartbeat_at = unixepoch() WHERE id = ?`,
+      [task.current_run_id]
+    );
+  }
+
   if (note) {
     addEvent(taskId, "heartbeat", { note });
   }

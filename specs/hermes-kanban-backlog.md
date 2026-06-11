@@ -186,7 +186,7 @@
 | Hermes Feature | KDI Status | Gap |
 |---|---|---|
 | Board metadata (name, desc, icon, color) | Missing entirely | KDI boards only have slug + workdir |
-| `triage` status | Missing | KDI has no triage parking lot |
+| `triage` status | **Done** (basic) | `kdi create --triage`, `kdi specify` |
 | `scheduled` status | Missing | KDI has no time-waiting state |
 | `review` status | Missing | KDI conflates review with blocked |
 | Integer priority (tiebreaker) | Partial | KDI has enum low/medium/high |
@@ -199,20 +199,20 @@
 | `goal_mode` / `goal_max_turns` | Missing | No goal loop |
 | `session_id` | Missing | No session tracking |
 | `workflow_template_id` | Missing | No workflow routing |
-| `task_runs` table | Missing | No per-attempt history |
-| `task_events` table | Missing | No audit stream |
+| `task_runs` table | **Done** | `kdi runs <task_id>` |
+| `task_events` table | **Done** | `kdi tail`, `kdi watch` |
 | `task_attachments` table | Missing | No file attachments |
-| `claim_lock` + TTL | Missing | No CAS claim system |
-| `heartbeat` | Missing | No worker liveness |
-| `reclaim` command | Missing | No operator recovery |
+| `claim_lock` + TTL | **Done** | `kdi claim`, `kdi reclaim` |
+| `heartbeat` | **Done** | `kdi heartbeat` |
+| `reclaim` command | **Done** | `kdi reclaim` |
 | `reassign` command | Missing | No assignee change |
 | `schedule` command/status | Missing | No scheduled state |
 | `assign` command | Missing | No direct assignment |
 | `complete` with metadata | Partial | KDI has no result/summary/metadata |
-| `tail` / `watch` | Missing | No event streaming |
+| `tail` / `watch` | **Done** | `kdi tail`, `kdi watch` |
 | `stats` | Missing | No board stats |
 | `log` | Missing | No worker log access |
-| `runs` | Missing | No attempt history |
+| `runs` | **Done** | `kdi runs <task_id>` |
 | `context` | Missing | No worker context builder |
 | `assignees` | Missing | No profile listing |
 | `gc` | Missing | No garbage collection |
@@ -366,7 +366,7 @@
   - `kdi boards create myproj --name "My Project" --icon "🚀" --color "#8b5cf6"`
   - `kdi boards create --switch` — auto-switch to new board after creation
 
-- [ ] **KDI-012b: `kdi boards list --all`**
+- [x] **KDI-012b: `kdi boards list --all`**
   - Include archived boards in listing
 
 - [ ] **KDI-012c: `kdi boards rm --delete`**
@@ -520,9 +520,9 @@
 
 | Hermes Feature | KDI Equivalent | Status | Backlog Item |
 |---|---|---|---|
-| `hermes kanban boards create` | `kdi boards create` | Partial | KDI-012, KDI-013, KDI-014, KDI-015 |
-| `hermes kanban boards list` | `kdi boards list` | Partial | KDI-012 |
-| `hermes kanban boards show` | `kdi boards show` | Partial | KDI-013 |
+| `hermes kanban boards create` | `kdi boards create` | **Done** (basic) | KDI-012, KDI-013, KDI-014, KDI-015 |
+| `hermes kanban boards list` | `kdi boards list` | **Done** (basic) | KDI-012 |
+| `hermes kanban boards show` | `kdi boards show` | **Done** (basic) | KDI-013 |
 | `hermes kanban boards switch` | `kdi boards switch` | Missing | KDI-013 |
 | `hermes kanban boards rename` | `kdi boards rename` | Missing | KDI-014 |
 | `hermes kanban boards set-default-workdir` | `kdi boards set-default-workdir` | Missing | KDI-015 |
@@ -544,7 +544,7 @@
 | `hermes kanban promote` | `kdi promote` | Exists | — |
 | `hermes kanban archive` | `kdi archive` | Exists | — |
 | `hermes kanban tail` | `kdi tail` | Exists | KDI-000b |
-| `hermes kanban dispatch` | `kdi dispatch` | Exists | KDI-000c, KDI-016 |
+| `hermes kanban dispatch` | `kdi dispatch` | **Done** | KDI-000c, KDI-016 |
 | `hermes kanban watch` | `kdi watch` | Exists | KDI-000b |
 | `hermes kanban stats` | `kdi stats` | Missing | KDI-019 |
 | `hermes kanban log` | `kdi log` | Missing | KDI-018 |
@@ -552,7 +552,7 @@
 | `hermes kanban heartbeat` | `kdi heartbeat` | **Done** | KDI-000c |
 | `hermes kanban assignees` | `kdi assignees` | Missing | KDI-024 |
 | `hermes kanban context` | `kdi context` | Missing | KDI-023 |
-| `hermes kanban specify` | `kdi specify` | Exists | KDI-001 (basic) |
+| `hermes kanban specify` | `kdi specify` | **Done** | KDI-001 (basic) |
 | `hermes kanban decompose` | `kdi decompose` | Missing | KDI-028 |
 | `hermes kanban gc` | `kdi gc` | Missing | KDI-021 |
 | `hermes kanban diagnostics` | `kdi diagnostics` | Missing | KDI-020 |
@@ -560,7 +560,7 @@
 | `hermes kanban notify-unsubscribe` | `kdi notify-unsubscribe` | Missing | KDI-025 |
 | `hermes kanban init` | `kdi init` | Missing | KDI-013b |
 | `--board` flag + env resolution | `--board` + `KDI_BOARD` | Missing | KDI-013 |
-| `boards list --all` | `kdi boards list --all` | Missing | KDI-012b |
+| `boards list --all` | `kdi boards list --all` | **Done** | KDI-012b |
 | `boards rm --delete` | `kdi boards rm --delete` | Missing | KDI-012c |
 | `boards create --switch` | `kdi boards create --switch` | Missing | KDI-012 |
 | `create --idempotency-key` | `kdi create --idempotency-key` | Missing | KDI-001c |
@@ -614,6 +614,10 @@
 3. ~~KDI-000c~~: CAS claim system (claim_lock + TTL + reclaim)
 4. **KDI-000d**: Cross-process init lock
 5. **KDI-000e**: `task_runs.status` column
+6. ~~Board Management~~: `create`, `list`, `show`, `archive` (basic)
+7. ~~Harness Profiles~~: Registry, built-ins, templates, validation
+8. ~~Dispatcher~~: Tick function, CAS claim, profile resolution, worktree spawn, log capture
+9. ~~Worktree Isolation~~: Auto branch `wt/<profile>/<task_id>`, configurable base ref, cleanup
 
 ### P1 — Core Lifecycle Gaps (high operational value)
 6. ~~KDI-001~~: Triage status + specify command
@@ -629,7 +633,7 @@
 
 ### P2 — Board Management
 16. **KDI-012**: Board metadata (name, icon, color)
-17. **KDI-012b**: `boards list --all`
+17. ~~KDI-012b~~: `boards list --all`
 18. **KDI-012c**: `boards rm --delete`
 19. **KDI-013**: Board switch / current + resolution chain
 20. **KDI-013b**: `kdi init` command
@@ -679,3 +683,23 @@
 *Investigated: 2026-06-10 (live CLI + source)*
 *Source: NousResearch/hermes-agent hermes_cli/kanban.py (2830 lines), hermes_cli/kanban_db.py (7648 lines)*
 *Previous GumbyEnder spec superseded by actual source investigation*
+
+---
+
+## Agent Batch — 2026-06-11
+
+Dispatched 4 parallel `pi` agents via cmux. All 135 tests pass. Work committed to working tree (not yet committed to git).
+
+### Completed
+- **Board Management** (KDI-012b): `boards create`, `list`, `show`, `archive`; `--all` flag; `base_ref` support
+- **Harness Profiles**: `~/.config/kdi/profiles.yaml` registry with built-ins (opencode, claude, codex, pi); template substitution (`{{workdir}}`, `{{branch}}`, `{{task_id}}`, `{{agent}}`); profile validation on load
+- **Dispatcher**: Tick function with CAS claim, profile resolution, worktree spawn, stdout/stderr/exit capture, per-task log files, status update (done/failed), max spawns per tick
+- **Worktree Isolation**: Auto branch `wt/<profile>/<task_id>`, configurable `base_ref` per board (default `origin/main`, fallback `HEAD`), cleanup on completion
+
+### Known Gaps from Agent Work
+- Board metadata (name, icon, color) — not implemented
+- Board switch / resolution chain (`--board`, `KDI_BOARD`, `~/.local/share/kdi/current`) — not implemented
+- `kdi dispatch` is a tick function, not a long-running daemon
+- `kdi log <task_id>` CLI missing (logs written to disk but no read command)
+- `task_runs.status` column missing (only `outcome` exists)
+- Cross-process init lock missing

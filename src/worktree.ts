@@ -54,56 +54,74 @@ export function createWorktree(
   return worktreePath;
 }
 
+export interface RemoveWorktreeResult {
+  worktreeRemoved: boolean;
+  branchDeleted: boolean;
+  found: boolean;
+}
+
 export function removeWorktree(
   repoDir: string,
   profile: string,
   taskId: string,
-): boolean {
+  worktreePath?: string,
+): RemoveWorktreeResult {
   validateId("profile", profile);
   validateId("taskId", taskId);
 
   const branchName = `wt/${profile}/${taskId}`;
-  let success = true;
+  let found = false;
+  let worktreeRemoved = false;
+  let branchDeleted = false;
 
-  // Find the worktree path from the branch name
-  let worktreePath: string | null = null;
-  try {
-    const output = execFileSync("git", ["worktree", "list", "--porcelain"], {
-      cwd: repoDir,
-      encoding: "utf-8",
-      stdio: "pipe",
-    });
+  // Determine the worktree path to remove
+  let resolvedPath: string | null = worktreePath ?? null;
+  if (!resolvedPath) {
+    try {
+      const output = execFileSync("git", ["worktree", "list", "--porcelain"], {
+        cwd: repoDir,
+        encoding: "utf-8",
+        stdio: "pipe",
+      });
 
-    const lines = output.split("\n");
-    for (let i = 0; i < lines.length; i++) {
-      if (lines[i].startsWith("worktree ")) {
-        const path = lines[i].slice(9);
-        // Check if the branch line contains our branch (as refs/heads/branchName)
-        if (i + 2 < lines.length && lines[i + 2].includes(`refs/heads/${branchName}`)) {
-          worktreePath = path;
-          break;
+      const lines = output.split("\n");
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i].startsWith("worktree ")) {
+          const path = lines[i].slice(9);
+          // Scan forward within this worktree block for the branch ref
+          let j = i + 1;
+          while (j < lines.length && lines[j].trim() !== "" && !lines[j].startsWith("worktree ")) {
+            if (lines[j].includes(`refs/heads/${branchName}`)) {
+              resolvedPath = path;
+              break;
+            }
+            j++;
+          }
+          if (resolvedPath) break;
         }
       }
-    }
-  } catch {
-    success = false;
-  }
-
-  // Remove the worktree
-  if (worktreePath) {
-    try {
-      execFileSync("git", ["worktree", "remove", worktreePath], { cwd: repoDir, stdio: "pipe" });
     } catch {
-      success = false;
+      // Best effort: worktree list may fail if repo is in a bad state
     }
   }
 
-  // Delete the branch
+  if (resolvedPath) {
+    found = true;
+    try {
+      execFileSync("git", ["worktree", "remove", resolvedPath], { cwd: repoDir, stdio: "pipe" });
+      worktreeRemoved = true;
+    } catch {
+      // Worktree removal failed — branch deletion below may still succeed
+    }
+  }
+
+  // Always try to delete the branch, even if worktree was not found
   try {
     execFileSync("git", ["branch", "-D", branchName], { cwd: repoDir, stdio: "pipe" });
+    branchDeleted = true;
   } catch {
-    success = false;
+    // Branch may not exist (already deleted or never created)
   }
 
-  return success;
+  return { worktreeRemoved, branchDeleted, found };
 }

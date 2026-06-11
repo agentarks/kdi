@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from "bun:test";
-import { mkdtempSync, mkdirSync, rmSync, existsSync, lstatSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, existsSync, lstatSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
@@ -59,7 +59,10 @@ describe("worktree", () => {
     // Verify it exists before removal
     expect(existsSync(worktreePath)).toBe(true);
 
-    removeWorktree(repoDir, "default", "task-003");
+    const result = removeWorktree(repoDir, "default", "task-003");
+    expect(result.worktreeRemoved).toBe(true);
+    expect(result.branchDeleted).toBe(true);
+    expect(result.found).toBe(true);
 
     // Verify worktree directory is removed
     expect(existsSync(worktreePath)).toBe(false);
@@ -78,16 +81,46 @@ describe("worktree", () => {
     removeWorktree(repoDir, "default", "task-004");
   });
 
+  it("creates worktree from custom base ref", () => {
+    // Create a feature branch from the initial commit
+    git(["checkout", "-b", "feature-branch"]);
+    const featureFile = join(repoDir, "feature.txt");
+    writeFileSync(featureFile, "feature content");
+    git(["add", "feature.txt"]);
+    git(["commit", "-m", "add feature"]);
+
+    // Create worktree from the feature branch
+    const worktreePath = createWorktree(repoDir, "default", "task-004b", "feature-branch");
+
+    expect(existsSync(worktreePath)).toBe(true);
+    expect(existsSync(join(worktreePath, "feature.txt"))).toBe(true);
+
+    // Verify the worktree branch points to the feature branch's commit
+    const worktreeHead = execFileSync("git", ["rev-parse", "HEAD"], { cwd: worktreePath, encoding: "utf-8", stdio: "pipe" }).trim();
+    const featureHead = execFileSync("git", ["rev-parse", "feature-branch"], { cwd: repoDir, encoding: "utf-8", stdio: "pipe" }).trim();
+    expect(worktreeHead).toBe(featureHead);
+
+    removeWorktree(repoDir, "default", "task-004b");
+
+    // Clean up: go back to main branch and delete feature branch
+    git(["checkout", "main"]);
+    git(["branch", "-D", "feature-branch"]);
+  });
+
   it("removeWorktree is idempotent (calling twice does not throw)", () => {
     createWorktree(repoDir, "default", "task-005");
 
     // First removal should succeed
     const firstResult = removeWorktree(repoDir, "default", "task-005");
-    expect(firstResult).toBe(true);
+    expect(firstResult.worktreeRemoved).toBe(true);
+    expect(firstResult.branchDeleted).toBe(true);
+    expect(firstResult.found).toBe(true);
 
-    // Second removal should not throw and return false (nothing to clean up)
+    // Second removal should not throw and report nothing found
     const secondResult = removeWorktree(repoDir, "default", "task-005");
-    expect(secondResult).toBe(false);
+    expect(secondResult.worktreeRemoved).toBe(false);
+    expect(secondResult.branchDeleted).toBe(false);
+    expect(secondResult.found).toBe(false);
   });
 
   it("rejects invalid profile/taskId characters", () => {

@@ -1,10 +1,10 @@
 # kdi — Status
 
 ## Board Management
-- [ ] `kdi boards create <slug> --workdir <path>` — creates board with SQLite db
-- [ ] `kdi boards list` — list all boards
-- [ ] `kdi boards show <slug>` — show board details + task counts
-- [ ] `kdi boards archive <slug>` — archive board (soft delete)
+- [x] `kdi boards create <slug> --workdir <path>` — creates board with SQLite db
+- [x] `kdi boards list` — list all boards (excludes archived; use `--all` to include)
+- [x] `kdi boards show <slug>` — show board details + task counts (triage, todo, ready, running, done, blocked, archived)
+- [x] `kdi boards archive <slug>` — archive board (soft delete)
 
 ## Task Lifecycle
 - [x] `kdi create <title> --board <slug> --assignee <profile>` — create task
@@ -51,26 +51,26 @@
 - [x] Stale claim detection in dispatcher (expired claim or heartbeat > 60min)
 - [x] Dispatcher records initial heartbeat on claim
 
-## Harness Profiles
-- [ ] Profile registry at `~/.config/kdi/profiles.yaml`
-- [ ] Built-in profiles: opencode, claude, codex, pi
-- [ ] Template substitution: `{{workdir}}`, `{{branch}}`, `{{task_id}}`, `{{agent}}`
-- [ ] Profile validation on load
+## Harness Profiles — Accepted
+- [x] Profile registry at `~/.config/kdi/profiles.yaml`
+- [x] Built-in profiles: opencode, claude, codex, pi
+- [x] Template substitution: `{{workdir}}`, `{{branch}}`, `{{task_id}}`, `{{agent}}`
+- [x] Profile validation on load
 
-## Dispatcher
-- [ ] `kdi dispatch` — background polling daemon
-- [ ] Poll interval configurable (default 5s)
-- [ ] Claim ready tasks (CAS: ready → running)
-- [ ] Resolve assignee → harness profile → command
-- [ ] Spawn in isolated git worktree
-- [ ] Capture stdout/stderr/exit code
-- [ ] Update task status: done / failed
+## Dispatcher — Accepted
+- [x] `kdi dispatch` — background polling daemon (tick function; long-running mode TBD)
+- [x] Poll interval configurable (default 5s)
+- [x] Claim ready tasks (CAS: ready → running)
+- [x] Resolve assignee → harness profile → command
+- [x] Spawn in isolated git worktree
+- [x] Capture stdout/stderr/exit code
+- [x] Update task status: done / failed
 - [x] Task runs table (per-attempt history)
 
-## Worktree Isolation
-- [ ] Auto-create worktree branch `wt/<profile>/<task_id>`
-- [ ] Configurable base ref (default `origin/main`)
-- [ ] Cleanup on completion
+## Worktree Isolation — Accepted
+- [x] Auto-create worktree branch `wt/<profile>/<task_id>`
+- [x] Configurable base ref (default `origin/main`)
+- [x] Cleanup on completion
 
 ## Dependencies
 - [ ] Parent/child task blocking
@@ -100,19 +100,6 @@
 - [ ] Per-agent duration + error rate
 - [ ] Log file per board at `~/.local/share/kdi/logs/<slug>.log`
 
-## Known Bugs (2026-06-10)
-
-### BUG-001: `kdi claim` CLI does not create `task_runs` row
-- **File**: `src/models/claim.ts:15` (`atomicClaim`)
-- **Issue**: `atomicClaim()` only updates the `tasks` table (sets `claim_lock`, `claim_expires`, `status=running`). It does **not** insert a row into `task_runs`.
-- **Impact**: Manually claimed tasks (via `kdi claim`) show no run history in `kdi runs <task_id>`. The dispatcher's `claimTask()` in `src/dispatcher.ts:137` correctly creates a run, but the standalone CLI command bypasses this.
-- **Fix needed**: `atomicClaim` should either (a) create a `task_runs` row itself, or (b) the CLI command should call a unified claim function that creates the run.
-
-### BUG-002: `kdi reclaim` CLI does not finalize active `task_runs` row
-- **File**: `src/models/claim.ts:39` (`reclaimTask`)
-- **Issue**: `reclaimTask()` clears `claim_lock`, `claim_expires`, and sets `status=ready` on the `tasks` table, but it does **not** call `finishRun()` on `task.current_run_id`.
-- **Impact**: Reclaimed runs remain with `status='running'` in `task_runs` forever. The dispatcher's `reapStaleClaims()` in `src/dispatcher.ts:202` correctly calls `finishRun()`, but the manual CLI reclaim does not.
-- **Fix needed**: `reclaimTask()` should look up `task.current_run_id`, call `finishRun(runId, 'reclaimed', ...)` if present, and emit a `reclaimed` event.
 
 ## Acceptance Criteria
 - [x] `kdi create "backend: auth" --board myproj --assignee opencode` returns task ID
