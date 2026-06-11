@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { createWriteStream, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { getDb } from "./db";
-import { TASK_COLUMNS, type Task } from "./models/task";
+import { TASK_COLUMNS, type Task, promoteScheduledTasks } from "./models/task";
 import { finishRun, updateRun } from "./models/taskRun";
 import { addEvent } from "./models/taskEvent";
 import { atomicClaim, heartbeat } from "./models/claim";
@@ -109,7 +109,7 @@ export async function spawnHarness(command: string, cwd: string, logPath?: strin
 function listReadyTasks(): Task[] {
   const db = getDb();
   return db.query(
-    `SELECT ${TASK_COLUMNS} FROM tasks WHERE status = 'ready' AND archived_at IS NULL ORDER BY created_at ASC`
+    `SELECT ${TASK_COLUMNS} FROM tasks WHERE status = 'ready' AND archived_at IS NULL ORDER BY priority DESC, created_at ASC`
   ).all() as Task[];
 }
 
@@ -225,6 +225,7 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
   }
 
   reapStaleClaims();
+  promoteScheduledTasks(Math.floor(Date.now() / 1000));
 
   const tasks = listReadyTasks();
   let processed = 0;
