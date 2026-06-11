@@ -1,11 +1,12 @@
 import { getDb } from "../db";
 import { addEvent } from "./taskEvent";
+import { createRun, finishRun } from "./taskRun";
 
 export const TASK_COLUMNS =
   "id, board_id, title, body, assignee, status, priority, " +
-  "workspace_kind, branch, result, summary, block_reason, " +
+  "workspace_kind, branch, result, summary, block_reason, schedule_reason, " +
   "created_at, updated_at, started_at, archived_at, current_run_id, " +
-  "claim_lock, claim_expires, last_heartbeat_at, idempotency_key";
+  "claim_lock, claim_expires, last_heartbeat_at, idempotency_key, scheduled_at";
 
 export interface Task {
   id: number;
@@ -13,13 +14,15 @@ export interface Task {
   title: string;
   body: string | null;
   assignee: string | null;
-  status: "triage" | "todo" | "ready" | "running" | "done" | "blocked" | "archived";
-  priority: "low" | "medium" | "high";
+  status: "triage" | "todo" | "scheduled" | "ready" | "running" | "done" | "blocked" | "review" | "archived";
+  priority: number;
   workspace_kind: "dir" | "worktree" | "scratch";
   branch: string | null;
   result: string | null;
   summary: string | null;
   block_reason: string | null;
+  schedule_reason: string | null;
+  scheduled_at: number | null;
   created_at: number;
   updated_at: number;
   started_at: number | null;
@@ -38,12 +41,18 @@ export interface CreateTaskInput {
   title: string;
   body?: string;
   assignee?: string;
-  priority?: "low" | "medium" | "high";
+  priority?: number;
   workspace_kind?: "dir" | "worktree" | "scratch";
   branch?: string;
   triage?: boolean;
   initialStatus?: InitialTaskStatus;
   idempotency_key?: string;
+}
+
+export interface CompleteTaskInput {
+  result?: string;
+  summary?: string;
+  metadata?: string;
 }
 
 export interface ListTasksFilter {
@@ -81,7 +90,7 @@ export function createTask(input: CreateTaskInput): Task {
       input.body ?? null,
       input.assignee ?? null,
       status,
-      input.priority ?? "medium",
+      input.priority ?? 0,
       input.workspace_kind ?? "worktree",
       input.branch ?? null,
       input.idempotency_key ?? null,
@@ -95,12 +104,14 @@ export function createTask(input: CreateTaskInput): Task {
     body: input.body ?? null,
     assignee: input.assignee ?? null,
     status,
-    priority: input.priority ?? "medium",
+    priority: input.priority ?? 0,
     workspace_kind: input.workspace_kind ?? "worktree",
     branch: input.branch ?? null,
     result: null,
     summary: null,
     block_reason: null,
+    schedule_reason: null,
+    scheduled_at: null,
     created_at: Math.floor(Date.now() / 1000),
     updated_at: Math.floor(Date.now() / 1000),
     started_at: null,
@@ -210,30 +221,56 @@ export function blockTask(id: number, reason: string): Task {
   return task;
 }
 
-export function unblockTask(id: number): Task {
+export function unblockTask(id: number, reason?: string): Task {
   const db = getDb();
+  const task = showTask(id);
+  if (!task) {
+    throw new Error(`Task ${id} not found`);
+  }
+  if (task.status !== "blocked" && task.status !== "scheduled") {
+    throw new Error(`Task ${id} is not in 'blocked' or 'scheduled' status`);
+  }
+
+  if (reason) {
+    db.run(
+      `INSERT INTO comments (task_id, text, created_at) VALUES (?, ?, unixepoch())`,
+      [id, reason]
+    );
+  }
+
+  const targetStatus = task.status === "scheduled" ? "ready" : "todo";
   const result = db.run(
-    `UPDATE tasks SET status = 'todo', block_reason = NULL, updated_at = unixepoch() WHERE id = ? AND status = 'blocked' AND archived_at IS NULL`,
-    [id]
+    `UPDATE tasks SET status = ?, block_reason = NULL, schedule_reason = NULL, scheduled_at = NULL, updated_at = unixepoch() WHERE id = ? AND archived_at IS NULL`,
+    [targetStatus, id]
   );
 
   if (result.changes === 0) {
-    throw new Error(`Task ${id} not found or not in 'blocked' status`);
+    throw new Error(`Task ${id} not found or already archived`);
   }
 
-  const task = showTask(id);
-  if (!task) {
+  const updated = showTask(id);
+  if (!updated) {
     throw new Error(`Task ${id} not found after unblocking`);
   }
-  addEvent(task.id, "unblocked");
-  return task;
+
+  if (task.status === "scheduled") {
+    addEvent(updated.id, "ready", { reason, source: "unblock" });
+  } else {
+    addEvent(updated.id, "unblocked", { reason });
+  }
+  return updated;
 }
 
-export function completeTask(id: number): Task {
+export function scheduleTask(id: number, scheduledAt: number, reason?: string): Task {
   const db = getDb();
+  const now = Math.floor(Date.now() / 1000);
+  if (scheduledAt <= now) {
+    throw new Error("Scheduled time must be in the future");
+  }
+
   const result = db.run(
-    `UPDATE tasks SET status = 'done', updated_at = unixepoch() WHERE id = ? AND archived_at IS NULL`,
-    [id]
+    `UPDATE tasks SET status = 'scheduled', scheduled_at = ?, schedule_reason = ?, updated_at = unixepoch() WHERE id = ? AND archived_at IS NULL`,
+    [scheduledAt, reason ?? null, id]
   );
 
   if (result.changes === 0) {
@@ -242,10 +279,82 @@ export function completeTask(id: number): Task {
 
   const task = showTask(id);
   if (!task) {
+    throw new Error(`Task ${id} not found after scheduling`);
+  }
+  addEvent(task.id, "scheduled", { at: scheduledAt, reason });
+  return task;
+}
+
+export function promoteScheduledTasks(now: number): number {
+  const db = getDb();
+  const tasks = db.query(
+    `SELECT ${TASK_COLUMNS} FROM tasks WHERE status = 'scheduled' AND scheduled_at <= ? AND archived_at IS NULL ORDER BY scheduled_at ASC`
+  ).all(now) as Task[];
+
+  for (const task of tasks) {
+    db.run(
+      `UPDATE tasks SET status = 'ready', scheduled_at = NULL, schedule_reason = NULL, updated_at = unixepoch() WHERE id = ?`,
+      [task.id]
+    );
+    addEvent(task.id, "ready", { source: "scheduled", at: task.scheduled_at });
+  }
+
+  return tasks.length;
+}
+
+export function reviewTask(id: number, reason?: string): Task {
+  const db = getDb();
+  const result = db.run(
+    `UPDATE tasks SET status = 'review', block_reason = ?, updated_at = unixepoch() WHERE id = ? AND status != 'review' AND status != 'archived' AND archived_at IS NULL`,
+    [reason ?? null, id]
+  );
+
+  if (result.changes === 0) {
+    throw new Error(`Task ${id} not found, already in review, or archived`);
+  }
+
+  const task = showTask(id);
+  if (!task) {
+    throw new Error(`Task ${id} not found after marking for review`);
+  }
+  addEvent(task.id, "reviewed", reason ? { reason } : {});
+  return task;
+}
+
+export function completeTask(id: number, input: CompleteTaskInput = {}): Task {
+  const db = getDb();
+  const task = showTask(id);
+  if (!task) {
+    throw new Error(`Task ${id} not found or already archived`);
+  }
+
+  db.run(
+    `UPDATE tasks SET status = 'done', result = ?, summary = ?, claim_lock = NULL, claim_expires = NULL, updated_at = unixepoch() WHERE id = ? AND archived_at IS NULL`,
+    [input.result ?? null, input.summary ?? null, id]
+  );
+
+  let runId: number | null = task.current_run_id;
+  const now = Math.floor(Date.now() / 1000);
+
+  if (runId !== null) {
+    finishRun(runId, "completed", input.summary ?? null, input.metadata ?? null, null, now);
+  } else {
+    const run = createRun({
+      task_id: id,
+      profile: task.assignee,
+      status: "running",
+      started_at: now,
+    });
+    runId = run.id;
+    finishRun(runId, "completed", input.summary ?? null, input.metadata ?? null, null, now);
+  }
+
+  const updated = showTask(id);
+  if (!updated) {
     throw new Error(`Task ${id} not found after completion`);
   }
-  addEvent(task.id, "completed");
-  return task;
+  addEvent(updated.id, "completed", input.metadata ? { metadata: input.metadata } : {}, runId ?? undefined);
+  return updated;
 }
 
 export function specifyTask(id: number): Task {
