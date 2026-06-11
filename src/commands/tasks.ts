@@ -18,7 +18,12 @@ import { getEvents, tailEvents, getRecentEvents, getEventsAfter } from "../model
 import { atomicClaim, reclaimTask, heartbeat } from "../models/claim";
 import { getTaskLogPath } from "../observability";
 
-const VALID_STATUSES = ["triage", "todo", "ready", "running", "done", "blocked"];
+const VALID_STATUSES = ["triage", "todo", "ready", "running", "done", "blocked"] as const;
+type ValidStatus = typeof VALID_STATUSES[number];
+
+function isValidStatus(status: string): status is ValidStatus {
+  return (VALID_STATUSES as readonly string[]).includes(status);
+}
 
 function getBoardIdBySlug(slug: string): number {
   const board = showBoard(slug, false);
@@ -43,11 +48,30 @@ export const createTaskCommand = new Command("create")
   .option("--assignee <profile>", "Assignee profile")
   .option("--body <text>", "Task body")
   .option("--triage", "Park in triage status instead of todo")
-  .action((title: string, options: { board: string; assignee?: string; body?: string; triage?: boolean }) => {
+  .option("--initial-status <status>", "Initial task status (default: todo)")
+  .option("--idempotency-key <key>", "Dedup key; returns existing non-archived task id if matched")
+  .action((title: string, options: { board: string; assignee?: string; body?: string; triage?: boolean; initialStatus?: string; idempotencyKey?: string }) => {
     try {
       if (!title || title.trim() === "") {
         throw new Error("Title is required.");
       }
+
+      if (options.triage && options.initialStatus) {
+        throw new Error("Cannot use both --triage and --initial-status.");
+      }
+
+      if (options.idempotencyKey !== undefined && options.idempotencyKey.trim() === "") {
+        throw new Error("Idempotency key cannot be empty.");
+      }
+
+      let initialStatus: ValidStatus | undefined;
+      if (options.initialStatus) {
+        if (!isValidStatus(options.initialStatus)) {
+          throw new Error(`Invalid status "${options.initialStatus}". Valid: ${VALID_STATUSES.join(", ")}`);
+        }
+        initialStatus = options.initialStatus;
+      }
+
       const boardId = getBoardIdBySlug(options.board);
       const task = createTask({
         board_id: boardId,
@@ -55,6 +79,8 @@ export const createTaskCommand = new Command("create")
         assignee: options.assignee,
         body: options.body,
         triage: options.triage,
+        initialStatus,
+        idempotency_key: options.idempotencyKey,
       });
       console.log(task.id);
     } catch (err: any) {
@@ -69,7 +95,7 @@ export const listTasksCommand = new Command("list")
   .option("--status <status>", "Filter by status")
   .action((options: { board: string; status?: string }) => {
     try {
-      if (options.status && !VALID_STATUSES.includes(options.status)) {
+      if (options.status && !isValidStatus(options.status)) {
         throw new Error(`Invalid status "${options.status}". Valid: ${VALID_STATUSES.join(", ")}`);
       }
       const boardId = getBoardIdBySlug(options.board);

@@ -272,6 +272,118 @@ describe("kdi e2e acceptance", () => {
     120000
   );
 
+  it("create --initial-status sets task status", () => {
+    const tmp = makeTempDir("initial-status");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const blockedId = runKdi(`create "blocked task" --board myproj --initial-status blocked`, env);
+    const runningId = runKdi(`create "running task" --board myproj --initial-status running`, env);
+    const readyId = runKdi(`create "ready task" --board myproj --initial-status ready`, env);
+
+    expect(getTaskStatus(blockedId, env)).toBe("blocked");
+    expect(getTaskStatus(runningId, env)).toBe("running");
+    expect(getTaskStatus(readyId, env)).toBe("ready");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("create --triage is alias for --initial-status triage", () => {
+    const tmp = makeTempDir("triage-alias");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const triageId = runKdi(`create "triage task" --board myproj --triage`, env);
+    expect(getTaskStatus(triageId, env)).toBe("triage");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("create rejects invalid --initial-status", () => {
+    const tmp = makeTempDir("invalid-status");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    expect(() => runKdi(`create "bad" --board myproj --initial-status invalid`, env)).toThrow();
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("create rejects --triage used with --initial-status", () => {
+    const tmp = makeTempDir("triage-initial-status-conflict");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    expect(() => runKdi(`create "conflict" --board myproj --triage --initial-status triage`, env)).toThrow();
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("create --initial-status todo and done work", () => {
+    const tmp = makeTempDir("initial-status-todo-done");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const todoId = runKdi(`create "todo task" --board myproj --initial-status todo`, env);
+    const doneId = runKdi(`create "done task" --board myproj --initial-status done`, env);
+
+    expect(getTaskStatus(todoId, env)).toBe("todo");
+    expect(getTaskStatus(doneId, env)).toBe("done");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("create --idempotency-key deduplicates", () => {
+    const tmp = makeTempDir("idempotency");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const firstId = runKdi(`create "dedup me" --board myproj --idempotency-key abc-123`, env);
+    const secondId = runKdi(`create "dedup me again" --board myproj --idempotency-key abc-123`, env);
+
+    expect(secondId).toBe(firstId);
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("create --idempotency-key rejects empty string", () => {
+    const tmp = makeTempDir("idempotency-empty");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    expect(() => runKdi(`create "empty key" --board myproj --idempotency-key ""`, env)).toThrow();
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
   it("kdi --version returns semantic version", () => {
     const tmp = makeTempDir("version");
     const dbPath = join(tmp, "kdi.db");

@@ -6,4 +6,5 @@ export function cleanupDb(path: string) {
   try { rmSync(path); } catch {}
   try { rmSync(path + "-wal"); } catch {}
   try { rmSync(path + "-shm"); } catch {}
+  try { rmSync(path + ".init.lock"); } catch {}
 }

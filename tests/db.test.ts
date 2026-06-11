@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { Database } from "bun:sqlite";
 import { initDb, getDb, closeDb } from "../src/db";
 import { cleanupDb } from "./cleanupDb";
+import { existsSync, writeFileSync, unlinkSync } from "node:fs";
 
 const TEST_DB = "/tmp/kdi-test.db";
 
@@ -65,5 +66,56 @@ describe("db", () => {
     const db2 = initDb(TEST_DB);
     expect(db2).toBeInstanceOf(Database);
     expect(db2).not.toBe(db1);
+  });
+
+  it("creates and releases init lock during schema setup", () => {
+    const lockFile = TEST_DB + ".init.lock";
+    expect(existsSync(lockFile)).toBe(false);
+
+    const db = initDb(TEST_DB);
+    expect(db).toBeInstanceOf(Database);
+
+    // Lock should be released after init completes
+    expect(existsSync(lockFile)).toBe(false);
+
+    closeDb();
+  });
+
+  it("recovers from stale init lock left by a dead process", () => {
+    const lockFile = TEST_DB + ".init.lock";
+    // Simulate a stale lock from a non-existent PID
+    writeFileSync(lockFile, "999999");
+    expect(existsSync(lockFile)).toBe(true);
+
+    const db = initDb(TEST_DB);
+    expect(db).toBeInstanceOf(Database);
+
+    // Stale lock should be removed and init should succeed
+    expect(existsSync(lockFile)).toBe(false);
+
+    closeDb();
+  });
+
+  it("recovers from stale init lock with non-numeric content", () => {
+    const lockFile = TEST_DB + ".init.lock";
+    writeFileSync(lockFile, "not-a-pid");
+    expect(existsSync(lockFile)).toBe(true);
+
+    const db = initDb(TEST_DB);
+    expect(db).toBeInstanceOf(Database);
+    expect(existsSync(lockFile)).toBe(false);
+
+    closeDb();
+  });
+
+  it("init lock is released after successful init", () => {
+    const lockFile = TEST_DB + ".init.lock";
+    expect(existsSync(lockFile)).toBe(false);
+
+    const db = initDb(TEST_DB);
+    expect(db).toBeInstanceOf(Database);
+    expect(existsSync(lockFile)).toBe(false);
+
+    closeDb();
   });
 });

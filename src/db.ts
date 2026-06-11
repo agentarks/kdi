@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
 import { homedir } from "node:os";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, openSync, closeSync, writeFileSync, readFileSync, unlinkSync } from "node:fs";
 import { dirname } from "node:path";
 
 let dbInstance: Database | null = null;
@@ -39,7 +39,8 @@ CREATE TABLE IF NOT EXISTS tasks (
   archived_at INTEGER,
   claim_lock TEXT,
   claim_expires INTEGER,
-  last_heartbeat_at INTEGER
+  last_heartbeat_at INTEGER,
+  idempotency_key TEXT
 );
 
 CREATE TABLE IF NOT EXISTS comments (
@@ -91,89 +92,180 @@ CREATE INDEX IF NOT EXISTS idx_events_task ON task_events(task_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_events_run ON task_events(run_id, id);
 `;
 
+function initLockPath(dbPath: string): string {
+  return `${dbPath}.init.lock`;
+}
+
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function acquireInitLock(dbPath: string): void {
+  const path = initLockPath(dbPath);
+  const maxWaitMs = 30000;
+  const start = Date.now();
+
+  while (true) {
+    try {
+      const fd = openSync(path, "wx");
+      writeFileSync(fd, String(process.pid));
+      closeSync(fd);
+      return;
+    } catch (err: any) {
+      if (err.code === "EEXIST") {
+        if (Date.now() - start > maxWaitMs) {
+          throw new Error(`Timeout waiting for database init lock: ${path}`);
+        }
+
+        try {
+          const pid = parseInt(readFileSync(path, "utf8"), 10);
+          if (isNaN(pid) || !isProcessAlive(pid)) {
+            try {
+              unlinkSync(path);
+            } catch {}
+            continue;
+          }
+        } catch {
+          // Lock file may be in flux; retry
+        }
+
+        Bun.sleepSync(50);
+        continue;
+      }
+      throw err;
+    }
+  }
+}
+
+function releaseInitLock(dbPath: string): void {
+  try {
+    unlinkSync(initLockPath(dbPath));
+  } catch {}
+}
+
 export function initDb(path?: string): Database {
   const dbPath = path || defaultDbPath();
   if (dbInstance && currentDbPath === dbPath) return dbInstance;
 
   mkdirSync(dirname(dbPath), { recursive: true });
 
-  dbInstance = new Database(dbPath, { create: true });
-  dbInstance.exec("PRAGMA journal_mode = WAL");
-  dbInstance.exec("PRAGMA busy_timeout = 5000");
-  dbInstance.exec(SCHEMA);
-  currentDbPath = dbPath;
+  acquireInitLock(dbPath);
+  try {
+    dbInstance = new Database(dbPath, { create: true });
+    dbInstance.exec("PRAGMA journal_mode = WAL");
+    dbInstance.exec("PRAGMA busy_timeout = 5000");
+    dbInstance.exec(SCHEMA);
+    currentDbPath = dbPath;
 
-  // Migrate: add base_ref column to boards if missing
-  const boardTableInfo = dbInstance.query("PRAGMA table_info(boards)").all() as any[];
-  const hasBaseRef = boardTableInfo.some((col) => col.name === "base_ref");
-  if (!hasBaseRef) {
-    dbInstance.exec("ALTER TABLE boards ADD COLUMN base_ref TEXT NOT NULL DEFAULT 'origin/main'");
-  }
+    // Migrate: add base_ref column to boards if missing
+    const boardTableInfo = dbInstance.query("PRAGMA table_info(boards)").all() as any[];
+    const hasBaseRef = boardTableInfo.some((col) => col.name === "base_ref");
+    if (!hasBaseRef) {
+      dbInstance.exec("ALTER TABLE boards ADD COLUMN base_ref TEXT NOT NULL DEFAULT 'origin/main'");
+    }
 
-  // Migrate: add started_at column if missing
-  const tableInfo = dbInstance.query("PRAGMA table_info(tasks)").all() as any[];
-  const hasStartedAt = tableInfo.some((col) => col.name === "started_at");
-  if (!hasStartedAt) {
-    dbInstance.exec("ALTER TABLE tasks ADD COLUMN started_at INTEGER");
-  }
+    // Migrate: add started_at column if missing
+    const tableInfo = dbInstance.query("PRAGMA table_info(tasks)").all() as any[];
+    const hasStartedAt = tableInfo.some((col) => col.name === "started_at");
+    if (!hasStartedAt) {
+      dbInstance.exec("ALTER TABLE tasks ADD COLUMN started_at INTEGER");
+    }
 
-  // Migrate: add current_run_id column if missing
-  const hasCurrentRunId = tableInfo.some((col) => col.name === "current_run_id");
-  if (!hasCurrentRunId) {
-    dbInstance.exec("ALTER TABLE tasks ADD COLUMN current_run_id INTEGER");
-  }
+    // Migrate: add current_run_id column if missing
+    const hasCurrentRunId = tableInfo.some((col) => col.name === "current_run_id");
+    if (!hasCurrentRunId) {
+      dbInstance.exec("ALTER TABLE tasks ADD COLUMN current_run_id INTEGER");
+    }
 
-  // Migrate: add claim_lock, claim_expires, last_heartbeat_at if missing
-  const hasClaimLock = tableInfo.some((col) => col.name === "claim_lock");
-  if (!hasClaimLock) {
-    dbInstance.exec("ALTER TABLE tasks ADD COLUMN claim_lock TEXT");
-  }
-  const hasClaimExpires = tableInfo.some((col) => col.name === "claim_expires");
-  if (!hasClaimExpires) {
-    dbInstance.exec("ALTER TABLE tasks ADD COLUMN claim_expires INTEGER");
-  }
-  const hasLastHeartbeat = tableInfo.some((col) => col.name === "last_heartbeat_at");
-  if (!hasLastHeartbeat) {
-    dbInstance.exec("ALTER TABLE tasks ADD COLUMN last_heartbeat_at INTEGER");
-  }
+    // Migrate: add claim_lock, claim_expires, last_heartbeat_at if missing
+    const hasClaimLock = tableInfo.some((col) => col.name === "claim_lock");
+    if (!hasClaimLock) {
+      dbInstance.exec("ALTER TABLE tasks ADD COLUMN claim_lock TEXT");
+    }
+    const hasClaimExpires = tableInfo.some((col) => col.name === "claim_expires");
+    if (!hasClaimExpires) {
+      dbInstance.exec("ALTER TABLE tasks ADD COLUMN claim_expires INTEGER");
+    }
+    const hasLastHeartbeat = tableInfo.some((col) => col.name === "last_heartbeat_at");
+    if (!hasLastHeartbeat) {
+      dbInstance.exec("ALTER TABLE tasks ADD COLUMN last_heartbeat_at INTEGER");
+    }
 
-  // Migrate: add 'triage' to status CHECK constraint via table recreation
-  const createSql = dbInstance.query(
-    "SELECT sql FROM sqlite_master WHERE type='table' AND name='tasks'"
-  ).get() as { sql: string } | undefined;
-  const hasTriage = createSql?.sql?.includes("'triage'");
-  if (!hasTriage) {
-    dbInstance.exec(`
-      BEGIN TRANSACTION;
-      CREATE TABLE tasks_new (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        board_id INTEGER NOT NULL REFERENCES boards(id),
-        title TEXT NOT NULL,
-        body TEXT,
-        assignee TEXT,
-        status TEXT NOT NULL DEFAULT 'todo' CHECK (status IN ('triage', 'todo', 'ready', 'running', 'done', 'blocked', 'archived')),
-        priority TEXT DEFAULT 'medium' CHECK (priority IN ('low', 'medium', 'high')),
-        workspace_kind TEXT DEFAULT 'worktree' CHECK (workspace_kind IN ('dir', 'worktree', 'scratch')),
-        branch TEXT,
-        result TEXT,
-        summary TEXT,
-        block_reason TEXT,
-        created_at INTEGER NOT NULL DEFAULT (unixepoch()),
-        updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
-        started_at INTEGER,
-        archived_at INTEGER,
-        current_run_id INTEGER,
-        claim_lock TEXT,
-        claim_expires INTEGER,
-        last_heartbeat_at INTEGER
-      );
-      INSERT INTO tasks_new SELECT * FROM tasks;
-      DROP TABLE tasks;
-      ALTER TABLE tasks_new RENAME TO tasks;
-      CREATE INDEX IF NOT EXISTS idx_tasks_board_status ON tasks(board_id, status);
-      CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks(assignee);
-      COMMIT;
-    `);
+    // Migrate: add idempotency_key if missing
+    const hasIdempotencyKey = tableInfo.some((col) => col.name === "idempotency_key");
+    if (!hasIdempotencyKey) {
+      dbInstance.exec("ALTER TABLE tasks ADD COLUMN idempotency_key TEXT");
+    }
+
+    // Migrate: add status column to task_runs if missing (for existing DBs)
+    const runsTableInfo = dbInstance.query("PRAGMA table_info(task_runs)").all() as any[];
+    const hasRunStatus = runsTableInfo.some((col) => col.name === "status");
+    if (!hasRunStatus) {
+      dbInstance.exec("ALTER TABLE task_runs ADD COLUMN status TEXT NOT NULL DEFAULT 'running' CHECK (status IN ('running', 'done', 'blocked', 'crashed', 'timed_out', 'failed', 'released'))");
+    }
+
+    // Migrate: optimize idempotency index to composite
+    const idempotencyIndexSql = dbInstance.query(
+      "SELECT sql FROM sqlite_master WHERE type='index' AND name='idx_tasks_idempotency'"
+    ).get() as { sql: string } | undefined;
+    if (!idempotencyIndexSql || !idempotencyIndexSql.sql.includes("board_id")) {
+      dbInstance.exec("DROP INDEX IF EXISTS idx_tasks_idempotency");
+      dbInstance.exec("CREATE INDEX IF NOT EXISTS idx_tasks_idempotency ON tasks(board_id, idempotency_key, archived_at)");
+    }
+    // Partial unique index for race-safe idempotency
+    dbInstance.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_active_idempotency ON tasks(board_id, idempotency_key) WHERE archived_at IS NULL");
+
+    // Migrate: add 'triage' to status CHECK constraint via table recreation
+    const createSql = dbInstance.query(
+      "SELECT sql FROM sqlite_master WHERE type='table' AND name='tasks'"
+    ).get() as { sql: string } | undefined;
+    const hasTriage = createSql?.sql?.includes("'triage'");
+    if (!hasTriage) {
+      dbInstance.exec(`
+        BEGIN TRANSACTION;
+        CREATE TABLE tasks_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          board_id INTEGER NOT NULL REFERENCES boards(id),
+          title TEXT NOT NULL,
+          body TEXT,
+          assignee TEXT,
+          status TEXT NOT NULL DEFAULT 'todo' CHECK (status IN ('triage', 'todo', 'ready', 'running', 'done', 'blocked', 'archived')),
+          priority TEXT DEFAULT 'medium' CHECK (priority IN ('low', 'medium', 'high')),
+          workspace_kind TEXT DEFAULT 'worktree' CHECK (workspace_kind IN ('dir', 'worktree', 'scratch')),
+          branch TEXT,
+          result TEXT,
+          summary TEXT,
+          block_reason TEXT,
+          created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+          updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
+          started_at INTEGER,
+          archived_at INTEGER,
+          current_run_id INTEGER,
+          claim_lock TEXT,
+          claim_expires INTEGER,
+          last_heartbeat_at INTEGER,
+          idempotency_key TEXT
+        );
+        INSERT INTO tasks_new SELECT * FROM tasks;
+        DROP TABLE tasks;
+        ALTER TABLE tasks_new RENAME TO tasks;
+        CREATE INDEX IF NOT EXISTS idx_tasks_board_status ON tasks(board_id, status);
+        CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks(assignee);
+        CREATE INDEX IF NOT EXISTS idx_tasks_idempotency ON tasks(board_id, idempotency_key, archived_at);
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_active_idempotency ON tasks(board_id, idempotency_key) WHERE archived_at IS NULL;
+        COMMIT;
+      `);
+    }
+  } catch (err) {
+    closeDb();
+    throw err;
+  } finally {
+    releaseInitLock(dbPath);
   }
 
   return dbInstance;

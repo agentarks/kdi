@@ -9,6 +9,8 @@
 ## Task Lifecycle
 - [x] `kdi create <title> --board <slug> --assignee <profile>` — create task
 - [x] `kdi create <title> --board <slug> --triage` — create task in triage
+- [x] `kdi create <title> --board <slug> --idempotency-key <key>` — create idempotently; returns existing non-archived task id if matched
+- [x] `kdi create <title> --board <slug> --initial-status <status>` — create task with custom initial status (triage, todo, ready, running, done, blocked)
 - [x] `kdi specify <task_id> --board <slug>` — promote triage → todo
 - [x] `kdi specify --all --board <slug>` — promote all triage tasks
 - [x] `kdi list --board <slug> --status <status>` — list tasks filtered
@@ -34,6 +36,12 @@
 - [x] Dispatcher creates a `task_runs` row on claim and finalizes it on finish/fail
 - [x] `kdi runs <task_id>` — show attempt history
 
+## Task Runs Status (KDI-000e)
+- [x] `status` column on `task_runs`: `running | done | blocked | crashed | timed_out | failed | released`
+- [x] Distinct from `outcome` (terminal classification)
+- [x] Indexed: `idx_runs_status`
+- [x] `finishRun` maps outcome → status (e.g. `reclaimed` → `released`, `crashed` → `crashed`)
+
 ## Task Events (KDI-000b)
 - [x] `task_events` table with task_id, run_id, kind, payload, created_at
 - [x] `kdi tail <task_id>` — follow events live (poll 1s)
@@ -50,6 +58,12 @@
 - [x] `kdi heartbeat <task_id> --note <text>` — worker liveness signal
 - [x] Stale claim detection in dispatcher (expired claim or heartbeat > 60min)
 - [x] Dispatcher records initial heartbeat on claim
+
+## Cross-process Init Lock (KDI-000d)
+- [x] File-based lock (`<dbPath>.init.lock`) serializes schema setup across concurrent processes
+- [x] Stale lock detection via PID liveness check
+- [x] 30-second timeout with 50ms retry backoff
+- [x] Lock released after migrations complete (try/finally guarantee)
 
 ## Harness Profiles — Accepted
 - [x] Profile registry at `~/.config/kdi/profiles.yaml`
@@ -100,6 +114,14 @@
 - [ ] Per-agent duration + error rate
 - [ ] Log file per board at `~/.local/share/kdi/logs/<slug>.log`
 
+
+## Tech Debt
+
+### Known gaps (not blocking, tracked for future work)
+
+- [ ] **KDI-000d: Live-PID contention test** — `initDb` is synchronous and blocks the event loop; async test cleanup races with the sync loop. The implementation is correct (verified by code review), but testing live-PID lock contention requires spawning a real concurrent process, which is flaky in the Bun test runner.
+- [ ] **KDI-000e: `finishRun(null outcome)` defaults to `"done"`** — Reviewer noted this weakens the "status is derived from outcome" invariant. Making `outcome` non-nullable would be a breaking change to existing callers. Consider enforcing in a future refactor.
+- [ ] **KDI-001b: `list --status archived` is broken** — Pre-existing behavior: `listTasksCommand` reuses `isValidStatus` which rejects `"archived"`. Not introduced by KDI-001b, but should be fixed if listing archived tasks is desired.
 
 ## Acceptance Criteria
 - [x] `kdi create "backend: auth" --board myproj --assignee opencode` returns task ID
