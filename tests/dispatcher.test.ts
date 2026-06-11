@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { initDb, closeDb } from "../src/db";
+import { initDb, closeDb, getDb } from "../src/db";
 import { createBoard } from "../src/models/board";
 import { createTask, promoteTask, showTask } from "../src/models/task";
 import { addDependency } from "../src/models/dependency";
@@ -308,5 +308,32 @@ describe("dispatcher", () => {
     const calls = mockHarness.mock.calls as unknown as [string, string][];
     expect(calls.length).toBeGreaterThan(0);
     expect(calls[0][0]).toContain(`wt/branchagent/${task.id}`);
+  });
+
+  it("promotes scheduled task to ready and claims it in same tick", async () => {
+    const board = createBoard("sched-board", "/tmp/sched-board");
+    const task = createTask({ board_id: board.id, title: "Auto promote", assignee: "opencode" });
+    const at = Math.floor(Date.now() / 1000) - 1;
+
+    // Directly set scheduled in the past (bypass scheduleTask future-check)
+    getDb().run(
+      `UPDATE tasks SET status = 'scheduled', scheduled_at = ? WHERE id = ?`,
+      [at, task.id]
+    );
+
+    let claimed = false;
+    const result = await tick({
+      spawnHarness: async () => {
+        claimed = true;
+        return { stdout: "done", stderr: "", exitCode: 0, pid: 1234 };
+      },
+      createWorktree: () => "/tmp/mock-worktree",
+      removeWorktree: () => ({ worktreeRemoved: true, branchDeleted: true, found: true }),
+    });
+
+    expect(result.processed).toBe(1);
+    expect(claimed).toBe(true);
+    const updated = showTask(task.id);
+    expect(updated!.status).toBe("done");
   });
 });

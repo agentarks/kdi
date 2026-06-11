@@ -39,11 +39,24 @@ describe("db", () => {
     // Verify task_runs table exists
     expect(names).toContain("task_runs");
 
+    // Verify scheduled status exists in CHECK constraint
+    const tasksCreateSql = db.query(
+      "SELECT sql FROM sqlite_master WHERE type='table' AND name='tasks'"
+    ).get() as { sql: string };
+    expect(tasksCreateSql.sql).toContain("'scheduled'");
+
+    // Verify scheduled columns exist
+    const taskColumns = db.query("PRAGMA table_info(tasks)").all() as any[];
+    const columnNames = taskColumns.map((c) => c.name);
+    expect(columnNames).toContain("scheduled_at");
+    expect(columnNames).toContain("schedule_reason");
+
     // Verify indexes exist
     const indexes = db.query("SELECT name FROM sqlite_master WHERE type='index'").all();
     const indexNames = indexes.map((i: any) => i.name);
     expect(indexNames).toContain("idx_tasks_board_status");
     expect(indexNames).toContain("idx_tasks_assignee");
+    expect(indexNames).toContain("idx_tasks_scheduled_at");
     expect(indexNames).toContain("idx_events_task");
     expect(indexNames).toContain("idx_events_run");
     expect(indexNames).toContain("idx_runs_task");
