@@ -10,7 +10,8 @@
 - [x] `kdi create <title> --board <slug> --assignee <profile>` — create task
 - [x] `kdi create <title> --board <slug> --triage` — create task in triage
 - [x] `kdi create <title> --board <slug> --idempotency-key <key>` — create idempotently; returns existing non-archived task id if matched
-- [x] `kdi create <title> --board <slug> --initial-status <status>` — create task with custom initial status (triage, todo, ready, running, done, blocked)
+- [x] `kdi create <title> --board <slug> --initial-status <status>` — create task with custom initial status (triage, todo, scheduled, ready, running, done, blocked)
+- [x] `kdi create <title> --board <slug> --priority <n>` — create task with integer priority (default 0, higher = more urgent)
 - [x] `kdi specify <task_id> --board <slug>` — promote triage → todo
 - [x] `kdi specify --all --board <slug>` — promote all triage tasks
 - [x] `kdi list --board <slug> --status <status>` — list tasks filtered
@@ -21,6 +22,8 @@
 - [x] `kdi block <task_id> --reason <text>` — mark blocked
 - [x] `kdi unblock <task_id>` — unblock task
 - [x] `kdi archive <task_id>` — archive task
+- [x] `kdi complete <task_id> --result <text> --summary <text> --metadata <json>` — complete task with metadata
+- [x] `kdi complete <task_id_1> <task_id_2> ... --result <text>` — bulk complete (result applies to all)
 - [x] `kdi tail <task_id>` — tail events for a task
 - [x] `kdi watch` — watch board-wide events
 
@@ -30,6 +33,28 @@
 - [x] `kdi specify <task_id>` promotes `triage` → `todo` (requires non-empty body)
 - [x] `kdi specify --all` sweeps all triage tasks on a board
 - [x] `specified` event emitted on promotion
+
+## Scheduled Status (KDI-002) — Done
+- [x] `scheduled` status added to tasks CHECK constraint (with migration via table recreation)
+- [x] `scheduled_at` and `schedule_reason` columns added to tasks
+- [x] `kdi schedule <task_id> --at <timestamp> [--reason <text>]` parks task in `scheduled`
+- [x] `--at` accepts ISO 8601 or Unix seconds; rejects timestamps in the past
+- [x] `kdi unblock <task_id> [--reason <text>]` immediately promotes `scheduled` → `ready`
+- [x] Dispatcher auto-promotes `scheduled` tasks to `ready` when `scheduled_at` passes
+- [x] `ready` and `scheduled` events emitted on the respective transitions
+
+## Review Status (KDI-003) — Done
+- [x] `review` status added to tasks CHECK constraint (with migration via table recreation)
+- [x] `kdi review <task_id> --reason <text>` marks a task as under review
+- [x] `reviewed` event emitted on transition
+- [x] Distinct from `blocked` — indicates output is under human/code review
+
+## Complete with Metadata (KDI-005) — Done
+- [x] `kdi complete <task_id> --result "..." --summary "..." --metadata '{"tests": 12}'`
+- [x] `kdi complete <id1> <id2> ...` — bulk complete (only `--result` applies to all)
+- [x] Stores `result` and `summary` on the task row
+- [x] Creates or finalizes a `task_runs` row with `outcome = completed`
+- [x] Emits a `completed` event with optional metadata payload
 
 ## Task Runs (KDI-000)
 - [x] `task_runs` table with per-attempt history (profile, step_key, status, claim_lock, worker_pid, started_at, ended_at, outcome, summary, metadata, error)
