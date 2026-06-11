@@ -11,21 +11,23 @@ Hermes Kanban includes `scheduled` in its lifecycle: a task waiting on time rath
 ### Schema
 - Add `'scheduled'` to the `tasks.status` CHECK constraint (via table recreation, following the KDI-001 migration pattern).
 - Add `scheduled_at INTEGER` to `tasks`.
+- Add `schedule_reason TEXT` to `tasks`.
 - Add index `idx_tasks_scheduled_at ON tasks(status, scheduled_at)` for the dispatcher's scheduled scan.
 
 ### Model layer (`src/models/task.ts`)
-- Extend `TASK_COLUMNS`, `Task`, and `CreateTaskInput` with `scheduled_at`.
+- Extend `TASK_COLUMNS`, `Task`, and `CreateTaskInput` with `scheduled_at` and `schedule_reason`.
 - `scheduleTask(id, scheduledAtSeconds, reason?)`:
   - Verifies task exists and is not archived.
-  - Sets `status = 'scheduled'`, `scheduled_at = scheduledAtSeconds`, `block_reason = reason ?? null`, `updated_at = unixepoch()`.
+  - Rejects `scheduledAtSeconds` that are in the past.
+  - Sets `status = 'scheduled'`, `scheduled_at = scheduledAtSeconds`, `schedule_reason = reason ?? null`, `updated_at = unixepoch()`.
   - Emits a `scheduled` event with `{ at: scheduledAtSeconds, reason }`.
 - `unblockTask(id, reason?)`:
   - If `status = 'blocked'`: moves to `todo`, clears `block_reason`, emits `unblocked` event.
-  - If `status = 'scheduled'`: moves to `ready`, clears `scheduled_at` and `block_reason`, emits `ready` event with `{ reason, source: 'unblock' }`.
+  - If `status = 'scheduled'`: moves to `ready`, clears `scheduled_at` and `schedule_reason`, emits `ready` event with `{ reason, source: 'unblock' }`.
   - Otherwise throws.
   - Optional `reason` is recorded as a comment before the transition when provided.
 - `promoteScheduledTasks(nowSeconds): number`:
-  - Updates all non-archived tasks where `status = 'scheduled' AND scheduled_at <= nowSeconds` to `status = 'ready'`, clears `scheduled_at`, sets `updated_at = unixepoch()`.
+  - Updates all non-archived tasks where `status = 'scheduled' AND scheduled_at <= nowSeconds` to `status = 'ready'`, clears `scheduled_at` and `schedule_reason`, sets `updated_at = unixepoch()`.
   - Emits a `ready` event per promoted task with `{ source: 'scheduled' }`.
   - Returns the count promoted.
 
@@ -37,8 +39,8 @@ Hermes Kanban includes `scheduled` in its lifecycle: a task waiting on time rath
 ### CLI (`src/commands/tasks.ts`)
 - Add `scheduled` to `VALID_STATUSES`.
 - New command: `kdi schedule <task_id> --at <timestamp> [--reason <text>]`.
-  - Accepts an ISO 8601 string or a Unix timestamp (seconds). Rejects dates in the past.
-  - Optional `--reason` stored as `block_reason` and in the event payload.
+  - Accepts an ISO 8601 string or a Unix timestamp (seconds). Strictly rejects timestamps in the past.
+  - Optional `--reason` stored as `schedule_reason` and in the event payload.
 - Extend `kdi unblock <task_id> [--reason <text>]`:
   - Works for both `blocked` and `scheduled` tasks.
   - When used on a `scheduled` task, it promotes immediately to `ready` (ignoring `scheduled_at`).
