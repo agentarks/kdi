@@ -316,17 +316,17 @@
   - `kdi unblock` returns scheduled → ready
   - `kdi unblock --reason "..."` — record reason as comment before unblocking
 
-- [ ] **KDI-003: Review status**
+- [x] **KDI-003: Review status**
   - Add `review` to status CHECK constraint
   - Distinct from blocked — task output is under review
   - `kdi review <task_id>` or auto-transition on reviewer claim
 
-- [ ] **KDI-004: Integer priority**
+- [x] **KDI-004: Integer priority**
   - Change `priority` from enum to INTEGER, default 0
   - Higher = more urgent
   - `kdi create --priority 5`
 
-- [ ] **KDI-005: Complete with metadata**
+- [x] **KDI-005: Complete with metadata**
   - `kdi complete <task_id> --result "..." --summary "..." --metadata '{"tests": 12}'`
   - `kdi complete <id1> <id2> ...` — bulk complete (only `--result` applies to all)
   - Store result/summary on task, create task_runs row with outcome=completed
