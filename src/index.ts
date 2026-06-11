@@ -19,8 +19,10 @@ import {
   claimTaskCommand,
   reclaimTaskCommand,
   heartbeatTaskCommand,
+  logTaskCommand,
 } from "./commands/tasks";
 import { dispatchCommand } from "./commands/dispatch";
+import { ensureProfiles } from "./profiles";
 const program = new Command();
 
 program
@@ -32,6 +34,13 @@ try {
   initDb();
 } catch (err: any) {
   console.error(`Failed to initialize database: ${err.message}`);
+  process.exit(1);
+}
+
+try {
+  ensureProfiles();
+} catch (err: any) {
+  console.error(`Failed to initialize profiles: ${err.message}`);
   process.exit(1);
 }
 
@@ -52,6 +61,7 @@ program.addCommand(watchCommand);
 program.addCommand(claimTaskCommand);
 program.addCommand(reclaimTaskCommand);
 program.addCommand(heartbeatTaskCommand);
+program.addCommand(logTaskCommand);
 program.addCommand(dispatchCommand);
 
 program.parse();

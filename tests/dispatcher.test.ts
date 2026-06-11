@@ -1,4 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { initDb, closeDb } from "../src/db";
 import { createBoard } from "../src/models/board";
 import { createTask, promoteTask, showTask } from "../src/models/task";
@@ -8,6 +11,18 @@ import { tick, startDispatcher } from "../src/dispatcher";
 import { cleanupDb } from "./cleanupDb";
 
 const TEST_DB = "/tmp/kdi-dispatcher-test.db";
+
+function setupTempHome(profiles: { name: string; command: string }[]): string {
+  const home = mkdtempSync(join(tmpdir(), "kdi-dispatcher-home-"));
+  const configDir = join(home, ".config", "kdi");
+  mkdirSync(configDir, { recursive: true });
+  const lines = profiles.map((p) => {
+    const escaped = p.command.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+    return `- name: ${p.name}\n  command: "${escaped}"`;
+  });
+  writeFileSync(join(configDir, "profiles.yaml"), lines.join("\n") + "\n");
+  return home;
+}
 
 describe("dispatcher", () => {
   beforeEach(() => {
@@ -34,7 +49,7 @@ describe("dispatcher", () => {
 
     const mockHarness = mock(() => Promise.resolve({ stdout: "success", stderr: "", exitCode: 0 }));
     const mockCreateWorktree = mock(() => "/tmp/mock-worktree");
-    const mockRemoveWorktree = mock(() => true);
+    const mockRemoveWorktree = mock(() => ({ worktreeRemoved: true, branchDeleted: true, found: true }));
 
     const result = await tick({
       spawnHarness: mockHarness,
@@ -44,7 +59,8 @@ describe("dispatcher", () => {
 
     expect(result.processed).toBe(1);
     expect(mockHarness).toHaveBeenCalled();
-    expect(mockCreateWorktree).toHaveBeenCalled();
+    expect(mockCreateWorktree).toHaveBeenCalledWith("/tmp/test-board", "opencode", String(task.id), "origin/main");
+    expect(mockRemoveWorktree).toHaveBeenCalledWith("/tmp/test-board", "opencode", String(task.id), "/tmp/mock-worktree");
 
     const updated = showTask(task.id);
     expect(updated!.status).toBe("done");
@@ -74,7 +90,7 @@ describe("dispatcher", () => {
 
     const mockHarness = mock(() => Promise.resolve({ stdout: "", stderr: "error output", exitCode: 1 }));
     const mockCreateWorktree = mock(() => "/tmp/mock-worktree");
-    const mockRemoveWorktree = mock(() => true);
+    const mockRemoveWorktree = mock(() => ({ worktreeRemoved: true, branchDeleted: true, found: true }));
 
     const result = await tick({
       spawnHarness: mockHarness,
@@ -95,14 +111,14 @@ describe("dispatcher", () => {
     promoteTask(task.id);
 
     const mockCreateWorktree = mock(() => { throw new Error("git failed"); });
-    const mockRemoveWorktree = mock(() => true);
+    const mockRemoveWorktree = mock(() => ({ worktreeRemoved: true, branchDeleted: true, found: true }));
 
     const result = await tick({
       createWorktree: mockCreateWorktree,
       removeWorktree: mockRemoveWorktree,
     });
 
-    expect(result.processed).toBe(1);
+    expect(result.processed).toBe(0);
 
     const updated = showTask(task.id);
     expect(updated!.status).toBe("blocked");
@@ -122,7 +138,7 @@ describe("dispatcher", () => {
       return Promise.resolve({ stdout: `result-${callCount}`, stderr: "", exitCode: 0 });
     });
     const mockCreateWorktree = mock(() => "/tmp/mock-worktree");
-    const mockRemoveWorktree = mock(() => true);
+    const mockRemoveWorktree = mock(() => ({ worktreeRemoved: true, branchDeleted: true, found: true }));
 
     const result = await tick({
       spawnHarness: mockHarness,
@@ -141,7 +157,7 @@ describe("dispatcher", () => {
 
     const mockHarness = mock(() => Promise.resolve({ stdout: "ok", stderr: "", exitCode: 0 }));
     const mockCreateWorktree = mock(() => "/tmp/mock-worktree");
-    const mockRemoveWorktree = mock(() => true);
+    const mockRemoveWorktree = mock(() => ({ worktreeRemoved: true, branchDeleted: true, found: true }));
 
     const dispatcher = startDispatcher(50, {
       spawnHarness: mockHarness,
@@ -168,7 +184,7 @@ describe("dispatcher", () => {
 
     const result = await tick();
 
-    expect(result.processed).toBe(1);
+    expect(result.processed).toBe(0);
 
     const updated = showTask(task.id);
     expect(updated!.status).toBe("blocked");
@@ -182,7 +198,7 @@ describe("dispatcher", () => {
 
     const result = await tick();
 
-    expect(result.processed).toBe(1);
+    expect(result.processed).toBe(0);
 
     const updated = showTask(task.id);
     expect(updated!.status).toBe("blocked");
@@ -196,7 +212,7 @@ describe("dispatcher", () => {
 
     const mockHarness = mock(() => Promise.reject(new Error("spawn failed")));
     const mockCreateWorktree = mock(() => "/tmp/mock-worktree");
-    const mockRemoveWorktree = mock(() => true);
+    const mockRemoveWorktree = mock(() => ({ worktreeRemoved: true, branchDeleted: true, found: true }));
 
     const result = await tick({
       spawnHarness: mockHarness,
@@ -220,7 +236,7 @@ describe("dispatcher", () => {
       setTimeout(() => resolve({ stdout: "ok", stderr: "", exitCode: 0 }), 200);
     }));
     const mockCreateWorktree = mock(() => "/tmp/mock-worktree");
-    const mockRemoveWorktree = mock(() => true);
+    const mockRemoveWorktree = mock(() => ({ worktreeRemoved: true, branchDeleted: true, found: true }));
 
     // Start first tick (will claim the task and hold it)
     const firstTick = tick({
@@ -243,5 +259,54 @@ describe("dispatcher", () => {
 
     expect(result1.processed).toBe(1);
     expect(result2.processed).toBe(0);
+  });
+
+  it("passes board base_ref to createWorktree", async () => {
+    const board = createBoard("test-board", "/tmp/test-board", "origin/develop");
+    const task = createTask({ board_id: board.id, title: "Test task", assignee: "opencode" });
+    promoteTask(task.id);
+
+    const mockCreateWorktree = mock(() => "/tmp/mock-worktree");
+    const mockRemoveWorktree = mock(() => ({ worktreeRemoved: true, branchDeleted: true, found: true }));
+
+    await tick({
+      createWorktree: mockCreateWorktree,
+      removeWorktree: mockRemoveWorktree,
+    });
+
+    expect(mockCreateWorktree).toHaveBeenCalledWith("/tmp/test-board", "opencode", String(task.id), "origin/develop");
+  });
+
+  it("substitutes worktree branch into {{branch}} template", async () => {
+    const home = setupTempHome([
+      { name: "branchagent", command: "echo {{branch}}" },
+    ]);
+    const originalPath = process.env.KDI_PROFILES_PATH;
+    process.env.KDI_PROFILES_PATH = join(home, ".config/kdi/profiles.yaml");
+
+    const board = createBoard("test-board", "/tmp/test-board");
+    const task = createTask({ board_id: board.id, title: "Branch test", assignee: "branchagent" });
+    promoteTask(task.id);
+
+    const mockHarness = mock(() => Promise.resolve({ stdout: "ok", stderr: "", exitCode: 0 }));
+    const mockCreateWorktree = mock(() => "/tmp/mock-worktree");
+    const mockRemoveWorktree = mock(() => ({ worktreeRemoved: true, branchDeleted: true, found: true }));
+
+    await tick({
+      spawnHarness: mockHarness,
+      createWorktree: mockCreateWorktree,
+      removeWorktree: mockRemoveWorktree,
+    });
+
+    if (originalPath !== undefined) {
+      process.env.KDI_PROFILES_PATH = originalPath;
+    } else {
+      delete process.env.KDI_PROFILES_PATH;
+    }
+    rmSync(home, { recursive: true, force: true });
+
+    const calls = mockHarness.mock.calls as unknown as [string, string][];
+    expect(calls.length).toBeGreaterThan(0);
+    expect(calls[0][0]).toContain(`wt/branchagent/${task.id}`);
   });
 });

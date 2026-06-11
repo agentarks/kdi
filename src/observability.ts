@@ -99,6 +99,13 @@ export function getLogPath(boardSlug: string): string {
   return join(process.env.HOME || homedir(), ".local", "share", "kdi", "logs", `${boardSlug}.log`);
 }
 
+export function getTaskLogPath(boardSlug: string, taskId: number): string {
+  if (!SLUG_RE.test(boardSlug)) {
+    throw new Error(`Invalid boardSlug: ${boardSlug}`);
+  }
+  return join(process.env.HOME || homedir(), ".local", "share", "kdi", "logs", boardSlug, `${taskId}.log`);
+}
+
 export function logToBoard(boardSlug: string, message: string): void {
   if (!SLUG_RE.test(boardSlug)) {
     throw new Error(`Invalid boardSlug: ${boardSlug}`);

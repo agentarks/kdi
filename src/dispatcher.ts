@@ -1,12 +1,14 @@
 import { spawn } from "node:child_process";
+import { createWriteStream, mkdirSync } from "node:fs";
+import { dirname } from "node:path";
 import { getDb } from "./db";
 import { TASK_COLUMNS, type Task } from "./models/task";
-import { finishRun } from "./models/taskRun";
+import { finishRun, updateRun } from "./models/taskRun";
 import { addEvent } from "./models/taskEvent";
 import { atomicClaim, heartbeat } from "./models/claim";
 import { isBlockedByDependencies } from "./models/dependency";
 import { getProfile, substituteCommand } from "./profiles";
-import { createWorktree, removeWorktree } from "./worktree";
+import { createWorktree, removeWorktree, type RemoveWorktreeResult } from "./worktree";
 import { isEnabled, FF_ENABLE_KANBAN_DISPATCH } from "./flags";
 import {
   recordTick,
@@ -15,82 +17,30 @@ import {
   recordAgentError,
   recordTaskAge,
   logToBoard,
+  getTaskLogPath,
 } from "./observability";
 
 export interface HarnessResult {
   stdout: string;
   stderr: string;
   exitCode: number;
+  pid?: number;
 }
 
 export interface TickOptions {
-  spawnHarness?: (command: string, cwd: string) => Promise<HarnessResult>;
-  createWorktree?: (repoDir: string, profile: string, taskId: string) => string;
-  removeWorktree?: (repoDir: string, profile: string, taskId: string) => boolean;
+  spawnHarness?: (command: string, cwd: string, logPath?: string, timeoutMs?: number) => Promise<HarnessResult>;
+  createWorktree?: (repoDir: string, profile: string, taskId: string, baseRef: string) => string;
+  removeWorktree?: (repoDir: string, profile: string, taskId: string, worktreePath?: string) => RemoveWorktreeResult;
+  maxSpawnsPerTick?: number;
 }
 
 export interface TickResult {
   processed: number;
 }
 
-function parseShellCommand(command: string): [string, string[]] {
-  const args: string[] = [];
-  let current = "";
-  let inSingleQuote = false;
-  let inDoubleQuote = false;
-  let escapeNext = false;
-
-  for (let i = 0; i < command.length; i++) {
-    const char = command[i];
-
-    if (escapeNext) {
-      current += char;
-      escapeNext = false;
-      continue;
-    }
-
-    if (char === "\\" && !inSingleQuote) {
-      escapeNext = true;
-      continue;
-    }
-
-    if (char === "'" && !inDoubleQuote) {
-      inSingleQuote = !inSingleQuote;
-      continue;
-    }
-
-    if (char === '"' && !inSingleQuote) {
-      inDoubleQuote = !inDoubleQuote;
-      continue;
-    }
-
-    if (char === " " && !inSingleQuote && !inDoubleQuote) {
-      if (current.length > 0) {
-        args.push(current);
-        current = "";
-      }
-      continue;
-    }
-
-    current += char;
-  }
-
-  if (current.length > 0) {
-    args.push(current);
-  }
-
-  if (args.length === 0) {
-    throw new Error("Empty command");
-  }
-
-  const [cmd, ...rest] = args;
-  return [cmd, rest];
-}
-
-export async function spawnHarness(command: string, cwd: string, timeoutMs: number = 300000): Promise<HarnessResult> {
+export async function spawnHarness(command: string, cwd: string, logPath?: string, timeoutMs: number = 300000): Promise<HarnessResult> {
   return new Promise((resolve, reject) => {
-    const [cmd, args] = parseShellCommand(command);
-    const child = spawn(cmd, args, { shell: false, cwd, stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(command, { shell: true, cwd, stdio: ["ignore", "pipe", "pipe"] });
 
     let settled = false;
     const timeout = setTimeout(() => {
@@ -108,20 +58,49 @@ export async function spawnHarness(command: string, cwd: string, timeoutMs: numb
     let stdout = "";
     let stderr = "";
 
-    child.stdout!.on("data", (data) => { stdout += data.toString(); });
-    child.stderr!.on("data", (data) => { stderr += data.toString(); });
+    let logStream: ReturnType<typeof createWriteStream> | undefined;
+    if (logPath) {
+      try {
+        mkdirSync(dirname(logPath), { recursive: true });
+        logStream = createWriteStream(logPath);
+      } catch {
+        // Best effort logging
+      }
+    }
+
+    child.stdout!.on("data", (data) => {
+      const chunk = data.toString();
+      stdout += chunk;
+      if (logStream) {
+        try { logStream.write(chunk); } catch {}
+      }
+    });
+
+    child.stderr!.on("data", (data) => {
+      const chunk = data.toString();
+      stderr += chunk;
+      if (logStream) {
+        try { logStream.write(chunk); } catch {}
+      }
+    });
 
     child.on("close", (code) => {
       if (settled) return;
       settled = true;
       clearTimeout(timeout);
-      resolve({ stdout, stderr, exitCode: code ?? 0 });
+      if (logStream) {
+        try { logStream.end(); } catch {}
+      }
+      resolve({ stdout, stderr, exitCode: code ?? 0, pid: child.pid ?? undefined });
     });
 
     child.on("error", (err) => {
       if (settled) return;
       settled = true;
       clearTimeout(timeout);
+      if (logStream) {
+        try { logStream.end(); } catch {}
+      }
       reject(err);
     });
   });
@@ -148,6 +127,14 @@ function getBoardWorkdir(boardId: number): string | null {
     `SELECT workdir FROM boards WHERE id = ? AND archived_at IS NULL`
   ).get(boardId) as { workdir: string } | undefined;
   return board?.workdir ?? null;
+}
+
+function getBoardBaseRef(boardId: number): string | null {
+  const db = getDb();
+  const board = db.query(
+    `SELECT base_ref FROM boards WHERE id = ? AND archived_at IS NULL`
+  ).get(boardId) as { base_ref: string } | undefined;
+  return board?.base_ref ?? null;
 }
 
 function getBoardSlug(boardId: number): string | null {
@@ -190,6 +177,18 @@ function failTask(id: number, result: string, reason: string, runId: number | nu
   addEvent(id, "finished", { outcome, reason }, runId ?? undefined);
 }
 
+function requeueTask(id: number, reason: string, runId: number | null): void {
+  const db = getDb();
+  db.run(
+    `UPDATE tasks SET status = 'ready', result = ?, claim_lock = NULL, claim_expires = NULL, started_at = NULL, updated_at = unixepoch() WHERE id = ?`,
+    [reason, id]
+  );
+  if (runId !== null) {
+    finishRun(runId, "reclaimed", null, null, reason);
+  }
+  addEvent(id, "reclaimed", { reason }, runId ?? undefined);
+}
+
 function reapStaleClaims(): void {
   const db = getDb();
   const now = Math.floor(Date.now() / 1000);
@@ -217,6 +216,7 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
   const doSpawnHarness = options.spawnHarness ?? spawnHarness;
   const doCreateWorktree = options.createWorktree ?? createWorktree;
   const doRemoveWorktree = options.removeWorktree ?? removeWorktree;
+  const maxSpawns = options.maxSpawnsPerTick ?? Infinity;
 
   recordTick();
 
@@ -228,8 +228,13 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
 
   const tasks = listReadyTasks();
   let processed = 0;
+  let spawned = 0;
 
   for (const task of tasks) {
+    if (spawned >= maxSpawns) {
+      break;
+    }
+
     if (isBlockedByDependencies(task.id)) {
       continue;
     }
@@ -250,62 +255,80 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
     const workdir = getBoardWorkdir(task.board_id);
     if (!workdir) {
       failTask(task.id, "", "Board not found or archived", runId);
-      processed++;
+      spawned++;
       continue;
     }
+
+    const baseRef = getBoardBaseRef(task.board_id) ?? "origin/main";
 
     let profile;
     try {
       profile = getProfile(task.assignee ?? "opencode");
     } catch {
       failTask(task.id, "", `Unknown profile: ${task.assignee ?? "opencode"}`, runId);
-      processed++;
+      spawned++;
       continue;
     }
 
+    const worktreeBranch = `wt/${profile.name}/${task.id}`;
+
     let worktreePath: string;
     try {
-      worktreePath = doCreateWorktree(workdir, profile.name, String(task.id));
+      worktreePath = doCreateWorktree(workdir, profile.name, String(task.id), baseRef);
     } catch (err: any) {
       failTask(task.id, "", `Worktree creation failed: ${err.message}`, runId);
-      processed++;
+      spawned++;
       continue;
     }
+
+    const boardSlug = getBoardSlug(task.board_id);
+    const logPath = boardSlug ? getTaskLogPath(boardSlug, task.id) : undefined;
 
     try {
       const command = substituteCommand(profile.command, {
         workdir: worktreePath,
-        branch: task.branch ?? "main",
+        branch: worktreeBranch,
         task_id: String(task.id),
         agent: profile.agent ?? profile.name,
       });
 
       const harnessStart = Date.now();
-      const { stdout, stderr, exitCode } = await doSpawnHarness(command, worktreePath);
+      const harnessResult = await doSpawnHarness(command, worktreePath, logPath);
       const harnessDuration = Date.now() - harnessStart;
       recordTaskDuration(profile.agent ?? profile.name, harnessDuration);
 
+      const { stdout, stderr, exitCode } = harnessResult;
+      const pid = harnessResult.pid ?? 0;
+
+      if (runId !== null && pid) {
+        updateRun(runId, { worker_pid: pid });
+      }
+
       if (exitCode === 0) {
         finishTask(task.id, stdout, runId);
+      } else if (exitCode === 75) {
+        // EX_TEMPFAIL — requeue to ready without counting as failure
+        requeueTask(task.id, `Rate-limited (EX_TEMPFAIL), requeued to ready: ${stderr || stdout}`, runId);
       } else {
         recordAgentError(profile.agent ?? profile.name);
         failTask(task.id, stdout, `Harness failed (exit ${exitCode}): ${stderr || "unknown error"}`, runId);
       }
 
       processed++;
+      spawned++;
     } catch (err: any) {
       recordAgentError(profile.agent ?? profile.name);
       failTask(task.id, "", `Harness execution failed: ${err.message}`, runId);
       processed++;
+      spawned++;
     } finally {
       try {
-        doRemoveWorktree(workdir, profile.name, String(task.id));
+        doRemoveWorktree(workdir, profile.name, String(task.id), worktreePath);
       } catch {
         // Best effort cleanup
       }
     }
 
-    const boardSlug = getBoardSlug(task.board_id);
     if (boardSlug) {
       const updated = (await import("./models/task")).showTask(task.id);
       if (updated) {

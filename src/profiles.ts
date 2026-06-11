@@ -1,6 +1,6 @@
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, writeFileSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 import YAML from "yaml";
 
 export interface Profile {
@@ -10,9 +10,13 @@ export interface Profile {
   agent?: string;
 }
 
-const DEFAULT_PROFILES_PATH = join(homedir(), ".config/kdi/profiles.yaml");
+function defaultProfilesPath(): string {
+  return process.env.KDI_PROFILES_PATH || join(homedir(), ".config/kdi/profiles.yaml");
+}
+const ALLOWED_FIELDS = new Set(["name", "command", "agent", "env"]);
+const ALLOWED_TEMPLATES = new Set(["workdir", "branch", "task_id", "agent"]);
 
-const BUILTIN_PROFILES: Profile[] = [
+export const BUILTIN_PROFILES: Profile[] = [
   {
     name: "opencode",
     command: "opencode run --agent {{agent}} --cwd {{workdir}}",
@@ -35,20 +39,86 @@ const BUILTIN_PROFILES: Profile[] = [
   },
 ];
 
-export function loadProfiles(path: string = DEFAULT_PROFILES_PATH): Profile[] {
-  if (existsSync(path)) {
-    const content = readFileSync(path, "utf-8");
-    const custom = YAML.parse(content) as Profile[];
-    for (const profile of custom) {
-      if (!profile.command) {
-        throw new Error(`Profile "${profile.name}" is missing required field "command"`);
+export function validateProfile(profile: unknown, index: number): Profile {
+  if (typeof profile !== "object" || profile === null) {
+    throw new Error(`Profile at index ${index} must be an object`);
+  }
+
+  const p = profile as Record<string, unknown>;
+
+  if (typeof p.name !== "string" || p.name.trim() === "") {
+    throw new Error(`Profile at index ${index} is missing required field "name"`);
+  }
+
+  if (typeof p.command !== "string" || p.command.trim() === "") {
+    throw new Error(`Profile "${p.name}" is missing required field "command"`);
+  }
+
+  if ("agent" in p && typeof p.agent !== "string") {
+    throw new Error(`Profile "${p.name}" field "agent" must be a string`);
+  }
+
+  if ("env" in p) {
+    if (typeof p.env !== "object" || p.env === null || Array.isArray(p.env)) {
+      throw new Error(`Profile "${p.name}" field "env" must be an object`);
+    }
+    for (const [key, value] of Object.entries(p.env)) {
+      if (typeof value !== "string") {
+        throw new Error(`Profile "${p.name}" env value for "${key}" must be a string`);
       }
     }
-    const customNames = new Set(custom.map((p) => p.name));
-    const builtins = BUILTIN_PROFILES.filter((p) => !customNames.has(p.name));
-    return [...builtins, ...custom];
   }
-  return BUILTIN_PROFILES;
+
+  for (const key of Object.keys(p)) {
+    if (!ALLOWED_FIELDS.has(key)) {
+      throw new Error(`Profile "${p.name}" has unknown field "${key}"`);
+    }
+  }
+
+  const templateVars = Array.from(p.command.matchAll(/\{\{([a-zA-Z0-9_]+)\}\}/g)).map((m) => m[1]);
+  for (const v of templateVars) {
+    if (!ALLOWED_TEMPLATES.has(v)) {
+      throw new Error(
+        `Profile "${p.name}" uses unknown template variable "{{${v}}}". Allowed: ${Array.from(ALLOWED_TEMPLATES).map((t) => `{{${t}}}`).join(", ")}`
+      );
+    }
+  }
+
+  return p as unknown as Profile;
+}
+
+export function ensureProfiles(path: string = defaultProfilesPath()): void {
+  if (existsSync(path)) {
+    return;
+  }
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, YAML.stringify(BUILTIN_PROFILES), "utf-8");
+}
+
+export function loadProfiles(path: string = defaultProfilesPath()): Profile[] {
+  if (!existsSync(path)) {
+    return [...BUILTIN_PROFILES];
+  }
+
+  const content = readFileSync(path, "utf-8");
+  const parsed = YAML.parse(content);
+
+  if (parsed === null || parsed === undefined) {
+    return [...BUILTIN_PROFILES];
+  }
+
+  if (!Array.isArray(parsed)) {
+    throw new Error(`Profiles file must contain a YAML array of profiles`);
+  }
+
+  const custom: Profile[] = [];
+  for (let i = 0; i < parsed.length; i++) {
+    custom.push(validateProfile(parsed[i], i));
+  }
+
+  const customNames = new Set(custom.map((p) => p.name));
+  const builtins = BUILTIN_PROFILES.filter((p) => !customNames.has(p.name));
+  return [...builtins, ...custom];
 }
 
 export function getProfile(name: string): Profile {

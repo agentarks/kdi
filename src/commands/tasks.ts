@@ -1,5 +1,6 @@
 import { Command } from "commander";
-import { showBoard } from "../models/board";
+import { existsSync, readFileSync } from "node:fs";
+import { showBoard, getBoardById } from "../models/board";
 import {
   createTask,
   listTasks,
@@ -15,6 +16,7 @@ import { addComment, getComments } from "../models/comment";
 import { getRuns } from "../models/taskRun";
 import { getEvents, tailEvents, getRecentEvents, getEventsAfter } from "../models/taskEvent";
 import { atomicClaim, reclaimTask, heartbeat } from "../models/claim";
+import { getTaskLogPath } from "../observability";
 
 const VALID_STATUSES = ["triage", "todo", "ready", "running", "done", "blocked"];
 
@@ -383,6 +385,42 @@ export const heartbeatTaskCommand = new Command("heartbeat")
         process.exit(1);
       }
       console.log(`Heartbeat recorded for task ${id}.`);
+    } catch (err: any) {
+      console.error(`Error: ${err.message}`);
+      process.exit(1);
+    }
+  });
+
+export const logTaskCommand = new Command("log")
+  .description("Show worker log for a task")
+  .argument("<task_id>", "Task ID")
+  .option("--tail <bytes>", "Only show last N bytes")
+  .action((taskId: string, options: { tail?: string }) => {
+    try {
+      const id = parseTaskId(taskId);
+      const task = showTask(id);
+      if (!task) {
+        console.error(`Task ${id} not found.`);
+        process.exit(1);
+      }
+      const board = getBoardById(task.board_id);
+      if (!board) {
+        console.error(`Board not found for task ${id}.`);
+        process.exit(1);
+      }
+      const logPath = getTaskLogPath(board.slug, id);
+      if (!existsSync(logPath)) {
+        console.log("No log found for this task.");
+        return;
+      }
+      let content = readFileSync(logPath, "utf-8");
+      if (options.tail) {
+        const tailBytes = parseInt(options.tail, 10);
+        if (!isNaN(tailBytes) && tailBytes > 0 && content.length > tailBytes) {
+          content = content.slice(-tailBytes);
+        }
+      }
+      process.stdout.write(content);
     } catch (err: any) {
       console.error(`Error: ${err.message}`);
       process.exit(1);

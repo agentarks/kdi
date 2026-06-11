@@ -15,19 +15,25 @@ describe("board model", () => {
     cleanupDb(TEST_DB);
   });
 
-  it("createBoard returns board with id, slug, workdir, archived_at=null", () => {
+  it("createBoard returns board with id, slug, workdir, base_ref, archived_at=null", () => {
     const board = createBoard("alpha", "/tmp/alpha");
     expect(board.id).toBeNumber();
     expect(board.slug).toBe("alpha");
     expect(board.workdir).toBe("/tmp/alpha");
+    expect(board.base_ref).toBe("origin/main");
     expect(board.archived_at).toBeNull();
     expect(board.created_at).toBeNumber();
   });
 
-  it("listBoards excludes archived boards", () => {
+  it("createBoard accepts custom base_ref", () => {
+    const board = createBoard("beta", "/tmp/beta", "origin/develop");
+    expect(board.base_ref).toBe("origin/develop");
+  });
+
+  it("listBoards excludes archived boards by default", () => {
     createBoard("alpha", "/tmp/alpha");
     createBoard("beta", "/tmp/beta");
-    const gamma = createBoard("gamma", "/tmp/gamma");
+    createBoard("gamma", "/tmp/gamma");
     archiveBoard("beta");
 
     const boards = listBoards();
@@ -35,6 +41,17 @@ describe("board model", () => {
     expect(slugs).toContain("alpha");
     expect(slugs).not.toContain("beta");
     expect(slugs).toContain("gamma");
+  });
+
+  it("listBoards includes archived boards when includeArchived=true", () => {
+    createBoard("alpha", "/tmp/alpha");
+    createBoard("beta", "/tmp/beta");
+    archiveBoard("beta");
+
+    const boards = listBoards(true);
+    const slugs = boards.map(b => b.slug);
+    expect(slugs).toContain("alpha");
+    expect(slugs).toContain("beta");
   });
 
   it("showBoard returns null for non-existent slug", () => {
@@ -46,26 +63,30 @@ describe("board model", () => {
     createBoard("alpha", "/tmp/alpha");
     const result = showBoard("alpha");
     expect(result).not.toBeNull();
+    expect(result!.taskCounts.triage).toBe(0);
     expect(result!.taskCounts.todo).toBe(0);
     expect(result!.taskCounts.ready).toBe(0);
     expect(result!.taskCounts.running).toBe(0);
     expect(result!.taskCounts.done).toBe(0);
     expect(result!.taskCounts.blocked).toBe(0);
+    expect(result!.taskCounts.archived).toBe(0);
   });
 
   it("showBoard returns board details with task counts per status", () => {
     const board = createBoard("alpha", "/tmp/alpha");
     const db = getDb();
     // Insert tasks with different statuses
-    db.run("INSERT INTO tasks (board_id, title, status) VALUES (?, ?, ?)", [board.id, "Task 1", "todo"]);
-    db.run("INSERT INTO tasks (board_id, title, status) VALUES (?, ?, ?)", [board.id, "Task 2", "ready"]);
-    db.run("INSERT INTO tasks (board_id, title, status) VALUES (?, ?, ?)", [board.id, "Task 3", "running"]);
-    db.run("INSERT INTO tasks (board_id, title, status) VALUES (?, ?, ?)", [board.id, "Task 4", "done"]);
-    db.run("INSERT INTO tasks (board_id, title, status) VALUES (?, ?, ?)", [board.id, "Task 5", "blocked"]);
+    db.run("INSERT INTO tasks (board_id, title, status) VALUES (?, ?, ?)", [board.id, "Task 1", "triage"]);
+    db.run("INSERT INTO tasks (board_id, title, status) VALUES (?, ?, ?)", [board.id, "Task 2", "todo"]);
+    db.run("INSERT INTO tasks (board_id, title, status) VALUES (?, ?, ?)", [board.id, "Task 3", "ready"]);
+    db.run("INSERT INTO tasks (board_id, title, status) VALUES (?, ?, ?)", [board.id, "Task 4", "running"]);
+    db.run("INSERT INTO tasks (board_id, title, status) VALUES (?, ?, ?)", [board.id, "Task 5", "done"]);
+    db.run("INSERT INTO tasks (board_id, title, status) VALUES (?, ?, ?)", [board.id, "Task 6", "blocked"]);
 
     const result = showBoard("alpha");
     expect(result).not.toBeNull();
     expect(result!.slug).toBe("alpha");
+    expect(result!.taskCounts.triage).toBe(1);
     expect(result!.taskCounts.todo).toBe(1);
     expect(result!.taskCounts.ready).toBe(1);
     expect(result!.taskCounts.running).toBe(1);
@@ -73,7 +94,7 @@ describe("board model", () => {
     expect(result!.taskCounts.blocked).toBe(1);
   });
 
-  it("showBoard excludes archived tasks from counts", () => {
+  it("showBoard excludes archived tasks from status counts but reports archived count", () => {
     const board = createBoard("alpha", "/tmp/alpha");
     const db = getDb();
     db.run("INSERT INTO tasks (board_id, title, status) VALUES (?, ?, ?)", [board.id, "Active", "todo"]);
@@ -83,6 +104,7 @@ describe("board model", () => {
     expect(result).not.toBeNull();
     expect(result!.taskCounts.todo).toBe(1);
     expect(result!.taskCounts.done).toBe(0);
+    expect(result!.taskCounts.archived).toBe(1);
   });
 
   it("archiveBoard sets archived_at", () => {

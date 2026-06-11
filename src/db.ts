@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS boards (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   slug TEXT NOT NULL UNIQUE,
   workdir TEXT NOT NULL,
+  base_ref TEXT NOT NULL DEFAULT 'origin/main',
   created_at INTEGER NOT NULL DEFAULT (unixepoch()),
   archived_at INTEGER
 );
@@ -101,6 +102,13 @@ export function initDb(path?: string): Database {
   dbInstance.exec("PRAGMA busy_timeout = 5000");
   dbInstance.exec(SCHEMA);
   currentDbPath = dbPath;
+
+  // Migrate: add base_ref column to boards if missing
+  const boardTableInfo = dbInstance.query("PRAGMA table_info(boards)").all() as any[];
+  const hasBaseRef = boardTableInfo.some((col) => col.name === "base_ref");
+  if (!hasBaseRef) {
+    dbInstance.exec("ALTER TABLE boards ADD COLUMN base_ref TEXT NOT NULL DEFAULT 'origin/main'");
+  }
 
   // Migrate: add started_at column if missing
   const tableInfo = dbInstance.query("PRAGMA table_info(tasks)").all() as any[];
