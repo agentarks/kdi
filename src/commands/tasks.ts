@@ -11,6 +11,9 @@ import {
   unblockTask,
   archiveTask,
   specifyTask,
+  completeTask,
+  reviewTask,
+  scheduleTask,
 } from "../models/task";
 import { addComment, getComments } from "../models/comment";
 import { getRuns } from "../models/taskRun";
@@ -18,7 +21,7 @@ import { getEvents, tailEvents, getRecentEvents, getEventsAfter } from "../model
 import { atomicClaim, reclaimTask, heartbeat } from "../models/claim";
 import { getTaskLogPath } from "../observability";
 
-const VALID_STATUSES = ["triage", "todo", "ready", "running", "done", "blocked"] as const;
+const VALID_STATUSES = ["triage", "todo", "scheduled", "ready", "running", "done", "blocked", "review"] as const;
 type ValidStatus = typeof VALID_STATUSES[number];
 
 function isValidStatus(status: string): status is ValidStatus {
@@ -49,8 +52,9 @@ export const createTaskCommand = new Command("create")
   .option("--body <text>", "Task body")
   .option("--triage", "Park in triage status instead of todo")
   .option("--initial-status <status>", "Initial task status (default: todo)")
+  .option("--priority <n>", "Integer priority, higher is more urgent (default: 0)")
   .option("--idempotency-key <key>", "Dedup key; returns existing non-archived task id if matched")
-  .action((title: string, options: { board: string; assignee?: string; body?: string; triage?: boolean; initialStatus?: string; idempotencyKey?: string }) => {
+  .action((title: string, options: { board: string; assignee?: string; body?: string; triage?: boolean; initialStatus?: string; priority?: string; idempotencyKey?: string }) => {
     try {
       if (!title || title.trim() === "") {
         throw new Error("Title is required.");
@@ -62,6 +66,15 @@ export const createTaskCommand = new Command("create")
 
       if (options.idempotencyKey !== undefined && options.idempotencyKey.trim() === "") {
         throw new Error("Idempotency key cannot be empty.");
+      }
+
+      let priority: number | undefined;
+      if (options.priority !== undefined) {
+        const parsed = Number(options.priority);
+        if (!Number.isInteger(parsed)) {
+          throw new Error(`Priority must be an integer, got "${options.priority}"`);
+        }
+        priority = parsed;
       }
 
       let initialStatus: ValidStatus | undefined;
@@ -80,6 +93,7 @@ export const createTaskCommand = new Command("create")
         body: options.body,
         triage: options.triage,
         initialStatus,
+        priority,
         idempotency_key: options.idempotencyKey,
       });
       console.log(task.id);
@@ -133,6 +147,8 @@ export const showTaskCommand = new Command("show")
       if (task.result) console.log(`Result: ${task.result}`);
       if (task.summary) console.log(`Summary: ${task.summary}`);
       if (task.block_reason) console.log(`Block reason: ${task.block_reason}`);
+      if (task.scheduled_at) console.log(`Scheduled at: ${new Date(task.scheduled_at * 1000).toISOString()}`);
+      if (task.schedule_reason) console.log(`Schedule reason: ${task.schedule_reason}`);
 
       const comments = getComments(id);
       if (comments.length > 0) {
@@ -216,13 +232,65 @@ export const blockTaskCommand = new Command("block")
   });
 
 export const unblockTaskCommand = new Command("unblock")
-  .description("Unblock a task")
+  .description("Unblock a task (or immediately ready a scheduled task)")
   .argument("<task_id>", "Task ID")
-  .action((taskId: string) => {
+  .option("--reason <text>", "Optional reason recorded as comment")
+  .action((taskId: string, options: { reason?: string }) => {
     try {
       const id = parseTaskId(taskId);
-      const task = unblockTask(id);
-      console.log(`Unblocked task ${task.id}.`);
+      const task = unblockTask(id, options.reason);
+      if (task.status === "ready") {
+        console.log(`Task ${task.id} is now ready.`);
+      } else {
+        console.log(`Unblocked task ${task.id}.`);
+      }
+    } catch (err: any) {
+      console.error(`Error: ${err.message}`);
+      process.exit(1);
+    }
+  });
+
+function parseTimestamp(raw: string): number {
+  if (/^\d+$/.test(raw)) {
+    return parseInt(raw, 10);
+  }
+  const date = new Date(raw);
+  if (isNaN(date.getTime())) {
+    throw new Error(`Invalid timestamp: ${raw}`);
+  }
+  return Math.floor(date.getTime() / 1000);
+}
+
+export const scheduleTaskCommand = new Command("schedule")
+  .description("Schedule a task to become ready at a future time")
+  .argument("<task_id>", "Task ID")
+  .requiredOption("--at <timestamp>", "ISO 8601 or Unix timestamp (seconds)")
+  .option("--reason <text>", "Reason for scheduling")
+  .action((taskId: string, options: { at: string; reason?: string }) => {
+    try {
+      const id = parseTaskId(taskId);
+      const scheduledAt = parseTimestamp(options.at);
+      const now = Math.floor(Date.now() / 1000);
+      if (scheduledAt <= now) {
+        throw new Error("Scheduled time must be in the future");
+      }
+      const task = scheduleTask(id, scheduledAt, options.reason);
+      console.log(`Scheduled task ${task.id} for ${new Date(scheduledAt * 1000).toISOString()}.`);
+    } catch (err: any) {
+      console.error(`Error: ${err.message}`);
+      process.exit(1);
+    }
+  });
+
+export const reviewTaskCommand = new Command("review")
+  .description("Mark a task as under review")
+  .argument("<task_id>", "Task ID")
+  .option("--reason <text>", "Reason or note for review")
+  .action((taskId: string, options: { reason?: string }) => {
+    try {
+      const id = parseTaskId(taskId);
+      const task = reviewTask(id, options.reason);
+      console.log(`Marked task ${task.id} as under review.`);
     } catch (err: any) {
       console.error(`Error: ${err.message}`);
       process.exit(1);
@@ -279,6 +347,51 @@ export const archiveTaskCommand = new Command("archive")
       const id = parseTaskId(taskId);
       const task = archiveTask(id);
       console.log(`Archived task ${task.id}.`);
+    } catch (err: any) {
+      console.error(`Error: ${err.message}`);
+      process.exit(1);
+    }
+  });
+
+export const completeTaskCommand = new Command("complete")
+  .description("Complete task(s) with optional metadata")
+  .argument("<task_ids...>", "One or more task IDs")
+  .option("--result <text>", "Result payload (applies to all tasks in bulk)")
+  .option("--summary <text>", "Short summary")
+  .option("--metadata <json>", "JSON metadata payload")
+  .action((taskIds: string[], options: { result?: string; summary?: string; metadata?: string }) => {
+    try {
+      if (taskIds.length === 0) {
+        throw new Error("At least one task ID is required.");
+      }
+
+      if (options.metadata !== undefined) {
+        try {
+          JSON.parse(options.metadata);
+        } catch {
+          throw new Error("Metadata must be valid JSON.");
+        }
+      }
+
+      if (taskIds.length > 1 && (options.summary !== undefined || options.metadata !== undefined)) {
+        throw new Error("Bulk complete only supports --result.");
+      }
+
+      const ids = taskIds.map(parseTaskId);
+      const completed: number[] = [];
+      for (const id of ids) {
+        const task = completeTask(id, {
+          result: options.result,
+          summary: options.summary,
+          metadata: options.metadata,
+        });
+        console.log(`Completed task ${task.id}.`);
+        completed.push(task.id);
+      }
+
+      if (completed.length > 1) {
+        console.log(`Completed ${completed.length} tasks.`);
+      }
     } catch (err: any) {
       console.error(`Error: ${err.message}`);
       process.exit(1);
@@ -473,6 +586,7 @@ export const listRunsCommand = new Command("runs")
         line += ` started=${started}`;
         if (ended) line += ` ended=${ended}`;
         if (run.summary) line += ` summary="${run.summary}"`;
+        if (run.metadata) line += ` metadata="${run.metadata}"`;
         if (run.error) line += ` error="${run.error}"`;
         console.log(line);
       }

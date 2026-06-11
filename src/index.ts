@@ -11,6 +11,7 @@ import {
   promoteTaskCommand,
   blockTaskCommand,
   unblockTaskCommand,
+  reviewTaskCommand,
   archiveTaskCommand,
   specifyTaskCommand,
   listRunsCommand,
@@ -20,6 +21,8 @@ import {
   reclaimTaskCommand,
   heartbeatTaskCommand,
   logTaskCommand,
+  completeTaskCommand,
+  scheduleTaskCommand,
 } from "./commands/tasks";
 import { dispatchCommand } from "./commands/dispatch";
 import { ensureProfiles } from "./profiles";
@@ -53,6 +56,7 @@ program.addCommand(commentTaskCommand);
 program.addCommand(promoteTaskCommand);
 program.addCommand(blockTaskCommand);
 program.addCommand(unblockTaskCommand);
+program.addCommand(reviewTaskCommand);
 program.addCommand(archiveTaskCommand);
 program.addCommand(specifyTaskCommand);
 program.addCommand(listRunsCommand);
@@ -62,6 +66,8 @@ program.addCommand(claimTaskCommand);
 program.addCommand(reclaimTaskCommand);
 program.addCommand(heartbeatTaskCommand);
 program.addCommand(logTaskCommand);
+program.addCommand(completeTaskCommand);
+program.addCommand(scheduleTaskCommand);
 program.addCommand(dispatchCommand);
 
 program.parse();
