@@ -5,7 +5,7 @@ import { createRun, finishRun } from "./taskRun";
 export const TASK_COLUMNS =
   "id, board_id, title, body, assignee, status, priority, tenant, " +
   "workspace_kind, branch, result, summary, block_reason, schedule_reason, review_reason, " +
-  "created_at, updated_at, started_at, archived_at, current_run_id, " +
+  "created_by, created_at, updated_at, started_at, archived_at, current_run_id, " +
   "claim_lock, claim_expires, last_heartbeat_at, max_runtime_seconds, idempotency_key, scheduled_at, skills";
 
 export interface Task {
@@ -25,6 +25,7 @@ export interface Task {
   schedule_reason: string | null;
   review_reason: string | null;
   scheduled_at: number | null;
+  created_by: string;
   skills: string[];
   created_at: number;
   updated_at: number;
@@ -55,6 +56,7 @@ export interface CreateTaskInput {
   scheduled_at?: number;
   max_runtime_seconds?: number;
   skills?: string[];
+  created_by?: string;
 }
 
 export interface CompleteTaskInput {
@@ -68,6 +70,7 @@ export interface ListTasksFilter {
   status?: Task["status"];
   assignee?: string;
   tenant?: string;
+  created_by?: string;
 }
 
 export function parseDuration(value: string): number {
@@ -133,12 +136,20 @@ export function createTask(input: CreateTaskInput): Task {
     throw new Error("initial status 'scheduled' requires scheduled_at to be set");
   }
 
+  const createdBy = input.created_by ?? "unknown";
+  if (createdBy.trim() === "") {
+    throw new Error("created_by cannot be empty.");
+  }
+  if (createdBy.length > 255) {
+    throw new Error("created_by must be 255 characters or fewer.");
+  }
+
   const skillsJson = input.skills && input.skills.length > 0 ? JSON.stringify(input.skills) : null;
 
   const insert = db.transaction(() => {
     const result = db.run(
-      `INSERT INTO tasks (board_id, title, body, assignee, status, priority, tenant, workspace_kind, branch, idempotency_key, scheduled_at, max_runtime_seconds, skills)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO tasks (board_id, title, body, assignee, status, priority, tenant, workspace_kind, branch, idempotency_key, scheduled_at, created_by, max_runtime_seconds, skills)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         input.board_id,
         input.title,
@@ -151,6 +162,7 @@ export function createTask(input: CreateTaskInput): Task {
         input.branch ?? null,
         input.idempotency_key ?? null,
         input.scheduled_at ?? null,
+        createdBy,
         input.max_runtime_seconds ?? null,
         skillsJson,
       ]
@@ -191,6 +203,7 @@ export function createTask(input: CreateTaskInput): Task {
     schedule_reason: null,
     review_reason: null,
     scheduled_at: input.scheduled_at ?? null,
+    created_by: createdBy,
     skills: input.skills ?? [],
     created_at: Math.floor(Date.now() / 1000),
     updated_at: Math.floor(Date.now() / 1000),
@@ -228,6 +241,11 @@ export function listTasks(filter: ListTasksFilter): Task[] {
   if (filter.tenant) {
     conditions.push("tenant = ?");
     params.push(filter.tenant);
+  }
+
+  if (filter.created_by) {
+    conditions.push("created_by = ?");
+    params.push(filter.created_by);
   }
 
   const query = `

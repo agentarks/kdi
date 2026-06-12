@@ -6,6 +6,7 @@ export const FF_PRIORITY_INTEGER = "FF_PRIORITY_INTEGER";
 export const FF_MAX_RUNTIME = "FF_MAX_RUNTIME";
 export const FF_SKILLS_ARRAY = "FF_SKILLS_ARRAY";
 export const FF_TENANT_NAMESPACE = "FF_TENANT_NAMESPACE";
+export const FF_CREATED_BY = "FF_CREATED_BY";
 
 const flagRegistry = new Map<string, boolean>();
 const flagOverrides = new Map<string, boolean>();
@@ -55,3 +56,4 @@ registerFlag(FF_PRIORITY_INTEGER, false);
 registerFlag(FF_MAX_RUNTIME, false);
 registerFlag(FF_SKILLS_ARRAY, false);
 registerFlag(FF_TENANT_NAMESPACE, false);
+registerFlag(FF_CREATED_BY, false);

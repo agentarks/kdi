@@ -49,6 +49,7 @@ describe("task model", () => {
     expect(task.result).toBeNull();
     expect(task.summary).toBeNull();
     expect(task.block_reason).toBeNull();
+    expect(task.created_by).toBe("unknown");
     expect(task.created_at).toBeNumber();
     expect(task.updated_at).toBeNumber();
     expect(task.archived_at).toBeNull();
@@ -94,6 +95,45 @@ describe("task model", () => {
     const task = createTask({ board_id: board.id, title: "No skills" });
 
     expect(task.skills).toEqual([]);
+  });
+
+  it("createTask stores created_by when provided", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Tracked", created_by: "alice" });
+    expect(task.created_by).toBe("alice");
+
+    const fetched = showTask(task.id);
+    expect(fetched!.created_by).toBe("alice");
+  });
+
+  it("createTask defaults created_by to 'unknown' when omitted", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Untracked" });
+    expect(task.created_by).toBe("unknown");
+
+    const fetched = showTask(task.id);
+    expect(fetched!.created_by).toBe("unknown");
+  });
+
+  it("listTasks filters by created_by", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    createTask({ board_id: board.id, title: "Alice's", created_by: "alice" });
+    createTask({ board_id: board.id, title: "Bob's", created_by: "bob" });
+
+    const aliceTasks = listTasks({ board_id: board.id, created_by: "alice" });
+    expect(aliceTasks).toHaveLength(1);
+    expect(aliceTasks[0].title).toBe("Alice's");
+  });
+
+  it("createTask rejects empty created_by", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    expect(() => createTask({ board_id: board.id, title: "Bad", created_by: "" })).toThrow("created_by cannot be empty");
+  });
+
+  it("createTask rejects created_by longer than 255 characters", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const longCreator = "a".repeat(256);
+    expect(() => createTask({ board_id: board.id, title: "Bad", created_by: longCreator })).toThrow("created_by must be 255 characters or fewer");
   });
 
   it("createTask with priority sets integer value", () => {

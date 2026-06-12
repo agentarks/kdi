@@ -348,7 +348,7 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
 }
 
 export interface DispatcherHandle {
-  stop: () => void;
+  stop: () => Promise<void>;
 }
 
 export function startDispatcher(pollIntervalMs: number = 5000, options?: TickOptions): DispatcherHandle {
@@ -361,15 +361,19 @@ export function startDispatcher(pollIntervalMs: number = 5000, options?: TickOpt
       } catch (err) {
         console.error("Dispatcher tick failed:", err);
       }
+      if (!running) {
+        break;
+      }
       await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
     }
   }
 
-  loop();
+  const loopPromise = loop();
 
   return {
-    stop: () => {
+    stop: async () => {
       running = false;
+      await loopPromise;
     },
   };
 }

@@ -10,7 +10,7 @@ import { setFlag, clearOverrides } from "../src/flags";
 import { tick, startDispatcher } from "../src/dispatcher";
 import { cleanupDb } from "./cleanupDb";
 
-const TEST_DB = "/tmp/kdi-dispatcher-test.db";
+let testDbPath: string;
 
 function setupTempHome(profiles: { name: string; command: string }[]): string {
   const home = mkdtempSync(join(tmpdir(), "kdi-dispatcher-home-"));
@@ -26,14 +26,16 @@ function setupTempHome(profiles: { name: string; command: string }[]): string {
 
 describe("dispatcher", () => {
   beforeEach(() => {
-    cleanupDb(TEST_DB);
-    initDb(TEST_DB);
+    testDbPath = join(tmpdir(), `kdi-dispatcher-test-${Date.now()}-${Math.random().toString(36).slice(2)}.db`);
+    cleanupDb(testDbPath);
+    initDb(testDbPath);
     setFlag("FF_ENABLE_KANBAN_DISPATCH", true);
   });
 
   afterEach(() => {
     clearOverrides();
-    cleanupDb(TEST_DB);
+    closeDb();
+    cleanupDb(testDbPath);
   });
 
   it("returns early when flag is disabled", async () => {
@@ -168,7 +170,7 @@ describe("dispatcher", () => {
     // Wait for at least one tick
     await new Promise(resolve => setTimeout(resolve, 150));
 
-    dispatcher.stop();
+    await dispatcher.stop();
 
     expect(mockHarness).toHaveBeenCalled();
   });
