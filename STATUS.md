@@ -12,9 +12,12 @@
 - [x] `kdi create <title> --board <slug> --idempotency-key <key>` — create idempotently; returns existing non-archived task id if matched
 - [x] `kdi create <title> --board <slug> --initial-status <status>` — create task with custom initial status (triage, todo, scheduled, ready, running, done, blocked)
 - [x] `kdi create <title> --board <slug> --priority <n>` — create task with integer priority (default 0, higher = more urgent)
+- [x] `kdi create <title> --board <slug> --max-runtime <duration>` — create task with per-task runtime cap (feature-flagged)
+- [x] `kdi create <title> --board <slug> --tenant <name>` — create task with tenant namespace (feature-flagged)
 - [x] `kdi specify <task_id> --board <slug>` — promote triage → todo
 - [x] `kdi specify --all --board <slug>` — promote all triage tasks
 - [x] `kdi list --board <slug> --status <status>` — list tasks filtered
+- [x] `kdi list --board <slug> --tenant <name>` — list tasks filtered by tenant namespace (feature-flagged)
 - [x] `kdi show <task_id>` — show task details
 - [x] `kdi edit <task_id> --body <text>` — edit task body
 - [x] `kdi comment <task_id> <text>` — add comment
@@ -117,6 +120,15 @@
 - [x] `kdi show <task_id>` displays skills as comma-separated list
 - [x] Dispatcher substitutes `{{skills}}` in profile commands
 - [x] Dispatcher sets `KDI_SKILLS` env var for harness process
+
+## Max Runtime (KDI-008) — Done
+- [x] `max_runtime_seconds INTEGER` column added to tasks (with migration)
+- [x] `kdi create <title> --board <slug> --max-runtime <duration>`; gated by `FF_MAX_RUNTIME`
+- [x] Duration parser accepts seconds (`300`) or suffixes (`30m`, `1h`, `2d`)
+- [x] `kdi show <task_id>` displays max runtime when set
+- [x] Dispatcher copies task cap into active `task_runs` row on claim
+- [x] Dispatcher passes cap as harness timeout; SIGTERM then SIGKILL on expiry
+- [x] Timed-out runs recorded with `outcome=timed_out` and task blocked
 
 ## Dependencies
 - [ ] Parent/child task blocking
