@@ -67,6 +67,53 @@ Pin these exact versions when adding or upgrading dependencies. Verify new versi
 - **Errors:** Surface actionable error messages. Exit with non-zero codes on CLI failures.
 - **Formatting:** No trailing whitespace; 2-space indentation; semicolons optional but be consistent with surrounding code.
 
+## Concurrent Development with Git Worktrees
+
+When multiple agents work on `kdi` at the same time, each agent should use a dedicated [Git worktree](https://git-scm.com/docs/git-worktree) under `.worktrees/`. Worktrees share the same object database but give each agent an isolated checkout and branch, eliminating stashing and branch switching.
+
+### Creating a worktree
+
+Run from the repository root:
+
+```bash
+git worktree add .worktrees/feat-<brd-id>-<slug> -b feat/<brd-id>-<slug>
+cd .worktrees/feat-<brd-id>-<slug>
+bun install
+bun run lint
+bun run test
+bun run build
+```
+
+All four commands must pass before the worktree is considered ready for feature work.
+
+### Database isolation
+
+`kdi` stores state in SQLite (`bun:sqlite`). Because worktrees share the same working tree root by default, concurrent agents must not write to the same database file. Resolve this by making the database path configurable through the environment:
+
+```bash
+KDI_DB=.worktrees/feat-<brd-id>-<slug>/kdi.sqlite bun run test
+```
+
+The CLI resolves the database path from `KDI_DB` first, then `KDI_DB_PATH`, then falls back to the default location. Use one of those variables to keep worktree databases isolated.
+
+Or run integration tests against an in-memory database if the test harness supports it.
+
+### Cleanup
+
+When a feature branch is merged or abandoned, remove the worktree and delete the local branch:
+
+```bash
+git worktree remove .worktrees/feat-<brd-id>-<slug>
+git branch -D feat/<brd-id>-<slug>
+```
+
+### Known risks
+
+- **SQLite contention:** the biggest practical risk. Always isolate the database per worktree or use an in-memory DB for tests.
+- **Duplicated `node_modules`:** each worktree has its own install. Bun’s global cache reduces download overhead, but disk usage still grows with each worktree.
+- **Divergent build artifacts:** `dist/`, `.bun/`, and migration state can multiply across worktrees. Keep the worktree directory ignored and clean up often.
+- **Merge conflicts still happen:** worktrees isolate checkouts, not history. Coordinate branch scope the same as with normal feature branches.
+
 ## Naming and File Conventions
 
 - CLI commands live in `src/commands/<domain>.ts` and are wired into `src/index.ts`.

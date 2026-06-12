@@ -7,7 +7,7 @@ let dbInstance: Database | null = null;
 let currentDbPath: string | null = null;
 
 export function defaultDbPath(): string {
-  return process.env.KDI_DB || `${homedir()}/.local/share/kdi/kdi.db`;
+  return process.env.KDI_DB || process.env.KDI_DB_PATH || `${homedir()}/.local/share/kdi/kdi.db`;
 }
 
 const SCHEMA = `

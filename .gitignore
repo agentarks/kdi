@@ -4,3 +4,4 @@ kdi
 .env
 .DS_Store
 dist/
+.worktrees/
