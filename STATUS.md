@@ -10,7 +10,8 @@
 - [x] `kdi create <title> --board <slug> --assignee <profile>` — create task
 - [x] `kdi create <title> --board <slug> --triage` — create task in triage
 - [x] `kdi create <title> --board <slug> --idempotency-key <key>` — create idempotently; returns existing non-archived task id if matched
-- [x] `kdi create <title> --board <slug> --initial-status <status>` — create task with custom initial status (triage, todo, ready, running, done, blocked)
+- [x] `kdi create <title> --board <slug> --initial-status <status>` — create task with custom initial status (triage, todo, scheduled, ready, running, done, blocked)
+- [x] `kdi create <title> --board <slug> --priority <n>` — create task with integer priority (default 0, higher = more urgent)
 - [x] `kdi specify <task_id> --board <slug>` — promote triage → todo
 - [x] `kdi specify --all --board <slug>` — promote all triage tasks
 - [x] `kdi list --board <slug> --status <status>` — list tasks filtered
@@ -21,6 +22,8 @@
 - [x] `kdi block <task_id> --reason <text>` — mark blocked
 - [x] `kdi unblock <task_id>` — unblock task
 - [x] `kdi archive <task_id>` — archive task
+- [x] `kdi complete <task_id> --result <text> --summary <text> --metadata <json>` — complete task with metadata
+- [x] `kdi complete <task_id_1> <task_id_2> ... --result <text>` — bulk complete (result applies to all)
 - [x] `kdi tail <task_id>` — tail events for a task
 - [x] `kdi watch` — watch board-wide events
 
@@ -30,6 +33,28 @@
 - [x] `kdi specify <task_id>` promotes `triage` → `todo` (requires non-empty body)
 - [x] `kdi specify --all` sweeps all triage tasks on a board
 - [x] `specified` event emitted on promotion
+
+## Scheduled Status (KDI-002) — Done
+- [x] `scheduled` status added to tasks CHECK constraint (with migration via table recreation)
+- [x] `scheduled_at` and `schedule_reason` columns added to tasks
+- [x] `kdi schedule <task_id> --at <timestamp> [--reason <text>]` parks task in `scheduled`
+- [x] `--at` accepts ISO 8601 or Unix seconds; rejects timestamps in the past
+- [x] `kdi unblock <task_id> [--reason <text>]` immediately promotes `scheduled` → `ready`
+- [x] Dispatcher auto-promotes `scheduled` tasks to `ready` when `scheduled_at` passes
+- [x] `ready` and `scheduled` events emitted on the respective transitions
+
+## Review Status (KDI-003) — Done
+- [x] `review` status added to tasks CHECK constraint (with migration via table recreation)
+- [x] `kdi review <task_id> --reason <text>` marks a task as under review
+- [x] `reviewed` event emitted on transition
+- [x] Distinct from `blocked` — indicates output is under human/code review
+
+## Complete with Metadata (KDI-005) — Done
+- [x] `kdi complete <task_id> --result "..." --summary "..." --metadata '{"tests": 12}'`
+- [x] `kdi complete <id1> <id2> ...` — bulk complete (only `--result` applies to all)
+- [x] Stores `result` and `summary` on the task row
+- [x] Creates or finalizes a `task_runs` row with `outcome = completed`
+- [x] Emits a `completed` event with optional metadata payload
 
 ## Task Runs (KDI-000)
 - [x] `task_runs` table with per-attempt history (profile, step_key, status, claim_lock, worker_pid, started_at, ended_at, outcome, summary, metadata, error)
@@ -122,6 +147,14 @@
 - [ ] **KDI-000d: Live-PID contention test** — `initDb` is synchronous and blocks the event loop; async test cleanup races with the sync loop. The implementation is correct (verified by code review), but testing live-PID lock contention requires spawning a real concurrent process, which is flaky in the Bun test runner.
 - [ ] **KDI-000e: `finishRun(null outcome)` defaults to `"done"`** — Reviewer noted this weakens the "status is derived from outcome" invariant. Making `outcome` non-nullable would be a breaking change to existing callers. Consider enforcing in a future refactor.
 - [ ] **KDI-001b: `list --status archived` is broken** — Pre-existing behavior: `listTasksCommand` reuses `isValidStatus` which rejects `"archived"`. Not introduced by KDI-001b, but should be fixed if listing archived tasks is desired.
+- [ ] **KDI-002: Missing model/e2e test for `create --initial-status scheduled --at`** — The CLI and model guard both enforce `scheduled_at` requirement, but no dedicated model test covers the success path. Feature-flag gated by default makes e2e harder; unit tests cover the logic.
+- [ ] **KDI-003: `review_reason` column vs `block_reason` design quirk** — `review_reason` exists in the SCHEMA and `reviewTask` now writes to it, but `kdi show` displays both `Block reason` and `Review reason` for review-status tasks. Consider consolidating display to show only the relevant reason per status.
+- [ ] **KDI-003: `reviewTask` accepts status transitions without guard** — Can transition from `blocked`, `running`, `done`, or any non-archived status to `review`. The behavior is correct but should be explicitly spec'd or restricted in a future pass.
+- [ ] **KDI-005: `completeTask()` uses synthetic zero-duration run** — When no active run exists, it creates a `task_runs` row with `started_at = now` and immediately finishes it. Functionally correct but run history is slightly misleading.
+- [ ] **KDI-005: `ff_complete_metadata` gating is coarse** — The entire `--metadata` path is gated; the flag doesn't apply to the base `--result`/`--summary` paths. Consider finer-grained flags if metadata needs independent rollout.
+- [ ] **Branch naming convention not enforced** — `AGENTS.md` requires `feat/<brd-id>-<feature-slug>` but the current branch `fix/review-gaps` was not renamed. Either update `AGENTS.md` with an exemption or enforce via CI.
+- [ ] **`spawnHarness` uses `shell: true`** — Changed from manual shell parser to `spawn(command, { shell: true })`. This changes quoting/escaping semantics for profile commands. Verify no existing profiles depend on the old literal-argument behavior. Document in PR description.
+- [ ] **SQLite monolithic migration** — The single `CREATE TABLE tasks_new ... DROP TABLE ... RENAME TO` migration handles schema changes for KDI-001 (triage), KDI-002 (scheduled), KDI-003 (review), and KDI-004 (integer priority) in one pass. This is technically required by SQLite (can't `ALTER TABLE` CHECK constraints or change column types), but it mixes feature boundaries. If versioned migration files are ever introduced, this should be split into per-feature steps with intermediate schema versions.
 
 ## Acceptance Criteria
 - [x] `kdi create "backend: auth" --board myproj --assignee opencode` returns task ID

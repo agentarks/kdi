@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { initDb, closeDb } from "../src/db";
+import { initDb, closeDb, getDb } from "../src/db";
 import { createBoard } from "../src/models/board";
 import { createTask, promoteTask, showTask } from "../src/models/task";
 import { addDependency } from "../src/models/dependency";
@@ -98,7 +98,7 @@ describe("dispatcher", () => {
       removeWorktree: mockRemoveWorktree,
     });
 
-    expect(result.processed).toBe(1);
+    expect(result.processed).toBe(0);
 
     const updated = showTask(task.id);
     expect(updated!.status).toBe("blocked");
@@ -220,7 +220,7 @@ describe("dispatcher", () => {
       removeWorktree: mockRemoveWorktree,
     });
 
-    expect(result.processed).toBe(1);
+    expect(result.processed).toBe(0);
 
     const updated = showTask(task.id);
     expect(updated!.status).toBe("blocked");
@@ -308,5 +308,60 @@ describe("dispatcher", () => {
     const calls = mockHarness.mock.calls as unknown as [string, string][];
     expect(calls.length).toBeGreaterThan(0);
     expect(calls[0][0]).toContain(`wt/branchagent/${task.id}`);
+  });
+
+  it("processes ready tasks in priority descending order", async () => {
+    const board = createBoard("prio-board", "/tmp/prio-board");
+    const low = createTask({ board_id: board.id, title: "Low", assignee: "opencode", priority: 1 });
+    const high = createTask({ board_id: board.id, title: "High", assignee: "opencode", priority: 5 });
+    const med = createTask({ board_id: board.id, title: "Med", assignee: "opencode", priority: 3 });
+    promoteTask(low.id);
+    promoteTask(high.id);
+    promoteTask(med.id);
+
+    const mockHarness = mock(() => Promise.resolve({ stdout: "ok", stderr: "", exitCode: 0 }));
+    const mockCreateWorktree = mock(() => "/tmp/mock-worktree");
+    const mockRemoveWorktree = mock(() => ({ worktreeRemoved: true, branchDeleted: true, found: true }));
+
+    await tick({
+      spawnHarness: mockHarness,
+      createWorktree: mockCreateWorktree,
+      removeWorktree: mockRemoveWorktree,
+    });
+
+    const calls = mockCreateWorktree.mock.calls as unknown as [string, string, string, string][];
+    expect(calls.length).toBe(3);
+
+    // createWorktree is called with (repoDir, profile, taskId, baseRef)
+    expect(Number(calls[0][2])).toBe(high.id);
+    expect(Number(calls[1][2])).toBe(med.id);
+    expect(Number(calls[2][2])).toBe(low.id);
+  });
+
+  it("promotes scheduled task to ready and claims it in same tick", async () => {
+    const board = createBoard("sched-board", "/tmp/sched-board");
+    const task = createTask({ board_id: board.id, title: "Auto promote", assignee: "opencode" });
+    const at = Math.floor(Date.now() / 1000) - 1;
+
+    // Directly set scheduled in the past (bypass scheduleTask future-check)
+    getDb().run(
+      `UPDATE tasks SET status = 'scheduled', scheduled_at = ? WHERE id = ?`,
+      [at, task.id]
+    );
+
+    let claimed = false;
+    const result = await tick({
+      spawnHarness: async () => {
+        claimed = true;
+        return { stdout: "done", stderr: "", exitCode: 0, pid: 1234 };
+      },
+      createWorktree: () => "/tmp/mock-worktree",
+      removeWorktree: () => ({ worktreeRemoved: true, branchDeleted: true, found: true }),
+    });
+
+    expect(result.processed).toBe(1);
+    expect(claimed).toBe(true);
+    const updated = showTask(task.id);
+    expect(updated!.status).toBe("done");
   });
 });

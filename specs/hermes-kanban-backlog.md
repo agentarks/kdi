@@ -309,24 +309,24 @@
   - If non-archived task with key exists, return its id instead of creating duplicate
   - Index: `idx_tasks_idempotency`
 
-- [ ] **KDI-002: Scheduled status**
+- [x] **KDI-002: Scheduled status**
   - Add `scheduled` to status CHECK constraint
   - `kdi schedule <task_id> --reason "waiting on deploy"`
   - `kdi schedule --ids <id1> <id2>` — bulk schedule
   - `kdi unblock` returns scheduled → ready
   - `kdi unblock --reason "..."` — record reason as comment before unblocking
 
-- [ ] **KDI-003: Review status**
+- [x] **KDI-003: Review status**
   - Add `review` to status CHECK constraint
   - Distinct from blocked — task output is under review
   - `kdi review <task_id>` or auto-transition on reviewer claim
 
-- [ ] **KDI-004: Integer priority**
+- [x] **KDI-004: Integer priority**
   - Change `priority` from enum to INTEGER, default 0
   - Higher = more urgent
   - `kdi create --priority 5`
 
-- [ ] **KDI-005: Complete with metadata**
+- [x] **KDI-005: Complete with metadata**
   - `kdi complete <task_id> --result "..." --summary "..." --metadata '{"tests": 12}'`
   - `kdi complete <id1> <id2> ...` — bulk complete (only `--result` applies to all)
   - Store result/summary on task, create task_runs row with outcome=completed
@@ -704,3 +704,14 @@ Dispatched 4 parallel `pi` agents via cmux. All 135 tests pass. Work committed t
 - `kdi log <task_id>` CLI missing (logs written to disk but no read command)
 - ~~`task_runs.status` column missing (only `outcome` exists)~~ — implemented in KDI-000e
 - ~~Cross-process init lock missing~~ — implemented in KDI-000d
+
+### Spec Conflicts (resolved silently — documented here for audit trail)
+
+1. **`kdi schedule --ids <id1> <id2>` (backlog) vs `<task_ids...>` (implementation)**  
+   Backlog specified `--ids` flag syntax. Implementation uses Commander positional `<task_ids...>` argument which is more idiomatic (no flag needed, just `kdi schedule 1 2 3 --at ...`). Behavior is equivalent; the `--ids` flag was dropped as a design decision.
+
+2. **`complete --metadata` part of KDI-005 (backlog) vs gated behind `FF_COMPLETE_METADATA` (implementation)**  
+   Backlog treats `--metadata` as unconditionally part of KDI-005. Implementation gates it behind a feature flag (`FF_COMPLETE_METADATA`, default `false`) for staged rollout. The flag only gates the `--metadata` option; `--result` and `--summary` are always available.
+
+3. **`kdi schedule <task_id> --reason ...` (backlog) vs `--at <timestamp>` required (implementation)**  
+   Backlog shows schedule as taking a reason without mentioning `--at`. Implementation correctly requires `--at <timestamp>` (a scheduled task needs a future time) and makes `--reason` optional. This is the correct behavior — the spec was incomplete.

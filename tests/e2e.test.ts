@@ -353,6 +353,41 @@ describe("kdi e2e acceptance", () => {
     rmSync(tmp, { recursive: true, force: true });
   });
 
+  it("create --priority sets integer priority", () => {
+    const tmp = makeTempDir("priority");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const defaultId = runKdi(`create "default priority" --board myproj`, env);
+    const highId = runKdi(`create "high priority" --board myproj --priority 5`, env);
+
+    const defaultOutput = runKdi(`show ${defaultId}`, env);
+    const highOutput = runKdi(`show ${highId}`, env);
+
+    expect(defaultOutput).toContain("Priority: 0");
+    expect(highOutput).toContain("Priority: 5");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("create rejects invalid --priority", () => {
+    const tmp = makeTempDir("invalid-priority");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    expect(() => runKdi(`create "bad" --board myproj --priority high`, env)).toThrow();
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
   it("create --idempotency-key deduplicates", () => {
     const tmp = makeTempDir("idempotency");
     const dbPath = join(tmp, "kdi.db");
@@ -380,6 +415,95 @@ describe("kdi e2e acceptance", () => {
 
     runKdi(`boards create myproj --workdir ${repoDir}`, env);
     expect(() => runKdi(`create "empty key" --board myproj --idempotency-key ""`, env)).toThrow();
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("complete stores result, summary, and metadata", () => {
+    const tmp = makeTempDir("complete");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_COMPLETE_METADATA: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const taskId = runKdi(`create "complete me" --board myproj`, env);
+
+    runKdi(
+      `complete ${taskId} --result "build passed" --summary "green" --metadata '{"tests": 12}'`,
+      env
+    );
+
+    const output = runKdi(`show ${taskId}`, env);
+    expect(output).toContain("Status: done");
+    expect(output).toContain("Result: build passed");
+    expect(output).toContain("Summary: green");
+
+    const runsOutput = runKdi(`runs ${taskId}`, env);
+    expect(runsOutput).toContain("outcome=completed");
+    expect(runsOutput).toContain('metadata="{"tests": 12}"');
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("complete supports bulk task ids with shared result", () => {
+    const tmp = makeTempDir("complete-bulk");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const id1 = runKdi(`create "task 1" --board myproj`, env);
+    const id2 = runKdi(`create "task 2" --board myproj`, env);
+
+    runKdi(`complete ${id1} ${id2} --result "batch result"`, env);
+
+    expect(getTaskStatus(id1, env)).toBe("done");
+    expect(getTaskStatus(id2, env)).toBe("done");
+    expect(runKdi(`show ${id1}`, env)).toContain("Result: batch result");
+    expect(runKdi(`show ${id2}`, env)).toContain("Result: batch result");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("complete rejects invalid metadata", () => {
+    const tmp = makeTempDir("complete-bad-metadata");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_COMPLETE_METADATA: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const taskId = runKdi(`create "bad metadata" --board myproj`, env);
+
+    expect(() =>
+      runKdi(`complete ${taskId} --metadata not-json`, env)
+    ).toThrow();
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("review sets status to review and stores reason", () => {
+    const tmp = makeTempDir("review");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_REVIEW_STATUS: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const taskId = runKdi(`create "review me" --board myproj`, env);
+
+    runKdi(`review ${taskId} --reason "needs second look"`, env);
+
+    expect(getTaskStatus(taskId, env)).toBe("review");
+    const output = runKdi(`show ${taskId}`, env);
+    expect(output).toContain("needs second look");
+    expect(output).toContain("Review reason:");
 
     rmSync(tmp, { recursive: true, force: true });
   });

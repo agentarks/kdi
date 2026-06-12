@@ -9,9 +9,15 @@ import {
   blockTask,
   unblockTask,
   archiveTask,
+  completeTask,
+  reviewTask,
+  scheduleTask,
+  promoteScheduledTasks,
   type Task,
 } from "../src/models/task";
 import { createBoard } from "../src/models/board";
+import { getRuns, createRun } from "../src/models/taskRun";
+import { getEvents } from "../src/models/taskEvent";
 import { cleanupDb } from "./cleanupDb";
 
 const TEST_DB = "/tmp/kdi-task-test.db";
@@ -36,7 +42,7 @@ describe("task model", () => {
     expect(task.body).toBeNull();
     expect(task.assignee).toBeNull();
     expect(task.status).toBe("todo");
-    expect(task.priority).toBe("medium");
+    expect(task.priority).toBe(0);
     expect(task.workspace_kind).toBe("worktree");
     expect(task.branch).toBeNull();
     expect(task.result).toBeNull();
@@ -54,7 +60,7 @@ describe("task model", () => {
       title: "Implement feature",
       body: "Detailed description",
       assignee: "alice",
-      priority: "high",
+      priority: 5,
       workspace_kind: "scratch",
       branch: "feature-123",
     });
@@ -62,9 +68,15 @@ describe("task model", () => {
     expect(task.title).toBe("Implement feature");
     expect(task.body).toBe("Detailed description");
     expect(task.assignee).toBe("alice");
-    expect(task.priority).toBe("high");
+    expect(task.priority).toBe(5);
     expect(task.workspace_kind).toBe("scratch");
     expect(task.branch).toBe("feature-123");
+  });
+
+  it("createTask with priority sets integer value", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Urgent", priority: 10 });
+    expect(task.priority).toBe(10);
   });
 
   it("createTask with triage flag parks in triage", () => {
@@ -295,5 +307,203 @@ describe("task model", () => {
     const task = createTask({ board_id: board.id, title: "Archived task" });
     archiveTask(task.id);
     expect(() => editTask(task.id, "new body")).toThrow();
+  });
+
+  it("completeTask marks task done and stores result/summary", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Finish me" });
+
+    const completed = completeTask(task.id, {
+      result: "All checks passed",
+      summary: "Done",
+    });
+
+    expect(completed.status).toBe("done");
+    expect(completed.result).toBe("All checks passed");
+    expect(completed.summary).toBe("Done");
+  });
+
+  it("completeTask creates a completed task_runs row when no active run exists", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Finish me", assignee: "opencode" });
+
+    completeTask(task.id, {
+      result: "output",
+      summary: "summary",
+      metadata: '{"tests": 12}',
+    });
+
+    const runs = getRuns(task.id);
+    expect(runs).toHaveLength(1);
+    expect(runs[0].status).toBe("done");
+    expect(runs[0].outcome).toBe("completed");
+    expect(runs[0].summary).toBe("summary");
+    expect(runs[0].metadata).toBe('{"tests": 12}');
+  });
+
+  it("completeTask finalizes an active run", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Finish me", assignee: "opencode" });
+    const run = createRun({ task_id: task.id, status: "running", started_at: 1000 });
+
+    const completed = completeTask(task.id, {
+      result: "result",
+      summary: "final summary",
+      metadata: '{"ok": true}',
+    });
+
+    expect(completed.current_run_id).toBeNull();
+    const runs = getRuns(task.id);
+    expect(runs).toHaveLength(1);
+    expect(runs[0].id).toBe(run.id);
+    expect(runs[0].status).toBe("done");
+    expect(runs[0].outcome).toBe("completed");
+    expect(runs[0].summary).toBe("final summary");
+    expect(runs[0].metadata).toBe('{"ok": true}');
+  });
+
+  it("completeTask emits a completed event", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Finish me" });
+
+    completeTask(task.id, { result: "done" });
+
+    const events = getEvents(task.id);
+    const completed = events.find((e) => e.kind === "completed");
+    expect(completed).toBeDefined();
+  });
+
+  it("completeTask throws for archived task", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Archived" });
+    archiveTask(task.id);
+    expect(() => completeTask(task.id)).toThrow();
+  });
+
+  it("completeTask throws for non-existent task", () => {
+    expect(() => completeTask(99999)).toThrow();
+  });
+
+  it("reviewTask marks a done task as under review", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Review me" });
+    completeTask(task.id, { result: "done" });
+
+    const reviewed = reviewTask(task.id, "Needs human check");
+    expect(reviewed.status).toBe("review");
+    expect(reviewed.review_reason).toBe("Needs human check");
+    expect(reviewed.claim_lock).toBeNull();
+    expect(reviewed.claim_expires).toBeNull();
+    expect(reviewed.current_run_id).toBeNull();
+    expect(reviewed.started_at).toBeNull();
+  });
+
+  it("reviewTask marks a blocked task as under review", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Review blocked" });
+    blockTask(task.id, "Blocked originally");
+
+    const reviewed = reviewTask(task.id);
+    expect(reviewed.status).toBe("review");
+    expect(reviewed.block_reason).toBe("Blocked originally");
+    expect(reviewed.review_reason).toBeNull();
+    expect(reviewed.claim_lock).toBeNull();
+    expect(reviewed.claim_expires).toBeNull();
+    expect(reviewed.current_run_id).toBeNull();
+    expect(reviewed.started_at).toBeNull();
+  });
+
+  it("reviewTask throws for archived task", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Archived" });
+    archiveTask(task.id);
+    expect(() => reviewTask(task.id)).toThrow();
+  });
+
+  it("reviewTask throws if task is already in review", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Already reviewing" });
+    reviewTask(task.id);
+    expect(() => reviewTask(task.id)).toThrow();
+  });
+
+  it("reviewTask emits a reviewed event", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Event test" });
+
+    reviewTask(task.id, "check output");
+    const events = getEvents(task.id);
+    const reviewed = events.find((e) => e.kind === "reviewed");
+    expect(reviewed).toBeDefined();
+  });
+
+  it("scheduleTask parks task in scheduled with scheduled_at and schedule_reason", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Schedule me" });
+    const at = Math.floor(Date.now() / 1000) + 3600;
+
+    const scheduled = scheduleTask(task.id, at, "wait for deploy");
+    expect(scheduled.status).toBe("scheduled");
+    expect(scheduled.scheduled_at).toBe(at);
+    expect(scheduled.schedule_reason).toBe("wait for deploy");
+  });
+
+  it("scheduleTask rejects past timestamps", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Schedule me" });
+    const at = Math.floor(Date.now() / 1000) - 1;
+    expect(() => scheduleTask(task.id, at)).toThrow("future");
+  });
+
+  it("unblockTask on scheduled task moves to ready and records reason comment", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Scheduled" });
+    const at = Math.floor(Date.now() / 1000) + 3600;
+    scheduleTask(task.id, at, "wait");
+
+    const ready = unblockTask(task.id, "deploy landed");
+    expect(ready.status).toBe("ready");
+    expect(ready.scheduled_at).toBeNull();
+    expect(ready.schedule_reason).toBeNull();
+
+    const events = getEvents(task.id);
+    expect(events.some((e) => e.kind === "ready")).toBe(true);
+  });
+
+  it("unblockTask on blocked task still moves to todo and records comment", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Blocked" });
+    blockTask(task.id, "blocked");
+
+    const unblocked = unblockTask(task.id, "resolved");
+    expect(unblocked.status).toBe("todo");
+    expect(unblocked.block_reason).toBeNull();
+  });
+
+  it("promoteScheduledTasks promotes only tasks whose scheduled_at has passed", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const now = Math.floor(Date.now() / 1000);
+    const pastTask = createTask({ board_id: board.id, title: "Past" });
+    const futureTask = createTask({ board_id: board.id, title: "Future" });
+
+    scheduleTask(pastTask.id, now + 10, "past");
+    scheduleTask(futureTask.id, now + 3600, "future");
+
+    const promoted = promoteScheduledTasks(now + 20);
+    expect(promoted).toBe(1);
+
+    expect(showTask(pastTask.id)!.status).toBe("ready");
+    expect(showTask(futureTask.id)!.status).toBe("scheduled");
+  });
+
+  it("promoteScheduledTasks emits ready events", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const now = Math.floor(Date.now() / 1000);
+    const task = createTask({ board_id: board.id, title: "Past" });
+    scheduleTask(task.id, now + 5, "reason");
+
+    promoteScheduledTasks(now + 10);
+    const events = getEvents(task.id);
+    expect(events.some((e) => e.kind === "ready")).toBe(true);
   });
 });
