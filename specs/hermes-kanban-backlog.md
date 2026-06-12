@@ -337,9 +337,10 @@
   - `kdi create --tenant backend`
   - `kdi list --tenant backend`
 
-- [ ] **KDI-007: Created-by tracking**
-  - Add `created_by TEXT DEFAULT 'user'`
+- [x] **KDI-007: Created-by tracking**
+  - Add `created_by TEXT NOT NULL DEFAULT 'unknown'`
   - `kdi create --created-by orchestrator`
+  - Resolved conflict with backlog default `'user'`: BRD-KDI-007 specifies `"unknown"` for migration; implementation uses `"unknown"`. Backlog updated to match.
 
 - [ ] **KDI-008: Max runtime**
   - Add `max_runtime_seconds INTEGER`

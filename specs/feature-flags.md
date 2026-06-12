@@ -101,7 +101,7 @@ stateDiagram-v2
 ### `ff_tenant_namespace` — InDev
 
 - **Owner:** kdi core team
-- **BRD:** KDI-006
+- **BRD:** [BRD-KDI-006](brd-006-tenant-namespace.md)
 - **Status transitions:**
   - `Planned` → `InDev` when tenant column and CLI options are implemented.
 - **Schema note:** `tenant` is a schema-level TEXT column — this flag gates the CLI options; the schema migration always runs.
@@ -115,7 +115,7 @@ stateDiagram-v2
 ### `ff_skills_array` — InDev
 
 - **Owner:** kdi core team
-- **BRD:** KDI-009
+- **BRD:** [BRD-KDI-009](brd-kdi-009-skills-array.md)
 - **Status transitions:**
   - `Planned` → `InDev` when skills array field and CLI option are implemented.
 - **Schema note:** `skills` is a schema-level TEXT column (JSON array) — this flag gates the CLI option and dispatcher behavior; the schema migration always runs.
@@ -129,10 +129,11 @@ stateDiagram-v2
 ### `ff_max_runtime` — InDev
 
 - **Owner:** kdi core team
-- **BRD:** KDI-008
+- **BRD:** [BRD-KDI-008](brd-kdi-008-max-runtime.md)
 - **Status transitions:**
   - `Planned` → `InDev` when `max_runtime_seconds` column, `create --max-runtime`, and dispatcher enforcement are implemented.
-- **Activation criteria:**
+- **Schema note:** `max_runtime_seconds` is a schema-level INTEGER column on `tasks` and `task_runs` — this flag gates the CLI option and dispatcher behavior; the schema migrations always run.
+- **Activation criteria:
   - `create --max-runtime <duration>` stores `max_runtime_seconds` on the task.
   - Dispatcher passes the cap as the harness timeout.
   - Timed-out runs are recorded with `outcome=timed_out` and the task is blocked.
