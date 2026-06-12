@@ -697,6 +697,41 @@ describe("kdi e2e acceptance", () => {
     rmSync(tmp, { recursive: true, force: true });
   });
 
+  it("list --tenant composes with --assignee", () => {
+    const tmp = makeTempDir("tenant-assignee");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_TENANT_NAMESPACE: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    runKdi(`create "backend alice" --board myproj --tenant backend --assignee alice`, env);
+    runKdi(`create "backend bob" --board myproj --tenant backend --assignee bob`, env);
+    runKdi(`create "frontend alice" --board myproj --tenant frontend --assignee alice`, env);
+
+    const output = runKdi(`list --board myproj --tenant backend --assignee alice`, env);
+    expect(output).toContain("backend alice");
+    expect(output).not.toContain("backend bob");
+    expect(output).not.toContain("frontend alice");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("list --tenant rejects empty tenant", () => {
+    const tmp = makeTempDir("tenant-list-empty");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_TENANT_NAMESPACE: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    expect(() => runKdi(`list --board myproj --tenant ""`, env)).toThrow();
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
   it("create --tenant rejected when flag disabled", () => {
     const tmp = makeTempDir("tenant-disabled");
     const dbPath = join(tmp, "kdi.db");

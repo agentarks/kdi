@@ -212,9 +212,10 @@ export const listTasksCommand = new Command("list")
   .description("List tasks")
   .requiredOption("--board <slug>", "Board slug")
   .option("--status <status>", "Filter by status")
+  .option("--assignee <profile>", "Filter by assignee")
   .option("--tenant <name>", "Filter by tenant namespace")
   .option("--created-by <actor>", "Filter by creator")
-  .action((options: { board: string; status?: string; tenant?: string; createdBy?: string }) => {
+  .action((options: { board: string; status?: string; assignee?: string; tenant?: string; createdBy?: string }) => {
     try {
       if (options.status && !isValidStatus(options.status)) {
         throw new Error(`Invalid status "${options.status}". Valid: ${VALID_STATUSES.join(", ")}`);
@@ -231,7 +232,7 @@ export const listTasksCommand = new Command("list")
         throw new Error("Created-by tracking is not enabled.");
       }
       const boardId = getBoardIdBySlug(options.board);
-      const tasks = listTasks({ board_id: boardId, status: options.status as any, tenant: options.tenant, created_by: options.createdBy });
+      const tasks = listTasks({ board_id: boardId, status: options.status as any, assignee: options.assignee, tenant: options.tenant, created_by: options.createdBy });
       if (tasks.length === 0) {
         console.log("No tasks.");
         return;
