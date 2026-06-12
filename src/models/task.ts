@@ -4,7 +4,7 @@ import { createRun, finishRun } from "./taskRun";
 
 export const TASK_COLUMNS =
   "id, board_id, title, body, assignee, status, priority, " +
-  "workspace_kind, branch, result, summary, block_reason, schedule_reason, " +
+  "workspace_kind, branch, result, summary, block_reason, schedule_reason, review_reason, " +
   "created_at, updated_at, started_at, archived_at, current_run_id, " +
   "claim_lock, claim_expires, last_heartbeat_at, idempotency_key, scheduled_at";
 
@@ -22,6 +22,7 @@ export interface Task {
   summary: string | null;
   block_reason: string | null;
   schedule_reason: string | null;
+  review_reason: string | null;
   scheduled_at: number | null;
   created_at: number;
   updated_at: number;
@@ -47,6 +48,7 @@ export interface CreateTaskInput {
   triage?: boolean;
   initialStatus?: InitialTaskStatus;
   idempotency_key?: string;
+  scheduled_at?: number;
 }
 
 export interface CompleteTaskInput {
@@ -81,24 +83,49 @@ export function createTask(input: CreateTaskInput): Task {
   } else {
     status = "todo";
   }
-  const result = db.run(
-    `INSERT INTO tasks (board_id, title, body, assignee, status, priority, workspace_kind, branch, idempotency_key)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      input.board_id,
-      input.title,
-      input.body ?? null,
-      input.assignee ?? null,
-      status,
-      input.priority ?? 0,
-      input.workspace_kind ?? "worktree",
-      input.branch ?? null,
-      input.idempotency_key ?? null,
-    ]
-  );
+
+  if (status === "scheduled" && input.scheduled_at === undefined) {
+    throw new Error("initial status 'scheduled' requires scheduled_at to be set");
+  }
+
+  const insert = db.transaction(() => {
+    const result = db.run(
+      `INSERT INTO tasks (board_id, title, body, assignee, status, priority, workspace_kind, branch, idempotency_key, scheduled_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        input.board_id,
+        input.title,
+        input.body ?? null,
+        input.assignee ?? null,
+        status,
+        input.priority ?? 0,
+        input.workspace_kind ?? "worktree",
+        input.branch ?? null,
+        input.idempotency_key ?? null,
+        input.scheduled_at ?? null,
+      ]
+    );
+    return Number(result.lastInsertRowid);
+  });
+
+  let id: number;
+  try {
+    id = insert();
+  } catch (err: any) {
+    // Race: another insert won the unique index on (board_id, idempotency_key)
+    if (input.idempotency_key && /UNIQUE constraint failed/i.test(err.message)) {
+      const existing = db.query(
+        `SELECT ${TASK_COLUMNS} FROM tasks WHERE board_id = ? AND idempotency_key = ? AND archived_at IS NULL`
+      ).get(input.board_id, input.idempotency_key) as Task | undefined;
+      if (existing) {
+        return existing;
+      }
+    }
+    throw err;
+  }
 
   const task = {
-    id: Number(result.lastInsertRowid),
+    id,
     board_id: input.board_id,
     title: input.title,
     body: input.body ?? null,
@@ -111,7 +138,8 @@ export function createTask(input: CreateTaskInput): Task {
     summary: null,
     block_reason: null,
     schedule_reason: null,
-    scheduled_at: null,
+    review_reason: null,
+    scheduled_at: input.scheduled_at ?? null,
     created_at: Math.floor(Date.now() / 1000),
     updated_at: Math.floor(Date.now() / 1000),
     started_at: null,
@@ -305,7 +333,7 @@ export function promoteScheduledTasks(now: number): number {
 export function reviewTask(id: number, reason?: string): Task {
   const db = getDb();
   const result = db.run(
-    `UPDATE tasks SET status = 'review', block_reason = ?, updated_at = unixepoch() WHERE id = ? AND status != 'review' AND status != 'archived' AND archived_at IS NULL`,
+    `UPDATE tasks SET status = 'review', review_reason = ?, claim_lock = NULL, claim_expires = NULL, current_run_id = NULL, started_at = NULL, updated_at = unixepoch() WHERE id = ? AND status != 'review' AND status != 'archived' AND archived_at IS NULL`,
     [reason ?? null, id]
   );
 
@@ -327,9 +355,12 @@ export function completeTask(id: number, input: CompleteTaskInput = {}): Task {
   if (!task) {
     throw new Error(`Task ${id} not found or already archived`);
   }
+  if (task.status === "archived") {
+    throw new Error(`Task ${id} is archived and cannot be completed`);
+  }
 
   db.run(
-    `UPDATE tasks SET status = 'done', result = ?, summary = ?, claim_lock = NULL, claim_expires = NULL, updated_at = unixepoch() WHERE id = ? AND archived_at IS NULL`,
+    `UPDATE tasks SET status = 'done', result = ?, summary = ?, block_reason = NULL, schedule_reason = NULL, scheduled_at = NULL, claim_lock = NULL, claim_expires = NULL, updated_at = unixepoch() WHERE id = ? AND archived_at IS NULL`,
     [input.result ?? null, input.summary ?? null, id]
   );
 
@@ -353,7 +384,15 @@ export function completeTask(id: number, input: CompleteTaskInput = {}): Task {
   if (!updated) {
     throw new Error(`Task ${id} not found after completion`);
   }
-  addEvent(updated.id, "completed", input.metadata ? { metadata: input.metadata } : {}, runId ?? undefined);
+  let eventPayload: Record<string, any> | undefined;
+  if (input.metadata) {
+    try {
+      eventPayload = { metadata: JSON.parse(input.metadata) };
+    } catch {
+      eventPayload = { metadata: input.metadata };
+    }
+  }
+  addEvent(updated.id, "completed", eventPayload, runId ?? undefined);
   return updated;
 }
 

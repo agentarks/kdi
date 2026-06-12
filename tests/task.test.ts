@@ -391,7 +391,11 @@ describe("task model", () => {
 
     const reviewed = reviewTask(task.id, "Needs human check");
     expect(reviewed.status).toBe("review");
-    expect(reviewed.block_reason).toBe("Needs human check");
+    expect(reviewed.review_reason).toBe("Needs human check");
+    expect(reviewed.claim_lock).toBeNull();
+    expect(reviewed.claim_expires).toBeNull();
+    expect(reviewed.current_run_id).toBeNull();
+    expect(reviewed.started_at).toBeNull();
   });
 
   it("reviewTask marks a blocked task as under review", () => {
@@ -401,7 +405,12 @@ describe("task model", () => {
 
     const reviewed = reviewTask(task.id);
     expect(reviewed.status).toBe("review");
-    expect(reviewed.block_reason).toBeNull();
+    expect(reviewed.block_reason).toBe("Blocked originally");
+    expect(reviewed.review_reason).toBeNull();
+    expect(reviewed.claim_lock).toBeNull();
+    expect(reviewed.claim_expires).toBeNull();
+    expect(reviewed.current_run_id).toBeNull();
+    expect(reviewed.started_at).toBeNull();
   });
 
   it("reviewTask throws for archived task", () => {

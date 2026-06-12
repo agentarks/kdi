@@ -20,6 +20,7 @@ import { getRuns } from "../models/taskRun";
 import { getEvents, tailEvents, getRecentEvents, getEventsAfter } from "../models/taskEvent";
 import { atomicClaim, reclaimTask, heartbeat } from "../models/claim";
 import { getTaskLogPath } from "../observability";
+import { isEnabled, FF_SCHEDULED_STATUS, FF_REVIEW_STATUS, FF_COMPLETE_METADATA } from "../flags";
 
 const VALID_STATUSES = ["triage", "todo", "scheduled", "ready", "running", "done", "blocked", "review"] as const;
 type ValidStatus = typeof VALID_STATUSES[number];
@@ -44,6 +45,17 @@ function parseTaskId(raw: string): number {
   return id;
 }
 
+function parseTimestamp(raw: string): number {
+  if (/^\d+$/.test(raw)) {
+    return parseInt(raw, 10);
+  }
+  const date = new Date(raw);
+  if (isNaN(date.getTime())) {
+    throw new Error(`Invalid timestamp: ${raw}`);
+  }
+  return Math.floor(date.getTime() / 1000);
+}
+
 export const createTaskCommand = new Command("create")
   .description("Create a new task")
   .argument("<title>", "Task title")
@@ -52,9 +64,10 @@ export const createTaskCommand = new Command("create")
   .option("--body <text>", "Task body")
   .option("--triage", "Park in triage status instead of todo")
   .option("--initial-status <status>", "Initial task status (default: todo)")
+  .option("--at <timestamp>", "ISO 8601 or Unix timestamp for scheduled tasks (required when --initial-status=scheduled)")
   .option("--priority <n>", "Integer priority, higher is more urgent (default: 0)")
   .option("--idempotency-key <key>", "Dedup key; returns existing non-archived task id if matched")
-  .action((title: string, options: { board: string; assignee?: string; body?: string; triage?: boolean; initialStatus?: string; priority?: string; idempotencyKey?: string }) => {
+  .action((title: string, options: { board: string; assignee?: string; body?: string; triage?: boolean; initialStatus?: string; at?: string; priority?: string; idempotencyKey?: string }) => {
     try {
       if (!title || title.trim() === "") {
         throw new Error("Title is required.");
@@ -85,6 +98,14 @@ export const createTaskCommand = new Command("create")
         initialStatus = options.initialStatus;
       }
 
+      let scheduledAt: number | undefined;
+      if (options.at) {
+        scheduledAt = parseTimestamp(options.at);
+      }
+      if (initialStatus === "scheduled" && scheduledAt === undefined) {
+        throw new Error("--initial-status scheduled requires --at");
+      }
+
       const boardId = getBoardIdBySlug(options.board);
       const task = createTask({
         board_id: boardId,
@@ -95,6 +116,7 @@ export const createTaskCommand = new Command("create")
         initialStatus,
         priority,
         idempotency_key: options.idempotencyKey,
+        scheduled_at: scheduledAt,
       });
       console.log(task.id);
     } catch (err: any) {
@@ -148,6 +170,7 @@ export const showTaskCommand = new Command("show")
       if (task.summary) console.log(`Summary: ${task.summary}`);
       if (task.block_reason) console.log(`Block reason: ${task.block_reason}`);
       if (task.scheduled_at) console.log(`Scheduled at: ${new Date(task.scheduled_at * 1000).toISOString()}`);
+      if (task.review_reason) console.log(`Review reason: ${task.review_reason}`);
       if (task.schedule_reason) console.log(`Schedule reason: ${task.schedule_reason}`);
 
       const comments = getComments(id);
@@ -237,6 +260,9 @@ export const unblockTaskCommand = new Command("unblock")
   .option("--reason <text>", "Optional reason recorded as comment")
   .action((taskId: string, options: { reason?: string }) => {
     try {
+      if (!isEnabled(FF_SCHEDULED_STATUS)) {
+        throw new Error("Scheduled status feature is not enabled.");
+      }
       const id = parseTaskId(taskId);
       const task = unblockTask(id, options.reason);
       if (task.status === "ready") {
@@ -250,17 +276,6 @@ export const unblockTaskCommand = new Command("unblock")
     }
   });
 
-function parseTimestamp(raw: string): number {
-  if (/^\d+$/.test(raw)) {
-    return parseInt(raw, 10);
-  }
-  const date = new Date(raw);
-  if (isNaN(date.getTime())) {
-    throw new Error(`Invalid timestamp: ${raw}`);
-  }
-  return Math.floor(date.getTime() / 1000);
-}
-
 export const scheduleTaskCommand = new Command("schedule")
   .description("Schedule a task to become ready at a future time")
   .argument("<task_id>", "Task ID")
@@ -268,6 +283,9 @@ export const scheduleTaskCommand = new Command("schedule")
   .option("--reason <text>", "Reason for scheduling")
   .action((taskId: string, options: { at: string; reason?: string }) => {
     try {
+      if (!isEnabled(FF_SCHEDULED_STATUS)) {
+        throw new Error("Scheduled status feature is not enabled.");
+      }
       const id = parseTaskId(taskId);
       const scheduledAt = parseTimestamp(options.at);
       const now = Math.floor(Date.now() / 1000);
@@ -288,6 +306,9 @@ export const reviewTaskCommand = new Command("review")
   .option("--reason <text>", "Reason or note for review")
   .action((taskId: string, options: { reason?: string }) => {
     try {
+      if (!isEnabled(FF_REVIEW_STATUS)) {
+        throw new Error("Review status feature is not enabled.");
+      }
       const id = parseTaskId(taskId);
       const task = reviewTask(id, options.reason);
       console.log(`Marked task ${task.id} as under review.`);
@@ -366,6 +387,9 @@ export const completeTaskCommand = new Command("complete")
       }
 
       if (options.metadata !== undefined) {
+        if (!isEnabled(FF_COMPLETE_METADATA)) {
+          throw new Error("Complete --metadata is not enabled.");
+        }
         try {
           JSON.parse(options.metadata);
         } catch {

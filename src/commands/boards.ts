@@ -57,13 +57,15 @@ boardsCommand
       console.log(`Base ref: ${board.base_ref}`);
       console.log(`Created: ${new Date(board.created_at * 1000).toISOString()}`);
       console.log("Tasks:");
-      console.log(`  triage:   ${board.taskCounts.triage}`);
-      console.log(`  todo:     ${board.taskCounts.todo}`);
-      console.log(`  ready:    ${board.taskCounts.ready}`);
-      console.log(`  running:  ${board.taskCounts.running}`);
-      console.log(`  done:     ${board.taskCounts.done}`);
-      console.log(`  blocked:  ${board.taskCounts.blocked}`);
-      console.log(`  archived: ${board.taskCounts.archived}`);
+      console.log(`  triage:     ${board.taskCounts.triage}`);
+      console.log(`  todo:       ${board.taskCounts.todo}`);
+      console.log(`  ready:      ${board.taskCounts.ready}`);
+      console.log(`  running:    ${board.taskCounts.running}`);
+      console.log(`  done:       ${board.taskCounts.done}`);
+      console.log(`  blocked:    ${board.taskCounts.blocked}`);
+      console.log(`  review:     ${board.taskCounts.review}`);
+      console.log(`  scheduled:  ${board.taskCounts.scheduled}`);
+      console.log(`  archived:   ${board.taskCounts.archived}`);
     } catch (err: any) {
       console.error(`Error: ${err.message}`);
       process.exit(1);

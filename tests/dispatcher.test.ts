@@ -98,7 +98,7 @@ describe("dispatcher", () => {
       removeWorktree: mockRemoveWorktree,
     });
 
-    expect(result.processed).toBe(1);
+    expect(result.processed).toBe(0);
 
     const updated = showTask(task.id);
     expect(updated!.status).toBe("blocked");
@@ -220,7 +220,7 @@ describe("dispatcher", () => {
       removeWorktree: mockRemoveWorktree,
     });
 
-    expect(result.processed).toBe(1);
+    expect(result.processed).toBe(0);
 
     const updated = showTask(task.id);
     expect(updated!.status).toBe("blocked");
@@ -308,6 +308,34 @@ describe("dispatcher", () => {
     const calls = mockHarness.mock.calls as unknown as [string, string][];
     expect(calls.length).toBeGreaterThan(0);
     expect(calls[0][0]).toContain(`wt/branchagent/${task.id}`);
+  });
+
+  it("processes ready tasks in priority descending order", async () => {
+    const board = createBoard("prio-board", "/tmp/prio-board");
+    const low = createTask({ board_id: board.id, title: "Low", assignee: "opencode", priority: 1 });
+    const high = createTask({ board_id: board.id, title: "High", assignee: "opencode", priority: 5 });
+    const med = createTask({ board_id: board.id, title: "Med", assignee: "opencode", priority: 3 });
+    promoteTask(low.id);
+    promoteTask(high.id);
+    promoteTask(med.id);
+
+    const mockHarness = mock(() => Promise.resolve({ stdout: "ok", stderr: "", exitCode: 0 }));
+    const mockCreateWorktree = mock(() => "/tmp/mock-worktree");
+    const mockRemoveWorktree = mock(() => ({ worktreeRemoved: true, branchDeleted: true, found: true }));
+
+    await tick({
+      spawnHarness: mockHarness,
+      createWorktree: mockCreateWorktree,
+      removeWorktree: mockRemoveWorktree,
+    });
+
+    const calls = mockCreateWorktree.mock.calls as unknown as [string, string, string, string][];
+    expect(calls.length).toBe(3);
+
+    // createWorktree is called with (repoDir, profile, taskId, baseRef)
+    expect(Number(calls[0][2])).toBe(high.id);
+    expect(Number(calls[1][2])).toBe(med.id);
+    expect(Number(calls[2][2])).toBe(low.id);
   });
 
   it("promotes scheduled task to ready and claims it in same tick", async () => {

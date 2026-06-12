@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   summary TEXT,
   block_reason TEXT,
   schedule_reason TEXT,
+  review_reason TEXT,
   scheduled_at INTEGER,
   created_at INTEGER NOT NULL DEFAULT (unixepoch()),
   updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
@@ -89,6 +90,7 @@ CREATE TABLE IF NOT EXISTS task_events (
 CREATE INDEX IF NOT EXISTS idx_tasks_board_status ON tasks(board_id, status);
 CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks(assignee);
 CREATE INDEX IF NOT EXISTS idx_tasks_scheduled_at ON tasks(status, scheduled_at);
+CREATE INDEX IF NOT EXISTS idx_tasks_priority ON tasks(priority);
 CREATE INDEX IF NOT EXISTS idx_runs_task ON task_runs(task_id, started_at);
 CREATE INDEX IF NOT EXISTS idx_runs_status ON task_runs(status);
 CREATE INDEX IF NOT EXISTS idx_events_task ON task_events(task_id, created_at);
@@ -214,6 +216,11 @@ export function initDb(path?: string): Database {
     if (!hasScheduleReason) {
       dbInstance.exec("ALTER TABLE tasks ADD COLUMN schedule_reason TEXT");
     }
+    // Migrate: add review_reason if missing
+    const hasReviewReason = tableInfo.some((col) => col.name === "review_reason");
+    if (!hasReviewReason) {
+      dbInstance.exec("ALTER TABLE tasks ADD COLUMN review_reason TEXT");
+    }
 
     // Migrate: add status column to task_runs if missing (for existing DBs)
     const runsTableInfo = dbInstance.query("PRAGMA table_info(task_runs)").all() as any[];
@@ -241,49 +248,51 @@ export function initDb(path?: string): Database {
     const hasReview = createSql?.sql?.includes("'review'");
     const hasScheduledInTable = createSql?.sql?.includes("'scheduled'");
     if (!hasTriage || !hasReview || !hasScheduledInTable) {
-      dbInstance.exec(`
-        BEGIN TRANSACTION;
-        CREATE TABLE tasks_new (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          board_id INTEGER NOT NULL REFERENCES boards(id),
-          title TEXT NOT NULL,
-          body TEXT,
-          assignee TEXT,
-          status TEXT NOT NULL DEFAULT 'todo' CHECK (status IN ('triage', 'todo', 'scheduled', 'ready', 'running', 'done', 'blocked', 'review', 'archived')),
-          priority INTEGER DEFAULT 0,
-          workspace_kind TEXT DEFAULT 'worktree' CHECK (workspace_kind IN ('dir', 'worktree', 'scratch')),
-          branch TEXT,
-          result TEXT,
-          summary TEXT,
-          block_reason TEXT,
-          schedule_reason TEXT,
-          scheduled_at INTEGER,
-          created_at INTEGER NOT NULL DEFAULT (unixepoch()),
-          updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
-          started_at INTEGER,
-          archived_at INTEGER,
-          current_run_id INTEGER,
-          claim_lock TEXT,
-          claim_expires INTEGER,
-          last_heartbeat_at INTEGER,
-          idempotency_key TEXT
-        );
-        INSERT INTO tasks_new
-          (id, board_id, title, body, assignee, status, priority, workspace_kind, branch, result, summary, block_reason, schedule_reason, scheduled_at, created_at, updated_at, started_at, archived_at, current_run_id, claim_lock, claim_expires, last_heartbeat_at, idempotency_key)
-        SELECT
-          id, board_id, title, body, assignee, status,
-          CASE priority WHEN 'low' THEN 1 WHEN 'medium' THEN 2 WHEN 'high' THEN 3 ELSE COALESCE(priority, 0) END,
-          workspace_kind, branch, result, summary, block_reason, schedule_reason, scheduled_at, created_at, updated_at, started_at, archived_at, current_run_id, claim_lock, claim_expires, last_heartbeat_at, idempotency_key
-        FROM tasks;
-        DROP TABLE tasks;
-        ALTER TABLE tasks_new RENAME TO tasks;
-        CREATE INDEX IF NOT EXISTS idx_tasks_board_status ON tasks(board_id, status);
-        CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks(assignee);
-        CREATE INDEX IF NOT EXISTS idx_tasks_idempotency ON tasks(board_id, idempotency_key, archived_at);
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_active_idempotency ON tasks(board_id, idempotency_key) WHERE archived_at IS NULL;
-        CREATE INDEX IF NOT EXISTS idx_tasks_scheduled_at ON tasks(status, scheduled_at);
-        COMMIT;
-      `);
+      const migrate = dbInstance.transaction(() => {
+        dbInstance!.exec(`
+          CREATE TABLE tasks_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            board_id INTEGER NOT NULL REFERENCES boards(id),
+            title TEXT NOT NULL,
+            body TEXT,
+            assignee TEXT,
+            status TEXT NOT NULL DEFAULT 'todo' CHECK (status IN ('triage', 'todo', 'scheduled', 'ready', 'running', 'done', 'blocked', 'review', 'archived')),
+            priority INTEGER DEFAULT 0,
+            workspace_kind TEXT DEFAULT 'worktree' CHECK (workspace_kind IN ('dir', 'worktree', 'scratch')),
+            branch TEXT,
+            result TEXT,
+            summary TEXT,
+            block_reason TEXT,
+            schedule_reason TEXT,
+            review_reason TEXT,
+            scheduled_at INTEGER,
+            created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+            updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
+            started_at INTEGER,
+            archived_at INTEGER,
+            current_run_id INTEGER,
+            claim_lock TEXT,
+            claim_expires INTEGER,
+            last_heartbeat_at INTEGER,
+            idempotency_key TEXT
+          );
+          INSERT INTO tasks_new
+            (id, board_id, title, body, assignee, status, priority, workspace_kind, branch, result, summary, block_reason, schedule_reason, review_reason, scheduled_at, created_at, updated_at, started_at, archived_at, current_run_id, claim_lock, claim_expires, last_heartbeat_at, idempotency_key)
+          SELECT
+            id, board_id, title, body, assignee, status,
+            CASE priority WHEN 'low' THEN 1 WHEN 'medium' THEN 2 WHEN 'high' THEN 3 ELSE COALESCE(priority, 0) END,
+            workspace_kind, branch, result, summary, block_reason, schedule_reason, review_reason, scheduled_at, created_at, updated_at, started_at, archived_at, current_run_id, claim_lock, claim_expires, last_heartbeat_at, idempotency_key
+          FROM tasks;
+          DROP TABLE tasks;
+          ALTER TABLE tasks_new RENAME TO tasks;
+          CREATE INDEX IF NOT EXISTS idx_tasks_board_status ON tasks(board_id, status);
+          CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks(assignee);
+          CREATE INDEX IF NOT EXISTS idx_tasks_idempotency ON tasks(board_id, idempotency_key, archived_at);
+          CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_active_idempotency ON tasks(board_id, idempotency_key) WHERE archived_at IS NULL;
+          CREATE INDEX IF NOT EXISTS idx_tasks_scheduled_at ON tasks(status, scheduled_at);
+        `);
+      });
+      migrate();
     }
 
     // Migrate: convert priority from enum (low/medium/high) to INTEGER, default 0
@@ -297,50 +306,52 @@ export function initDb(path?: string): Database {
       ).get() !== null;
     const hasScheduledInTasks = tasksSql?.sql?.includes("'scheduled'");
     if (!hasIntegerPriority || hasEnumValues || !hasScheduledInTasks) {
-      dbInstance.exec(`
-        BEGIN TRANSACTION;
-        CREATE TABLE tasks_new (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          board_id INTEGER NOT NULL REFERENCES boards(id),
-          title TEXT NOT NULL,
-          body TEXT,
-          assignee TEXT,
-          status TEXT NOT NULL DEFAULT 'todo' CHECK (status IN ('triage', 'todo', 'scheduled', 'ready', 'running', 'done', 'blocked', 'review', 'archived')),
-          priority INTEGER DEFAULT 0,
-          workspace_kind TEXT DEFAULT 'worktree' CHECK (workspace_kind IN ('dir', 'worktree', 'scratch')),
-          branch TEXT,
-          result TEXT,
-          summary TEXT,
-          block_reason TEXT,
-          schedule_reason TEXT,
-          scheduled_at INTEGER,
-          created_at INTEGER NOT NULL DEFAULT (unixepoch()),
-          updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
-          started_at INTEGER,
-          archived_at INTEGER,
-          current_run_id INTEGER,
-          claim_lock TEXT,
-          claim_expires INTEGER,
-          last_heartbeat_at INTEGER,
-          idempotency_key TEXT
-        );
-        INSERT INTO tasks_new
-          (id, board_id, title, body, assignee, status, priority, workspace_kind, branch, result, summary, block_reason, schedule_reason, scheduled_at, created_at, updated_at, started_at, archived_at, current_run_id, claim_lock, claim_expires, last_heartbeat_at, idempotency_key)
-        SELECT
-          id, board_id, title, body, assignee, status,
-          CASE priority WHEN 'low' THEN 1 WHEN 'medium' THEN 2 WHEN 'high' THEN 3 ELSE COALESCE(priority, 0) END,
-          workspace_kind, branch, result, summary, block_reason, schedule_reason, scheduled_at, created_at, updated_at, started_at, archived_at, current_run_id, claim_lock, claim_expires, last_heartbeat_at, idempotency_key
-        FROM tasks;
-        DROP TABLE tasks;
-        ALTER TABLE tasks_new RENAME TO tasks;
-        CREATE INDEX IF NOT EXISTS idx_tasks_board_status ON tasks(board_id, status);
-        CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks(assignee);
-        CREATE INDEX IF NOT EXISTS idx_tasks_priority ON tasks(priority);
-        CREATE INDEX IF NOT EXISTS idx_tasks_idempotency ON tasks(board_id, idempotency_key, archived_at);
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_active_idempotency ON tasks(board_id, idempotency_key) WHERE archived_at IS NULL;
-        CREATE INDEX IF NOT EXISTS idx_tasks_scheduled_at ON tasks(status, scheduled_at);
-        COMMIT;
-      `);
+      const migrate = dbInstance.transaction(() => {
+        dbInstance!.exec(`
+          CREATE TABLE tasks_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            board_id INTEGER NOT NULL REFERENCES boards(id),
+            title TEXT NOT NULL,
+            body TEXT,
+            assignee TEXT,
+            status TEXT NOT NULL DEFAULT 'todo' CHECK (status IN ('triage', 'todo', 'scheduled', 'ready', 'running', 'done', 'blocked', 'review', 'archived')),
+            priority INTEGER DEFAULT 0,
+            workspace_kind TEXT DEFAULT 'worktree' CHECK (workspace_kind IN ('dir', 'worktree', 'scratch')),
+            branch TEXT,
+            result TEXT,
+            summary TEXT,
+            block_reason TEXT,
+            schedule_reason TEXT,
+            review_reason TEXT,
+            scheduled_at INTEGER,
+            created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+            updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
+            started_at INTEGER,
+            archived_at INTEGER,
+            current_run_id INTEGER,
+            claim_lock TEXT,
+            claim_expires INTEGER,
+            last_heartbeat_at INTEGER,
+            idempotency_key TEXT
+          );
+          INSERT INTO tasks_new
+            (id, board_id, title, body, assignee, status, priority, workspace_kind, branch, result, summary, block_reason, schedule_reason, review_reason, scheduled_at, created_at, updated_at, started_at, archived_at, current_run_id, claim_lock, claim_expires, last_heartbeat_at, idempotency_key)
+          SELECT
+            id, board_id, title, body, assignee, status,
+            CASE priority WHEN 'low' THEN 1 WHEN 'medium' THEN 2 WHEN 'high' THEN 3 ELSE COALESCE(priority, 0) END,
+            workspace_kind, branch, result, summary, block_reason, schedule_reason, review_reason, scheduled_at, created_at, updated_at, started_at, archived_at, current_run_id, claim_lock, claim_expires, last_heartbeat_at, idempotency_key
+          FROM tasks;
+          DROP TABLE tasks;
+          ALTER TABLE tasks_new RENAME TO tasks;
+          CREATE INDEX IF NOT EXISTS idx_tasks_board_status ON tasks(board_id, status);
+          CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks(assignee);
+          CREATE INDEX IF NOT EXISTS idx_tasks_priority ON tasks(priority);
+          CREATE INDEX IF NOT EXISTS idx_tasks_idempotency ON tasks(board_id, idempotency_key, archived_at);
+          CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_active_idempotency ON tasks(board_id, idempotency_key) WHERE archived_at IS NULL;
+          CREATE INDEX IF NOT EXISTS idx_tasks_scheduled_at ON tasks(status, scheduled_at);
+        `);
+      });
+      migrate();
     } else {
       dbInstance.exec("CREATE INDEX IF NOT EXISTS idx_tasks_priority ON tasks(priority)");
     }

@@ -487,6 +487,27 @@ describe("kdi e2e acceptance", () => {
     rmSync(tmp, { recursive: true, force: true });
   });
 
+  it("review sets status to review and stores reason", () => {
+    const tmp = makeTempDir("review");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_REVIEW_STATUS: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const taskId = runKdi(`create "review me" --board myproj`, env);
+
+    runKdi(`review ${taskId} --reason "needs second look"`, env);
+
+    expect(getTaskStatus(taskId, env)).toBe("review");
+    const output = runKdi(`show ${taskId}`, env);
+    expect(output).toContain("needs second look");
+    expect(output).toContain("Review reason:");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
   it("kdi --version returns semantic version", () => {
     const tmp = makeTempDir("version");
     const dbPath = join(tmp, "kdi.db");

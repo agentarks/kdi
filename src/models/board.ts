@@ -17,6 +17,8 @@ export interface BoardWithTaskCounts extends Board {
     running: number;
     done: number;
     blocked: number;
+    review: number;
+    scheduled: number;
     archived: number;
   };
 }
@@ -69,6 +71,8 @@ export function showBoard(slug: string, includeArchived: boolean = false): Board
       SUM(CASE WHEN status = 'running' AND archived_at IS NULL THEN 1 ELSE 0 END) as running,
       SUM(CASE WHEN status = 'done' AND archived_at IS NULL THEN 1 ELSE 0 END) as done,
       SUM(CASE WHEN status = 'blocked' AND archived_at IS NULL THEN 1 ELSE 0 END) as blocked,
+      SUM(CASE WHEN status = 'review' AND archived_at IS NULL THEN 1 ELSE 0 END) as review,
+      SUM(CASE WHEN status = 'scheduled' AND archived_at IS NULL THEN 1 ELSE 0 END) as scheduled,
       SUM(CASE WHEN archived_at IS NOT NULL THEN 1 ELSE 0 END) as archived
     FROM tasks 
     WHERE board_id = ?`
@@ -79,6 +83,8 @@ export function showBoard(slug: string, includeArchived: boolean = false): Board
     running: number | null;
     done: number | null;
     blocked: number | null;
+    review: number | null;
+    scheduled: number | null;
     archived: number | null;
   };
 
@@ -91,6 +97,8 @@ export function showBoard(slug: string, includeArchived: boolean = false): Board
       running: counts.running ?? 0,
       done: counts.done ?? 0,
       blocked: counts.blocked ?? 0,
+      review: counts.review ?? 0,
+      scheduled: counts.scheduled ?? 0,
       archived: counts.archived ?? 0,
     },
   };

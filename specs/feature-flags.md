@@ -27,6 +27,7 @@ stateDiagram-v2
 
 | Flag | Env Var | Scope | Status | Default | Since | Description |
 |---|---|---|---|---|---|---|
+| `ff_complete_metadata` | `FF_COMPLETE_METADATA` | CLI / complete | Planned | `false` | KDI-005 | Gate the complete --metadata payload path. |
 | `ff_kanban_dispatch` | `FF_ENABLE_KANBAN_DISPATCH` | CLI / dispatcher | Planned | `false` | — | Background dispatcher loop that polls ready tasks and spawns harness profiles. |
 | `ff_scheduled_status` | `FF_SCHEDULED_STATUS` | CLI / task lifecycle | InDev | `false` | KDI-002 | Scheduled status, schedule/unblock commands, and scheduled_at field. |
 | `ff_review_status` | `FF_REVIEW_STATUS` | CLI / task lifecycle | InDev | `false` | KDI-002 | Review status and review command. |

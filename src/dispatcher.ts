@@ -307,6 +307,7 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
 
       if (exitCode === 0) {
         finishTask(task.id, stdout, runId);
+        processed++;
       } else if (exitCode === 75) {
         // EX_TEMPFAIL — requeue to ready without counting as failure
         requeueTask(task.id, `Rate-limited (EX_TEMPFAIL), requeued to ready: ${stderr || stdout}`, runId);
@@ -315,12 +316,10 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
         failTask(task.id, stdout, `Harness failed (exit ${exitCode}): ${stderr || "unknown error"}`, runId);
       }
 
-      processed++;
       spawned++;
     } catch (err: any) {
       recordAgentError(profile.agent ?? profile.name);
       failTask(task.id, "", `Harness execution failed: ${err.message}`, runId);
-      processed++;
       spawned++;
     } finally {
       try {
