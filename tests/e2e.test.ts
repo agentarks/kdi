@@ -637,4 +637,106 @@ describe("kdi e2e acceptance", () => {
     20000
   );
 
+
+  it("create --tenant stores tenant when flag enabled", () => {
+    const tmp = makeTempDir("tenant-create");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_TENANT_NAMESPACE: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const taskId = runKdi(`create "backend task" --board myproj --tenant backend`, env);
+
+    const output = runKdi(`show ${taskId}`, env);
+    expect(output).toContain("Tenant: backend");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("list --tenant filters by tenant", () => {
+    const tmp = makeTempDir("tenant-list");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_TENANT_NAMESPACE: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    runKdi(`create "backend task" --board myproj --tenant backend`, env);
+    runKdi(`create "frontend task" --board myproj --tenant frontend`, env);
+    runKdi(`create "untask" --board myproj`, env);
+
+    const output = runKdi(`list --board myproj --tenant backend`, env);
+    expect(output).toContain("backend task");
+    expect(output).not.toContain("frontend task");
+    expect(output).not.toContain("untask");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("list --tenant composes with --status", () => {
+    const tmp = makeTempDir("tenant-composed");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_TENANT_NAMESPACE: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const readyBackend = runKdi(`create "ready backend" --board myproj --tenant backend`, env);
+    runKdi(`create "todo backend" --board myproj --tenant backend`, env);
+    runKdi(`create "ready frontend" --board myproj --tenant frontend`, env);
+    runKdi(`promote ${readyBackend}`, env);
+
+    const output = runKdi(`list --board myproj --tenant backend --status ready`, env);
+    expect(output).toContain("ready backend");
+    expect(output).not.toContain("todo backend");
+    expect(output).not.toContain("ready frontend");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("create --tenant rejected when flag disabled", () => {
+    const tmp = makeTempDir("tenant-disabled");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    expect(() => runKdi(`create "backend task" --board myproj --tenant backend`, env)).toThrow();
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("list --tenant rejected when flag disabled", () => {
+    const tmp = makeTempDir("tenant-list-disabled");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    expect(() => runKdi(`list --board myproj --tenant backend`, env)).toThrow();
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("create --tenant rejects empty tenant", () => {
+    const tmp = makeTempDir("tenant-empty");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_TENANT_NAMESPACE: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    expect(() => runKdi(`create "bad" --board myproj --tenant ""`, env)).toThrow();
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
 });

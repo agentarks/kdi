@@ -130,6 +130,13 @@
 - [x] Dispatcher passes cap as harness timeout; SIGTERM then SIGKILL on expiry
 - [x] Timed-out runs recorded with `outcome=timed_out` and task blocked
 
+## Tenant Namespace (KDI-006) — Done
+- [x] `tenant TEXT` column added to tasks (with migration and `idx_tasks_tenant` index)
+- [x] `kdi create <title> --board <slug> --tenant <name>`; gated by `FF_TENANT_NAMESPACE`
+- [x] `kdi list --board <slug> --tenant <name>` filters by tenant and composes with `--status` / `--assignee`
+- [x] `kdi show <task_id>` displays tenant when present
+- [x] Feature flag `FF_TENANT_NAMESPACE` registered in `specs/feature-flags.md` and defaults to `false`
+
 ## Dependencies
 - [ ] Parent/child task blocking
 - [ ] Child waits until parent is `done`
