@@ -10,7 +10,7 @@ import { setFlag, clearOverrides } from "../src/flags";
 import { tick, startDispatcher } from "../src/dispatcher";
 import { cleanupDb } from "./cleanupDb";
 
-const TEST_DB = "/tmp/kdi-dispatcher-test.db";
+let testDbPath: string;
 
 function setupTempHome(profiles: { name: string; command: string }[]): string {
   const home = mkdtempSync(join(tmpdir(), "kdi-dispatcher-home-"));
@@ -26,14 +26,16 @@ function setupTempHome(profiles: { name: string; command: string }[]): string {
 
 describe("dispatcher", () => {
   beforeEach(() => {
-    cleanupDb(TEST_DB);
-    initDb(TEST_DB);
+    testDbPath = join(tmpdir(), `kdi-dispatcher-test-${Date.now()}-${Math.random().toString(36).slice(2)}.db`);
+    cleanupDb(testDbPath);
+    initDb(testDbPath);
     setFlag("FF_ENABLE_KANBAN_DISPATCH", true);
   });
 
   afterEach(() => {
     clearOverrides();
-    cleanupDb(TEST_DB);
+    closeDb();
+    cleanupDb(testDbPath);
   });
 
   it("returns early when flag is disabled", async () => {
@@ -168,7 +170,7 @@ describe("dispatcher", () => {
     // Wait for at least one tick
     await new Promise(resolve => setTimeout(resolve, 150));
 
-    dispatcher.stop();
+    await dispatcher.stop();
 
     expect(mockHarness).toHaveBeenCalled();
   });
@@ -310,6 +312,46 @@ describe("dispatcher", () => {
     expect(calls[0][0]).toContain(`wt/branchagent/${task.id}`);
   });
 
+  it("passes skills to harness via {{skills}} template and KDI_SKILLS env", async () => {
+    const home = setupTempHome([
+      { name: "skillagent", command: "echo {{skills}}" },
+    ]);
+    const originalPath = process.env.KDI_PROFILES_PATH;
+    process.env.KDI_PROFILES_PATH = join(home, ".config/kdi/profiles.yaml");
+
+    const board = createBoard("test-board", "/tmp/test-board");
+    const task = createTask({
+      board_id: board.id,
+      title: "Skills test",
+      assignee: "skillagent",
+      skills: ["github", "code-review"],
+    });
+    promoteTask(task.id);
+
+    const mockHarness = mock(() => Promise.resolve({ stdout: "ok", stderr: "", exitCode: 0 }));
+    const mockCreateWorktree = mock(() => "/tmp/mock-worktree");
+    const mockRemoveWorktree = mock(() => ({ worktreeRemoved: true, branchDeleted: true, found: true }));
+
+    await tick({
+      spawnHarness: mockHarness,
+      createWorktree: mockCreateWorktree,
+      removeWorktree: mockRemoveWorktree,
+    });
+
+    if (originalPath !== undefined) {
+      process.env.KDI_PROFILES_PATH = originalPath;
+    } else {
+      delete process.env.KDI_PROFILES_PATH;
+    }
+    rmSync(home, { recursive: true, force: true });
+
+    const calls = mockHarness.mock.calls as unknown as [string, string, string | undefined, number | undefined, Record<string, string> | undefined][];
+    expect(calls.length).toBeGreaterThan(0);
+    expect(calls[0][0]).toContain("github,code-review");
+    expect(calls[0][4]).toBeDefined();
+    expect(calls[0][4]!.KDI_SKILLS).toBe("github,code-review");
+  });
+
   it("processes ready tasks in priority descending order", async () => {
     const board = createBoard("prio-board", "/tmp/prio-board");
     const low = createTask({ board_id: board.id, title: "Low", assignee: "opencode", priority: 1 });
@@ -363,5 +405,61 @@ describe("dispatcher", () => {
     expect(claimed).toBe(true);
     const updated = showTask(task.id);
     expect(updated!.status).toBe("done");
+  });
+
+  it("times out harness exceeding task max_runtime_seconds", async () => {
+    const board = createBoard("timeout-board", "/tmp/timeout-board");
+    const task = createTask({
+      board_id: board.id,
+      title: "Slow task",
+      assignee: "opencode",
+      max_runtime_seconds: 1,
+    });
+    promoteTask(task.id);
+
+    const result = await tick({
+      spawnHarness: async (command, cwd, logPath, timeoutMs) => {
+        // Simulate the real spawnHarness timeout behavior
+        await new Promise((resolve) => setTimeout(resolve, timeoutMs! + 50));
+        throw new Error(`Harness timed out after ${timeoutMs}ms`);
+      },
+      createWorktree: () => "/tmp/mock-worktree",
+      removeWorktree: () => ({ worktreeRemoved: true, branchDeleted: true, found: true }),
+    });
+
+    expect(result.processed).toBe(0);
+
+    const updated = showTask(task.id);
+    expect(updated!.status).toBe("blocked");
+    expect(updated!.block_reason).toContain("timed out");
+
+    const { getRuns } = await import("../src/models/taskRun");
+    const runs = getRuns(task.id);
+    expect(runs).toHaveLength(1);
+    expect(runs[0].status).toBe("timed_out");
+    expect(runs[0].outcome).toBe("timed_out");
+  });
+
+  it("passes max_runtime_seconds as harness timeout", async () => {
+    const board = createBoard("timeout-board", "/tmp/timeout-board");
+    const task = createTask({
+      board_id: board.id,
+      title: "Fast task",
+      assignee: "opencode",
+      max_runtime_seconds: 42,
+    });
+    promoteTask(task.id);
+
+    let receivedTimeoutMs: number | undefined;
+    await tick({
+      spawnHarness: async (command, cwd, logPath, timeoutMs) => {
+        receivedTimeoutMs = timeoutMs;
+        return { stdout: "ok", stderr: "", exitCode: 0 };
+      },
+      createWorktree: () => "/tmp/mock-worktree",
+      removeWorktree: () => ({ worktreeRemoved: true, branchDeleted: true, found: true }),
+    });
+
+    expect(receivedTimeoutMs).toBe(42000);
   });
 });

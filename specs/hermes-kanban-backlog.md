@@ -332,21 +332,22 @@
   - Store result/summary on task, create task_runs row with outcome=completed
 
 ### Phase 2 — Task Metadata
-- [ ] **KDI-006: Tenant namespace**
+- [x] **KDI-006: Tenant namespace**
   - Add `tenant TEXT` to tasks
   - `kdi create --tenant backend`
   - `kdi list --tenant backend`
 
-- [ ] **KDI-007: Created-by tracking**
-  - Add `created_by TEXT DEFAULT 'user'`
+- [x] **KDI-007: Created-by tracking**
+  - Add `created_by TEXT NOT NULL DEFAULT 'unknown'`
   - `kdi create --created-by orchestrator`
+  - Resolved conflict with backlog default `'user'`: BRD-KDI-007 specifies `"unknown"` for migration; implementation uses `"unknown"`. Backlog updated to match.
 
-- [ ] **KDI-008: Max runtime**
+- [x] **KDI-008: Max runtime**
   - Add `max_runtime_seconds INTEGER`
   - Dispatcher SIGTERMs then SIGKILLs worker when exceeded
   - `kdi create --max-runtime 30m`
 
-- [ ] **KDI-009: Skills array**
+- [x] **KDI-009: Skills array**
   - Add `skills TEXT` (JSON array)
   - `kdi create --skill github --skill code-review`
   - Dispatcher passes skills to harness

@@ -13,6 +13,7 @@ import {
   reviewTask,
   scheduleTask,
   promoteScheduledTasks,
+  parseDuration,
   type Task,
 } from "../src/models/task";
 import { createBoard } from "../src/models/board";
@@ -48,6 +49,7 @@ describe("task model", () => {
     expect(task.result).toBeNull();
     expect(task.summary).toBeNull();
     expect(task.block_reason).toBeNull();
+    expect(task.created_by).toBe("unknown");
     expect(task.created_at).toBeNumber();
     expect(task.updated_at).toBeNumber();
     expect(task.archived_at).toBeNull();
@@ -73,10 +75,113 @@ describe("task model", () => {
     expect(task.branch).toBe("feature-123");
   });
 
+  it("createTask stores skills array", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({
+      board_id: board.id,
+      title: "Skill me",
+      skills: ["github", "code-review"],
+    });
+
+    expect(task.skills).toEqual(["github", "code-review"]);
+
+    const fetched = showTask(task.id);
+    expect(fetched).not.toBeNull();
+    expect(fetched!.skills).toEqual(["github", "code-review"]);
+  });
+
+  it("createTask stores empty skills array by default", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "No skills" });
+
+    expect(task.skills).toEqual([]);
+  });
+
+  it("createTask stores created_by when provided", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Tracked", created_by: "alice" });
+    expect(task.created_by).toBe("alice");
+
+    const fetched = showTask(task.id);
+    expect(fetched!.created_by).toBe("alice");
+  });
+
+  it("createTask defaults created_by to 'unknown' when omitted", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Untracked" });
+    expect(task.created_by).toBe("unknown");
+
+    const fetched = showTask(task.id);
+    expect(fetched!.created_by).toBe("unknown");
+  });
+
+  it("listTasks filters by created_by", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    createTask({ board_id: board.id, title: "Alice's", created_by: "alice" });
+    createTask({ board_id: board.id, title: "Bob's", created_by: "bob" });
+
+    const aliceTasks = listTasks({ board_id: board.id, created_by: "alice" });
+    expect(aliceTasks).toHaveLength(1);
+    expect(aliceTasks[0].title).toBe("Alice's");
+  });
+
+  it("createTask rejects empty created_by", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    expect(() => createTask({ board_id: board.id, title: "Bad", created_by: "" })).toThrow("created_by cannot be empty");
+  });
+
+  it("createTask rejects created_by longer than 255 characters", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const longCreator = "a".repeat(256);
+    expect(() => createTask({ board_id: board.id, title: "Bad", created_by: longCreator })).toThrow("created_by must be 255 characters or fewer");
+  });
+
   it("createTask with priority sets integer value", () => {
     const board = createBoard("alpha", "/tmp/alpha");
     const task = createTask({ board_id: board.id, title: "Urgent", priority: 10 });
     expect(task.priority).toBe(10);
+  });
+
+  it("createTask stores max_runtime_seconds", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Capped", max_runtime_seconds: 300 });
+    expect(task.max_runtime_seconds).toBe(300);
+  });
+
+  it("createTask defaults max_runtime_seconds to null", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "No cap" });
+    expect(task.max_runtime_seconds).toBeNull();
+  });
+
+  it("parseDuration accepts raw seconds", () => {
+    expect(parseDuration("300")).toBe(300);
+    expect(parseDuration("1")).toBe(1);
+  });
+
+  it("parseDuration accepts suffixed durations", () => {
+    expect(parseDuration("30s")).toBe(30);
+    expect(parseDuration("5m")).toBe(300);
+    expect(parseDuration("2h")).toBe(7200);
+    expect(parseDuration("1d")).toBe(86400);
+  });
+
+  it("parseDuration is case-insensitive", () => {
+    expect(parseDuration("30S")).toBe(30);
+    expect(parseDuration("2H")).toBe(7200);
+  });
+
+  it("parseDuration allows whitespace", () => {
+    expect(parseDuration("  5m  ")).toBe(300);
+  });
+
+  it("parseDuration rejects invalid values", () => {
+    expect(() => parseDuration("")).toThrow();
+    expect(() => parseDuration("0")).toThrow();
+    expect(() => parseDuration("-10")).toThrow();
+    expect(() => parseDuration("abc")).toThrow();
+    expect(() => parseDuration("1.5s")).toThrow();
+    expect(() => parseDuration("5x")).toThrow();
   });
 
   it("createTask with triage flag parks in triage", () => {
@@ -164,6 +269,46 @@ describe("task model", () => {
     const aliceTasks = listTasks({ board_id: board.id, assignee: "alice" });
     expect(aliceTasks).toHaveLength(1);
     expect(aliceTasks[0].title).toBe("Alice's Task");
+  });
+
+  it("createTask stores tenant when provided", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Tenant task", tenant: "backend" });
+    expect(task.tenant).toBe("backend");
+
+    const fetched = showTask(task.id);
+    expect(fetched).not.toBeNull();
+    expect(fetched!.tenant).toBe("backend");
+  });
+
+  it("createTask defaults tenant to null", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "No tenant" });
+    expect(task.tenant).toBeNull();
+  });
+
+  it("listTasks filters by tenant", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    createTask({ board_id: board.id, title: "Backend task", tenant: "backend" });
+    createTask({ board_id: board.id, title: "Frontend task", tenant: "frontend" });
+    createTask({ board_id: board.id, title: "Untenant task" });
+
+    const backendTasks = listTasks({ board_id: board.id, tenant: "backend" });
+    expect(backendTasks).toHaveLength(1);
+    expect(backendTasks[0].title).toBe("Backend task");
+  });
+
+  it("listTasks composes tenant, status, and assignee filters", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const readyBackend = createTask({ board_id: board.id, title: "Ready backend alice", tenant: "backend", assignee: "alice" });
+    createTask({ board_id: board.id, title: "Todo backend alice", tenant: "backend", assignee: "alice" });
+    createTask({ board_id: board.id, title: "Ready frontend alice", tenant: "frontend", assignee: "alice" });
+    createTask({ board_id: board.id, title: "Ready backend bob", tenant: "backend", assignee: "bob" });
+    promoteTask(readyBackend.id);
+
+    const filtered = listTasks({ board_id: board.id, tenant: "backend", status: "ready", assignee: "alice" });
+    expect(filtered).toHaveLength(1);
+    expect(filtered[0].title).toBe("Ready backend alice");
   });
 
   it("listTasks excludes archived tasks", () => {

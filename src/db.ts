@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   assignee TEXT,
   status TEXT NOT NULL DEFAULT 'todo' CHECK (status IN ('triage', 'todo', 'scheduled', 'ready', 'running', 'done', 'blocked', 'review', 'archived')),
   priority INTEGER DEFAULT 0,
+  tenant TEXT,
   workspace_kind TEXT DEFAULT 'worktree' CHECK (workspace_kind IN ('dir', 'worktree', 'scratch')),
   branch TEXT,
   result TEXT,
@@ -36,6 +37,8 @@ CREATE TABLE IF NOT EXISTS tasks (
   schedule_reason TEXT,
   review_reason TEXT,
   scheduled_at INTEGER,
+  created_by TEXT NOT NULL DEFAULT 'unknown',
+  skills TEXT,
   created_at INTEGER NOT NULL DEFAULT (unixepoch()),
   updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
   started_at INTEGER,
@@ -43,6 +46,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   claim_lock TEXT,
   claim_expires INTEGER,
   last_heartbeat_at INTEGER,
+  max_runtime_seconds INTEGER,
   idempotency_key TEXT
 );
 
@@ -89,10 +93,8 @@ CREATE TABLE IF NOT EXISTS task_events (
 
 CREATE INDEX IF NOT EXISTS idx_tasks_board_status ON tasks(board_id, status);
 CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks(assignee);
-CREATE INDEX IF NOT EXISTS idx_tasks_scheduled_at ON tasks(status, scheduled_at);
 CREATE INDEX IF NOT EXISTS idx_tasks_priority ON tasks(priority);
 CREATE INDEX IF NOT EXISTS idx_runs_task ON task_runs(task_id, started_at);
-CREATE INDEX IF NOT EXISTS idx_runs_status ON task_runs(status);
 CREATE INDEX IF NOT EXISTS idx_events_task ON task_events(task_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_events_run ON task_events(run_id, id);
 `;
@@ -222,11 +224,42 @@ export function initDb(path?: string): Database {
       dbInstance.exec("ALTER TABLE tasks ADD COLUMN review_reason TEXT");
     }
 
+    // Migrate: add skills if missing
+    const hasSkills = tableInfo.some((col) => col.name === "skills");
+    if (!hasSkills) {
+      dbInstance.exec("ALTER TABLE tasks ADD COLUMN skills TEXT");
+    }
+
+    // Migrate: add max_runtime_seconds if missing
+    const hasMaxRuntime = tableInfo.some((col) => col.name === "max_runtime_seconds");
+    if (!hasMaxRuntime) {
+      dbInstance.exec("ALTER TABLE tasks ADD COLUMN max_runtime_seconds INTEGER");
+    }
+
+    // Migrate: add tenant if missing
+    const hasTenant = tableInfo.some((col) => col.name === "tenant");
+    if (!hasTenant) {
+      dbInstance.exec("ALTER TABLE tasks ADD COLUMN tenant TEXT");
+    }
+
+    // Migrate: add created_by if missing
+    const hasCreatedBy = tableInfo.some((col) => col.name === "created_by");
+    if (!hasCreatedBy) {
+      dbInstance.exec("ALTER TABLE tasks ADD COLUMN created_by TEXT NOT NULL DEFAULT 'unknown'");
+    }
+    dbInstance.exec("CREATE INDEX IF NOT EXISTS idx_tasks_created_by ON tasks(board_id, created_by)");
+
     // Migrate: add status column to task_runs if missing (for existing DBs)
     const runsTableInfo = dbInstance.query("PRAGMA table_info(task_runs)").all() as any[];
     const hasRunStatus = runsTableInfo.some((col) => col.name === "status");
     if (!hasRunStatus) {
       dbInstance.exec("ALTER TABLE task_runs ADD COLUMN status TEXT NOT NULL DEFAULT 'running' CHECK (status IN ('running', 'done', 'blocked', 'crashed', 'timed_out', 'failed', 'released'))");
+    }
+
+    // Migrate: add max_runtime_seconds to task_runs if missing
+    const hasRunMaxRuntime = runsTableInfo.some((col) => col.name === "max_runtime_seconds");
+    if (!hasRunMaxRuntime) {
+      dbInstance.exec("ALTER TABLE task_runs ADD COLUMN max_runtime_seconds INTEGER");
     }
 
     // Migrate: optimize idempotency index to composite
@@ -261,6 +294,7 @@ export function initDb(path?: string): Database {
             assignee TEXT,
             status TEXT NOT NULL DEFAULT 'todo' CHECK (status IN ('triage', 'todo', 'scheduled', 'ready', 'running', 'done', 'blocked', 'review', 'archived')),
             priority INTEGER DEFAULT 0,
+            tenant TEXT,
             workspace_kind TEXT DEFAULT 'worktree' CHECK (workspace_kind IN ('dir', 'worktree', 'scratch')),
             branch TEXT,
             result TEXT,
@@ -269,6 +303,8 @@ export function initDb(path?: string): Database {
             schedule_reason TEXT,
             review_reason TEXT,
             scheduled_at INTEGER,
+            created_by TEXT NOT NULL DEFAULT 'unknown',
+            skills TEXT,
             created_at INTEGER NOT NULL DEFAULT (unixepoch()),
             updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
             started_at INTEGER,
@@ -277,14 +313,15 @@ export function initDb(path?: string): Database {
             claim_lock TEXT,
             claim_expires INTEGER,
             last_heartbeat_at INTEGER,
+            max_runtime_seconds INTEGER,
             idempotency_key TEXT
           );
           INSERT INTO tasks_new
-            (id, board_id, title, body, assignee, status, priority, workspace_kind, branch, result, summary, block_reason, schedule_reason, review_reason, scheduled_at, created_at, updated_at, started_at, archived_at, current_run_id, claim_lock, claim_expires, last_heartbeat_at, idempotency_key)
+            (id, board_id, title, body, assignee, status, priority, tenant, workspace_kind, branch, result, summary, block_reason, schedule_reason, review_reason, scheduled_at, created_by, skills, created_at, updated_at, started_at, archived_at, current_run_id, claim_lock, claim_expires, last_heartbeat_at, max_runtime_seconds, idempotency_key)
           SELECT
             id, board_id, title, body, assignee, status,
             CASE priority WHEN 'low' THEN 1 WHEN 'medium' THEN 2 WHEN 'high' THEN 3 ELSE COALESCE(priority, 0) END,
-            workspace_kind, branch, result, summary, block_reason, schedule_reason, review_reason, scheduled_at, created_at, updated_at, started_at, archived_at, current_run_id, claim_lock, claim_expires, last_heartbeat_at, idempotency_key
+            tenant, workspace_kind, branch, result, summary, block_reason, schedule_reason, review_reason, scheduled_at, COALESCE(created_by, 'unknown'), skills, created_at, updated_at, started_at, archived_at, current_run_id, claim_lock, claim_expires, last_heartbeat_at, max_runtime_seconds, idempotency_key
           FROM tasks;
           DROP TABLE tasks;
           ALTER TABLE tasks_new RENAME TO tasks;
@@ -292,14 +329,18 @@ export function initDb(path?: string): Database {
           CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks(assignee);
           CREATE INDEX IF NOT EXISTS idx_tasks_idempotency ON tasks(board_id, idempotency_key, archived_at);
           CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_active_idempotency ON tasks(board_id, idempotency_key) WHERE archived_at IS NULL;
-          CREATE INDEX IF NOT EXISTS idx_tasks_priority ON tasks(priority);
-          CREATE INDEX IF NOT EXISTS idx_tasks_scheduled_at ON tasks(status, scheduled_at);
+          CREATE INDEX IF NOT EXISTS idx_tasks_created_by ON tasks(board_id, created_by);
         `);
       });
       migrate();
-    } else {
-      dbInstance.exec("CREATE INDEX IF NOT EXISTS idx_tasks_priority ON tasks(priority)");
     }
+
+    // Create indexes for columns that are added by migrations, so old databases
+    // do not fail during SCHEMA execution before the migrations can run.
+    dbInstance.exec("CREATE INDEX IF NOT EXISTS idx_tasks_priority ON tasks(priority)");
+    dbInstance.exec("CREATE INDEX IF NOT EXISTS idx_tasks_scheduled_at ON tasks(status, scheduled_at)");
+    dbInstance.exec("CREATE INDEX IF NOT EXISTS idx_tasks_tenant ON tasks(board_id, tenant)");
+    dbInstance.exec("CREATE INDEX IF NOT EXISTS idx_runs_status ON task_runs(status)");
   } catch (err) {
     closeDb();
     throw err;

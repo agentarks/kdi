@@ -23,6 +23,16 @@ export function atomicClaim(
   const now = Math.floor(Date.now() / 1000);
   const expiresAt = now + ttl;
 
+  // Read task-level max runtime before claiming so we can copy it to the run
+  const taskRow = db.query(
+    `SELECT max_runtime_seconds FROM tasks WHERE id = ? AND status = 'ready' AND archived_at IS NULL
+     AND (claim_lock IS NULL OR claim_expires < unixepoch())`
+  ).get(taskId) as { max_runtime_seconds: number | null } | undefined;
+
+  if (!taskRow) {
+    return { success: false };
+  }
+
   const result = db.run(
     `UPDATE tasks SET claim_lock = ?, claim_expires = ?, status = 'running', started_at = unixepoch(), updated_at = unixepoch()
      WHERE id = ? AND status = 'ready' AND archived_at IS NULL
@@ -41,6 +51,7 @@ export function atomicClaim(
     started_at: now,
     claim_lock: profile,
     claim_expires: expiresAt,
+    max_runtime_seconds: taskRow.max_runtime_seconds,
   });
 
   addEvent(taskId, "claimed", { assignee: profile }, run.id);

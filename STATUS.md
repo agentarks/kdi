@@ -1,5 +1,13 @@
 # kdi — Status
 
+## Created-by Tracking (KDI-007) — Done
+- [x] `created_by` column on tasks with migration default `"unknown"`
+- [x] `kdi create --created-by <actor>` stores creator explicitly
+- [x] Creator fallback chain: `--created-by` → `KDI_CREATED_BY` → `USER` → `"unknown"`
+- [x] `kdi show <id>` displays `Created by:` when flag enabled
+- [x] `kdi list --board <slug> --created-by <actor>` filters by creator
+- [x] Feature flag `ff_created_by` registered and defaults to `false`
+
 ## Board Management
 - [x] `kdi boards create <slug> --workdir <path>` — creates board with SQLite db
 - [x] `kdi boards list` — list all boards (excludes archived; use `--all` to include)
@@ -12,9 +20,12 @@
 - [x] `kdi create <title> --board <slug> --idempotency-key <key>` — create idempotently; returns existing non-archived task id if matched
 - [x] `kdi create <title> --board <slug> --initial-status <status>` — create task with custom initial status (triage, todo, scheduled, ready, running, done, blocked)
 - [x] `kdi create <title> --board <slug> --priority <n>` — create task with integer priority (default 0, higher = more urgent)
+- [x] `kdi create <title> --board <slug> --max-runtime <duration>` — create task with per-task runtime cap (feature-flagged)
+- [x] `kdi create <title> --board <slug> --tenant <name>` — create task with tenant namespace (feature-flagged)
 - [x] `kdi specify <task_id> --board <slug>` — promote triage → todo
 - [x] `kdi specify --all --board <slug>` — promote all triage tasks
 - [x] `kdi list --board <slug> --status <status>` — list tasks filtered
+- [x] `kdi list --board <slug> --tenant <name>` — list tasks filtered by tenant namespace (feature-flagged)
 - [x] `kdi show <task_id>` — show task details
 - [x] `kdi edit <task_id> --body <text>` — edit task body
 - [x] `kdi comment <task_id> <text>` — add comment
@@ -93,7 +104,7 @@
 ## Harness Profiles — Accepted
 - [x] Profile registry at `~/.config/kdi/profiles.yaml`
 - [x] Built-in profiles: opencode, claude, codex, pi
-- [x] Template substitution: `{{workdir}}`, `{{branch}}`, `{{task_id}}`, `{{agent}}`
+- [x] Template substitution: `{{workdir}}`, `{{branch}}`, `{{task_id}}`, `{{agent}}`, `{{skills}}`
 - [x] Profile validation on load
 
 ## Dispatcher — Accepted
@@ -110,6 +121,29 @@
 - [x] Auto-create worktree branch `wt/<profile>/<task_id>`
 - [x] Configurable base ref (default `origin/main`)
 - [x] Cleanup on completion
+
+## Skills Array (KDI-009) — Done
+- [x] `skills TEXT` JSON-array column added to tasks (with migration)
+- [x] `kdi create <title> --board <slug> --skill <skill>` repeatable; gated by `FF_SKILLS_ARRAY`
+- [x] `kdi show <task_id>` displays skills as comma-separated list
+- [x] Dispatcher substitutes `{{skills}}` in profile commands
+- [x] Dispatcher sets `KDI_SKILLS` env var for harness process
+
+## Max Runtime (KDI-008) — Done
+- [x] `max_runtime_seconds INTEGER` column added to tasks (with migration)
+- [x] `kdi create <title> --board <slug> --max-runtime <duration>`; gated by `FF_MAX_RUNTIME`
+- [x] Duration parser accepts seconds (`300`) or suffixes (`30m`, `1h`, `2d`)
+- [x] `kdi show <task_id>` displays max runtime when set
+- [x] Dispatcher copies task cap into active `task_runs` row on claim
+- [x] Dispatcher passes cap as harness timeout; SIGTERM then SIGKILL on expiry
+- [x] Timed-out runs recorded with `outcome=timed_out` and task blocked
+
+## Tenant Namespace (KDI-006) — Done
+- [x] `tenant TEXT` column added to tasks (with migration and `idx_tasks_tenant` index)
+- [x] `kdi create <title> --board <slug> --tenant <name>`; gated by `FF_TENANT_NAMESPACE`
+- [x] `kdi list --board <slug> --tenant <name>` filters by tenant and composes with `--status` / `--assignee`
+- [x] `kdi show <task_id>` displays tenant when present
+- [x] Feature flag `FF_TENANT_NAMESPACE` registered in `specs/feature-flags.md` and defaults to `false`
 
 ## Dependencies
 - [ ] Parent/child task blocking

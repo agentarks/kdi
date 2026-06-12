@@ -69,7 +69,7 @@ Pin these exact versions when adding or upgrading dependencies. Verify new versi
 
 ## Concurrent Development with Git Worktrees
 
-When multiple agents work on `kdi` at the same time, each agent should use a dedicated [Git worktree](https://git-scm.com/docs/git-worktree) under `.worktrees/`. Worktrees share the same object database but give each agent an isolated checkout and branch, eliminating stashing and branch switching.
+All work on `kdi` must happen inside a dedicated [Git worktree](https://git-scm.com/docs/git-worktree) under `.worktrees/`. Worktrees share the same object database but give each agent an isolated checkout and branch, eliminating stashing and branch switching. Use the `using-git-worktrees` skill for the exact workflow and safety checks.
 
 ### Creating a worktree
 

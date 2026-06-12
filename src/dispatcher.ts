@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { createWriteStream, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { getDb } from "./db";
-import { TASK_COLUMNS, type Task, promoteScheduledTasks } from "./models/task";
+import { TASK_COLUMNS, type Task, promoteScheduledTasks, hydrateTask } from "./models/task";
 import { finishRun, updateRun } from "./models/taskRun";
 import { addEvent } from "./models/taskEvent";
 import { atomicClaim, heartbeat } from "./models/claim";
@@ -28,7 +28,7 @@ export interface HarnessResult {
 }
 
 export interface TickOptions {
-  spawnHarness?: (command: string, cwd: string, logPath?: string, timeoutMs?: number) => Promise<HarnessResult>;
+  spawnHarness?: (command: string, cwd: string, logPath?: string, timeoutMs?: number, env?: Record<string, string>) => Promise<HarnessResult>;
   createWorktree?: (repoDir: string, profile: string, taskId: string, baseRef: string) => string;
   removeWorktree?: (repoDir: string, profile: string, taskId: string, worktreePath?: string) => RemoveWorktreeResult;
   maxSpawnsPerTick?: number;
@@ -38,9 +38,10 @@ export interface TickResult {
   processed: number;
 }
 
-export async function spawnHarness(command: string, cwd: string, logPath?: string, timeoutMs: number = 300000): Promise<HarnessResult> {
+export async function spawnHarness(command: string, cwd: string, logPath?: string, timeoutMs: number = 300000, env?: Record<string, string>): Promise<HarnessResult> {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, { shell: true, cwd, stdio: ["ignore", "pipe", "pipe"] });
+    const childEnv: NodeJS.ProcessEnv = env ? { ...process.env, ...env } : process.env;
+    const child = spawn(command, { shell: true, cwd, stdio: ["ignore", "pipe", "pipe"], env: childEnv });
 
     let settled = false;
     const timeout = setTimeout(() => {
@@ -108,9 +109,10 @@ export async function spawnHarness(command: string, cwd: string, logPath?: strin
 
 function listReadyTasks(): Task[] {
   const db = getDb();
-  return db.query(
+  const rows = db.query(
     `SELECT ${TASK_COLUMNS} FROM tasks WHERE status = 'ready' AND archived_at IS NULL ORDER BY priority DESC, created_at ASC`
   ).all() as Task[];
+  return rows.map(hydrateTask);
 }
 
 function claimTask(id: number, assignee: string | null): { success: boolean; runId: number | null } {
@@ -286,15 +288,19 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
     const logPath = boardSlug ? getTaskLogPath(boardSlug, task.id) : undefined;
 
     try {
+      const skillsValue = task.skills && task.skills.length > 0 ? task.skills.join(",") : "";
       const command = substituteCommand(profile.command, {
         workdir: worktreePath,
         branch: worktreeBranch,
         task_id: String(task.id),
         agent: profile.agent ?? profile.name,
+        skills: skillsValue,
       });
 
+      const harnessEnv: Record<string, string> | undefined = skillsValue ? { KDI_SKILLS: skillsValue } : undefined;
+      const harnessTimeoutMs = task.max_runtime_seconds ? task.max_runtime_seconds * 1000 : undefined;
       const harnessStart = Date.now();
-      const harnessResult = await doSpawnHarness(command, worktreePath, logPath);
+      const harnessResult = await doSpawnHarness(command, worktreePath, logPath, harnessTimeoutMs, harnessEnv);
       const harnessDuration = Date.now() - harnessStart;
       recordTaskDuration(profile.agent ?? profile.name, harnessDuration);
 
@@ -342,7 +348,7 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
 }
 
 export interface DispatcherHandle {
-  stop: () => void;
+  stop: () => Promise<void>;
 }
 
 export function startDispatcher(pollIntervalMs: number = 5000, options?: TickOptions): DispatcherHandle {
@@ -355,15 +361,19 @@ export function startDispatcher(pollIntervalMs: number = 5000, options?: TickOpt
       } catch (err) {
         console.error("Dispatcher tick failed:", err);
       }
+      if (!running) {
+        break;
+      }
       await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
     }
   }
 
-  loop();
+  const loopPromise = loop();
 
   return {
-    stop: () => {
+    stop: async () => {
       running = false;
+      await loopPromise;
     },
   };
 }

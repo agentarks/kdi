@@ -3,10 +3,10 @@ import { addEvent } from "./taskEvent";
 import { createRun, finishRun } from "./taskRun";
 
 export const TASK_COLUMNS =
-  "id, board_id, title, body, assignee, status, priority, " +
+  "id, board_id, title, body, assignee, status, priority, tenant, " +
   "workspace_kind, branch, result, summary, block_reason, schedule_reason, review_reason, " +
-  "created_at, updated_at, started_at, archived_at, current_run_id, " +
-  "claim_lock, claim_expires, last_heartbeat_at, idempotency_key, scheduled_at";
+  "created_by, created_at, updated_at, started_at, archived_at, current_run_id, " +
+  "claim_lock, claim_expires, last_heartbeat_at, max_runtime_seconds, idempotency_key, scheduled_at, skills";
 
 export interface Task {
   id: number;
@@ -16,6 +16,7 @@ export interface Task {
   assignee: string | null;
   status: "triage" | "todo" | "scheduled" | "ready" | "running" | "done" | "blocked" | "review" | "archived";
   priority: number;
+  tenant: string | null;
   workspace_kind: "dir" | "worktree" | "scratch";
   branch: string | null;
   result: string | null;
@@ -24,6 +25,8 @@ export interface Task {
   schedule_reason: string | null;
   review_reason: string | null;
   scheduled_at: number | null;
+  created_by: string;
+  skills: string[];
   created_at: number;
   updated_at: number;
   started_at: number | null;
@@ -32,6 +35,7 @@ export interface Task {
   claim_lock: string | null;
   claim_expires: number | null;
   last_heartbeat_at: number | null;
+  max_runtime_seconds: number | null;
   idempotency_key: string | null;
 }
 
@@ -45,10 +49,14 @@ export interface CreateTaskInput {
   priority?: number;
   workspace_kind?: "dir" | "worktree" | "scratch";
   branch?: string;
+  tenant?: string;
   triage?: boolean;
   initialStatus?: InitialTaskStatus;
   idempotency_key?: string;
   scheduled_at?: number;
+  max_runtime_seconds?: number;
+  skills?: string[];
+  created_by?: string;
 }
 
 export interface CompleteTaskInput {
@@ -61,6 +69,46 @@ export interface ListTasksFilter {
   board_id: number;
   status?: Task["status"];
   assignee?: string;
+  tenant?: string;
+  created_by?: string;
+}
+
+export function parseDuration(value: string): number {
+  const trimmed = value.trim();
+  if (trimmed === "") {
+    throw new Error("Duration cannot be empty");
+  }
+
+  const numeric = Number(trimmed);
+  if (!isNaN(numeric) && trimmed === String(numeric)) {
+    if (!Number.isInteger(numeric) || numeric <= 0) {
+      throw new Error(`Duration must be a positive integer seconds value, got "${value}"`);
+    }
+    return numeric;
+  }
+
+  const match = trimmed.match(/^(\d+(?:\.\d+)?)\s*([smhd])$/i);
+  if (!match) {
+    throw new Error(`Invalid duration "${value}". Use seconds (e.g. 300) or a suffix like 30m, 1h, 2d.`);
+  }
+
+  const amount = parseFloat(match[1]);
+  if (amount <= 0 || !Number.isFinite(amount)) {
+    throw new Error(`Duration must be positive, got "${value}"`);
+  }
+
+  const unit = match[2].toLowerCase();
+  const multiplier =
+    unit === "s" ? 1 :
+    unit === "m" ? 60 :
+    unit === "h" ? 3600 :
+    /* d */ 86400;
+
+  const seconds = amount * multiplier;
+  if (!Number.isInteger(seconds)) {
+    throw new Error(`Duration "${value}" must resolve to a whole number of seconds`);
+  }
+  return seconds;
 }
 
 export function createTask(input: CreateTaskInput): Task {
@@ -71,7 +119,7 @@ export function createTask(input: CreateTaskInput): Task {
       `SELECT ${TASK_COLUMNS} FROM tasks WHERE board_id = ? AND idempotency_key = ? AND archived_at IS NULL`
     ).get(input.board_id, input.idempotency_key) as Task | undefined;
     if (existing) {
-      return existing;
+      return hydrateTask(existing);
     }
   }
 
@@ -88,10 +136,20 @@ export function createTask(input: CreateTaskInput): Task {
     throw new Error("initial status 'scheduled' requires scheduled_at to be set");
   }
 
+  const createdBy = input.created_by ?? "unknown";
+  if (createdBy.trim() === "") {
+    throw new Error("created_by cannot be empty.");
+  }
+  if (createdBy.length > 255) {
+    throw new Error("created_by must be 255 characters or fewer.");
+  }
+
+  const skillsJson = input.skills && input.skills.length > 0 ? JSON.stringify(input.skills) : null;
+
   const insert = db.transaction(() => {
     const result = db.run(
-      `INSERT INTO tasks (board_id, title, body, assignee, status, priority, workspace_kind, branch, idempotency_key, scheduled_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO tasks (board_id, title, body, assignee, status, priority, tenant, workspace_kind, branch, idempotency_key, scheduled_at, created_by, max_runtime_seconds, skills)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         input.board_id,
         input.title,
@@ -99,10 +157,14 @@ export function createTask(input: CreateTaskInput): Task {
         input.assignee ?? null,
         status,
         input.priority ?? 0,
+        input.tenant ?? null,
         input.workspace_kind ?? "worktree",
         input.branch ?? null,
         input.idempotency_key ?? null,
         input.scheduled_at ?? null,
+        createdBy,
+        input.max_runtime_seconds ?? null,
+        skillsJson,
       ]
     );
     return Number(result.lastInsertRowid);
@@ -118,7 +180,7 @@ export function createTask(input: CreateTaskInput): Task {
         `SELECT ${TASK_COLUMNS} FROM tasks WHERE board_id = ? AND idempotency_key = ? AND archived_at IS NULL`
       ).get(input.board_id, input.idempotency_key) as Task | undefined;
       if (existing) {
-        return existing;
+        return hydrateTask(existing);
       }
     }
     throw err;
@@ -132,6 +194,7 @@ export function createTask(input: CreateTaskInput): Task {
     assignee: input.assignee ?? null,
     status,
     priority: input.priority ?? 0,
+    tenant: input.tenant ?? null,
     workspace_kind: input.workspace_kind ?? "worktree",
     branch: input.branch ?? null,
     result: null,
@@ -140,6 +203,8 @@ export function createTask(input: CreateTaskInput): Task {
     schedule_reason: null,
     review_reason: null,
     scheduled_at: input.scheduled_at ?? null,
+    created_by: createdBy,
+    skills: input.skills ?? [],
     created_at: Math.floor(Date.now() / 1000),
     updated_at: Math.floor(Date.now() / 1000),
     started_at: null,
@@ -148,6 +213,7 @@ export function createTask(input: CreateTaskInput): Task {
     claim_lock: null,
     claim_expires: null,
     last_heartbeat_at: null,
+    max_runtime_seconds: input.max_runtime_seconds ?? null,
     idempotency_key: input.idempotency_key ?? null,
   };
   addEvent(task.id, "created");
@@ -172,6 +238,16 @@ export function listTasks(filter: ListTasksFilter): Task[] {
     params.push(filter.assignee);
   }
 
+  if (filter.tenant) {
+    conditions.push("tenant = ?");
+    params.push(filter.tenant);
+  }
+
+  if (filter.created_by) {
+    conditions.push("created_by = ?");
+    params.push(filter.created_by);
+  }
+
   const query = `
     SELECT ${TASK_COLUMNS}
     FROM tasks
@@ -179,7 +255,8 @@ export function listTasks(filter: ListTasksFilter): Task[] {
     ORDER BY created_at DESC
   `;
 
-  return db.query(query).all(...params) as Task[];
+  const tasks = db.query(query).all(...params) as Task[];
+  return tasks.map(hydrateTask);
 }
 
 export function showTask(id: number): Task | null {
@@ -190,7 +267,25 @@ export function showTask(id: number): Task | null {
      WHERE id = ? AND archived_at IS NULL`
   ).get(id) as Task | undefined;
 
-  return task ?? null;
+  return task ? hydrateTask(task) : null;
+}
+
+function parseSkills(raw: unknown): string[] {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw as string[];
+  try {
+    const parsed = JSON.parse(String(raw));
+    if (Array.isArray(parsed)) return parsed as string[];
+  } catch {
+    // fall through
+  }
+  return [];
+}
+
+export function hydrateTask(raw: unknown): Task {
+  const task = raw as Task;
+  task.skills = parseSkills(task.skills);
+  return task;
 }
 
 export function editTask(id: number, body: string): Task {
@@ -319,7 +414,8 @@ export function promoteScheduledTasks(now: number): number {
     `SELECT ${TASK_COLUMNS} FROM tasks WHERE status = 'scheduled' AND scheduled_at <= ? AND archived_at IS NULL ORDER BY scheduled_at ASC`
   ).all(now) as Task[];
 
-  for (const task of tasks) {
+  for (const raw of tasks) {
+    const task = hydrateTask(raw);
     db.run(
       `UPDATE tasks SET status = 'ready', scheduled_at = NULL, schedule_reason = NULL, updated_at = unixepoch() WHERE id = ?`,
       [task.id]
@@ -446,6 +542,7 @@ export function archiveTask(id: number): Task {
   if (!task) {
     throw new Error(`Task ${id} not found after archiving`);
   }
-  addEvent(task.id, "archived");
-  return task;
+  const hydrated = hydrateTask(task);
+  addEvent(hydrated.id, "archived");
+  return hydrated;
 }
