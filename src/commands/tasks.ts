@@ -277,23 +277,33 @@ export const unblockTaskCommand = new Command("unblock")
   });
 
 export const scheduleTaskCommand = new Command("schedule")
-  .description("Schedule a task to become ready at a future time")
-  .argument("<task_id>", "Task ID")
+  .description("Schedule one or more tasks to become ready at a future time")
+  .argument("<task_ids...>", "One or more task IDs")
   .requiredOption("--at <timestamp>", "ISO 8601 or Unix timestamp (seconds)")
   .option("--reason <text>", "Reason for scheduling")
-  .action((taskId: string, options: { at: string; reason?: string }) => {
+  .action((taskIds: string[], options: { at: string; reason?: string }) => {
     try {
       if (!isEnabled(FF_SCHEDULED_STATUS)) {
         throw new Error("Scheduled status feature is not enabled.");
       }
-      const id = parseTaskId(taskId);
+      if (taskIds.length === 0) {
+        throw new Error("At least one task ID is required.");
+      }
       const scheduledAt = parseTimestamp(options.at);
       const now = Math.floor(Date.now() / 1000);
       if (scheduledAt <= now) {
         throw new Error("Scheduled time must be in the future");
       }
-      const task = scheduleTask(id, scheduledAt, options.reason);
-      console.log(`Scheduled task ${task.id} for ${new Date(scheduledAt * 1000).toISOString()}.`);
+      const ids = taskIds.map(parseTaskId);
+      const scheduled: number[] = [];
+      for (const id of ids) {
+        const task = scheduleTask(id, scheduledAt, options.reason);
+        console.log(`Scheduled task ${task.id} for ${new Date(scheduledAt * 1000).toISOString()}.`);
+        scheduled.push(task.id);
+      }
+      if (scheduled.length > 1) {
+        console.log(`Scheduled ${scheduled.length} tasks.`);
+      }
     } catch (err: any) {
       console.error(`Error: ${err.message}`);
       process.exit(1);
