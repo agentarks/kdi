@@ -27,11 +27,11 @@ stateDiagram-v2
 
 | Flag | Env Var | Scope | Status | Default | Since | Description |
 |---|---|---|---|---|---|---|
-| `ff_complete_metadata` | `FF_COMPLETE_METADATA` | CLI / complete | Planned | `false` | KDI-005 | Gates --metadata option only. Base --result / --summary always available. |
+| `ff_complete_metadata` | `FF_COMPLETE_METADATA` | CLI / complete | InDev | `false` | KDI-005 | Gates --metadata option only. Base --result / --summary always available. |
 | `ff_kanban_dispatch` | `FF_ENABLE_KANBAN_DISPATCH` | CLI / dispatcher | Planned | `false` | — | Background dispatcher loop that polls ready tasks and spawns harness profiles. |
 | `ff_scheduled_status` | `FF_SCHEDULED_STATUS` | CLI / task lifecycle | InDev | `false` | KDI-002 | Scheduled status, schedule/unblock commands, and scheduled_at field. |
 | `ff_review_status` | `FF_REVIEW_STATUS` | CLI / task lifecycle | InDev | `false` | KDI-003 | Review status and review command. |
-| `ff_priority_integer` | `FF_PRIORITY_INTEGER` | CLI / create | Planned | `false` | KDI-005 | Integer priority validation for create --priority (advisory — schema migration always runs). |
+| `ff_priority_integer` | `FF_PRIORITY_INTEGER` | CLI / create | InDev | `false` | KDI-005 | Integer priority validation for create --priority (advisory — schema migration always runs). |
 
 ## Lifecycle Notes
 
@@ -56,17 +56,29 @@ stateDiagram-v2
   - `review` command transitions tasks to `review` status.
 - **Rollback / deactivation:** Set `FF_REVIEW_STATUS=false` to disable review command.
 
-### `ff_priority_integer` — Planned
+### `ff_complete_metadata` — InDev
 
 - **Owner:** kdi core team
 - **BRD:** KDI-005
 - **Status transitions:**
-  - `Planned` → `InDev` when integer priority validation is implemented.
+  - `Planned` → `InDev` when `--metadata` option is implemented.
+- **Activation criteria:**
+  - `complete --metadata <json>` stores metadata on completion.
+  - Event payload correctly deserializes metadata.
+- **Rollback / deactivation:** Set `FF_COMPLETE_METADATA=false` to hide/gate the `--metadata` option.
+- **Deprecation plan:** N/A
+
+### `ff_priority_integer` — InDev
+
+- **Owner:** kdi core team
+- **BRD:** KDI-004
+- **Status transitions:**
+  - `Planned` → `InDev` when integer priority validation is implemented (done).
 - **Schema note:** Integer priority is a schema-level change (migration) — this flag is advisory for feature rollout; the schema migration always runs.
 - **Activation criteria:**
-  - `create --priority` validates for integer values.
+  - `create --priority` rejects non-integer values when flag is enabled.
   - CLI help documents priority as integer only.
-- **Rollback / deactivation:** Set `FF_PRIORITY_INTEGER=false` (disables validation; schema column still exists).
+- **Rollback / deactivation:** Set `FF_PRIORITY_INTEGER=false` (disables integer validation; basic number validation still applies).
 - **Deprecation plan:** N/A
 
 ### `ff_kanban_dispatch` — Planned

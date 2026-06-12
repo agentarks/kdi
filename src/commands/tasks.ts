@@ -20,7 +20,7 @@ import { getRuns } from "../models/taskRun";
 import { getEvents, tailEvents, getRecentEvents, getEventsAfter } from "../models/taskEvent";
 import { atomicClaim, reclaimTask, heartbeat } from "../models/claim";
 import { getTaskLogPath } from "../observability";
-import { isEnabled, FF_SCHEDULED_STATUS, FF_REVIEW_STATUS, FF_COMPLETE_METADATA } from "../flags";
+import { isEnabled, FF_SCHEDULED_STATUS, FF_REVIEW_STATUS, FF_COMPLETE_METADATA, FF_PRIORITY_INTEGER } from "../flags";
 
 const VALID_STATUSES = ["triage", "todo", "scheduled", "ready", "running", "done", "blocked", "review"] as const;
 type ValidStatus = typeof VALID_STATUSES[number];
@@ -83,11 +83,18 @@ export const createTaskCommand = new Command("create")
 
       let priority: number | undefined;
       if (options.priority !== undefined) {
-        const parsed = Number(options.priority);
-        if (!Number.isInteger(parsed)) {
-          throw new Error(`Priority must be an integer, got "${options.priority}"`);
+        if (isEnabled(FF_PRIORITY_INTEGER)) {
+          const parsed = Number(options.priority);
+          if (!Number.isInteger(parsed)) {
+            throw new Error(`Priority must be an integer, got "${options.priority}"`);
+          }
+          priority = parsed;
+        } else {
+          priority = Number(options.priority);
+          if (isNaN(priority)) {
+            throw new Error(`Priority must be a number, got "${options.priority}"`);
+          }
         }
-        priority = parsed;
       }
 
       let initialStatus: ValidStatus | undefined;
@@ -260,10 +267,11 @@ export const unblockTaskCommand = new Command("unblock")
   .option("--reason <text>", "Optional reason recorded as comment")
   .action((taskId: string, options: { reason?: string }) => {
     try {
-      if (!isEnabled(FF_SCHEDULED_STATUS)) {
+      const id = parseTaskId(taskId);
+      const current = showTask(id);
+      if (current && current.status === "scheduled" && !isEnabled(FF_SCHEDULED_STATUS)) {
         throw new Error("Scheduled status feature is not enabled.");
       }
-      const id = parseTaskId(taskId);
       const task = unblockTask(id, options.reason);
       if (task.status === "ready") {
         console.log(`Task ${task.id} is now ready.`);
