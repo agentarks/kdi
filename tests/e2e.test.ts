@@ -475,7 +475,7 @@ describe("kdi e2e acceptance", () => {
     const repoDir = join(tmp, "repo");
     mkdirSync(repoDir, { recursive: true });
     setupGitRepo(repoDir);
-    const env = { KDI_DB: dbPath, HOME: tmp };
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_COMPLETE_METADATA: "true" };
 
     runKdi(`boards create myproj --workdir ${repoDir}`, env);
     const taskId = runKdi(`create "bad metadata" --board myproj`, env);
