@@ -5,7 +5,7 @@ This document is the single source of truth for all `ff_*` feature flags in `kdi
 ## Conventions
 
 - Every new feature is gated behind an `ff_*` flag registered here before implementation.
-- CLI / server environment variable form: `FF_ENABLE_<FEATURE>=false`
+- CLI / server environment variable form: `FF_<FEATURE>=false` (upper snake case of the flag name, e.g. `FF_COMPLETE_METADATA=false`). The dispatcher flag `ff_kanban_dispatch` uses the explicit env var `FF_ENABLE_KANBAN_DISPATCH` for historical reasons.
 - Browser environment variable form: not applicable (kdi is a Bun CLI binary)
 - All flags default to `false` in every environment unless explicitly promoted.
 - A flag is removed from code and this registry only after completing the deprecation window.
@@ -133,7 +133,7 @@ stateDiagram-v2
 - **Status transitions:**
   - `Planned` → `InDev` when `max_runtime_seconds` column, `create --max-runtime`, and dispatcher enforcement are implemented.
 - **Schema note:** `max_runtime_seconds` is a schema-level INTEGER column on `tasks` and `task_runs` — this flag gates the CLI option and dispatcher behavior; the schema migrations always run.
-- **Activation criteria:
+- **Activation criteria:**
   - `create --max-runtime <duration>` stores `max_runtime_seconds` on the task.
   - Dispatcher passes the cap as the harness timeout.
   - Timed-out runs are recorded with `outcome=timed_out` and the task is blocked.

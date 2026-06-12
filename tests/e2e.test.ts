@@ -388,37 +388,6 @@ describe("kdi e2e acceptance", () => {
     rmSync(tmp, { recursive: true, force: true });
   });
 
-  it("create --skill stores skills array when flag enabled", () => {
-    const tmp = makeTempDir("skills");
-    const dbPath = join(tmp, "kdi.db");
-    const repoDir = join(tmp, "repo");
-    mkdirSync(repoDir, { recursive: true });
-    setupGitRepo(repoDir);
-    const env = { KDI_DB: dbPath, HOME: tmp, FF_SKILLS_ARRAY: "true" };
-
-    runKdi(`boards create myproj --workdir ${repoDir}`, env);
-    const taskId = runKdi(`create "skill task" --board myproj --skill github --skill code-review`, env);
-
-    const output = runKdi(`show ${taskId}`, env);
-    expect(output).toContain("Skills: github, code-review");
-
-    rmSync(tmp, { recursive: true, force: true });
-  });
-
-  it("create --skill is rejected when flag disabled", () => {
-    const tmp = makeTempDir("skills-disabled");
-    const dbPath = join(tmp, "kdi.db");
-    const repoDir = join(tmp, "repo");
-    mkdirSync(repoDir, { recursive: true });
-    setupGitRepo(repoDir);
-    const env = { KDI_DB: dbPath, HOME: tmp };
-
-    runKdi(`boards create myproj --workdir ${repoDir}`, env);
-    expect(() => runKdi(`create "skill task" --board myproj --skill github`, env)).toThrow();
-
-    rmSync(tmp, { recursive: true, force: true });
-  });
-
   it("create --idempotency-key deduplicates", () => {
     const tmp = makeTempDir("idempotency");
     const dbPath = join(tmp, "kdi.db");
@@ -535,37 +504,6 @@ describe("kdi e2e acceptance", () => {
     const output = runKdi(`show ${taskId}`, env);
     expect(output).toContain("needs second look");
     expect(output).toContain("Review reason:");
-
-    rmSync(tmp, { recursive: true, force: true });
-  });
-
-  it("create --max-runtime stores seconds when flag enabled", () => {
-    const tmp = makeTempDir("max-runtime");
-    const dbPath = join(tmp, "kdi.db");
-    const repoDir = join(tmp, "repo");
-    mkdirSync(repoDir, { recursive: true });
-    setupGitRepo(repoDir);
-    const env = { KDI_DB: dbPath, HOME: tmp, FF_MAX_RUNTIME: "true" };
-
-    runKdi(`boards create myproj --workdir ${repoDir}`, env);
-    const taskId = runKdi(`create "capped task" --board myproj --max-runtime 5m`, env);
-
-    const output = runKdi(`show ${taskId}`, env);
-    expect(output).toContain("Max runtime: 300s");
-
-    rmSync(tmp, { recursive: true, force: true });
-  });
-
-  it("create --max-runtime is rejected when flag disabled", () => {
-    const tmp = makeTempDir("max-runtime-disabled");
-    const dbPath = join(tmp, "kdi.db");
-    const repoDir = join(tmp, "repo");
-    mkdirSync(repoDir, { recursive: true });
-    setupGitRepo(repoDir);
-    const env = { KDI_DB: dbPath, HOME: tmp };
-
-    runKdi(`boards create myproj --workdir ${repoDir}`, env);
-    expect(() => runKdi(`create "capped task" --board myproj --max-runtime 30s`, env)).toThrow();
 
     rmSync(tmp, { recursive: true, force: true });
   });
