@@ -32,6 +32,9 @@ stateDiagram-v2
 | `ff_scheduled_status` | `FF_SCHEDULED_STATUS` | CLI / task lifecycle | InDev | `false` | KDI-002 | Scheduled status, schedule/unblock commands, and scheduled_at field. |
 | `ff_review_status` | `FF_REVIEW_STATUS` | CLI / task lifecycle | InDev | `false` | KDI-003 | Review status and review command. |
 | `ff_priority_integer` | `FF_PRIORITY_INTEGER` | CLI / create | InDev | `false` | KDI-005 | Integer priority validation for create --priority (advisory — schema migration always runs). |
+| `ff_tenant_namespace` | `FF_TENANT_NAMESPACE` | CLI / task lifecycle | InDev | `false` | KDI-006 | Tenant namespace on tasks; `create --tenant`; `list --tenant` filters by tenant. |
+| `ff_skills_array` | `FF_SKILLS_ARRAY` | CLI / create, dispatcher | InDev | `false` | KDI-009 | Skills array on tasks; `create --skill`; dispatcher passes skills to harness via `{{skills}}` and `KDI_SKILLS`. |
+| `ff_max_runtime` | `FF_MAX_RUNTIME` | CLI / create + dispatcher | InDev | `false` | KDI-008 | Per-task max runtime cap; dispatcher SIGTERMs/SIGKILLs worker when exceeded. |
 
 ## Lifecycle Notes
 
@@ -79,6 +82,47 @@ stateDiagram-v2
   - `create --priority` rejects non-integer values when flag is enabled.
   - CLI help documents priority as integer only.
 - **Rollback / deactivation:** Set `FF_PRIORITY_INTEGER=false` (disables integer validation; basic number validation still applies).
+- **Deprecation plan:** N/A
+
+### `ff_tenant_namespace` — InDev
+
+- **Owner:** kdi core team
+- **BRD:** KDI-006
+- **Status transitions:**
+  - `Planned` → `InDev` when tenant column and CLI options are implemented.
+- **Schema note:** `tenant` is a schema-level TEXT column — this flag gates the CLI options; the schema migration always runs.
+- **Activation criteria:**
+  - `create --tenant <name>` stores tenant on the task.
+  - `list --tenant <name>` filters tasks by tenant and composes with `--status` and `--assignee`.
+  - `kdi show` displays the tenant when present.
+- **Rollback / deactivation:** Set `FF_TENANT_NAMESPACE=false` to hide/gate the `--tenant` option.
+- **Deprecation plan:** N/A
+
+### `ff_skills_array` — InDev
+
+- **Owner:** kdi core team
+- **BRD:** KDI-009
+- **Status transitions:**
+  - `Planned` → `InDev` when skills array field and CLI option are implemented.
+- **Schema note:** `skills` is a schema-level TEXT column (JSON array) — this flag gates the CLI option and dispatcher behavior; the schema migration always runs.
+- **Activation criteria:**
+  - `create --skill <skill>` can be repeated to build the task skills array.
+  - `kdi show` displays skills as a comma-separated list.
+  - Dispatcher substitutes `{{skills}}` in profile commands and sets `KDI_SKILLS` env var.
+- **Rollback / deactivation:** Set `FF_SKILLS_ARRAY=false` to hide/gate the `--skill` option and dispatcher skill passing.
+- **Deprecation plan:** N/A
+
+### `ff_max_runtime` — InDev
+
+- **Owner:** kdi core team
+- **BRD:** KDI-008
+- **Status transitions:**
+  - `Planned` → `InDev` when `max_runtime_seconds` column, `create --max-runtime`, and dispatcher enforcement are implemented.
+- **Activation criteria:**
+  - `create --max-runtime <duration>` stores `max_runtime_seconds` on the task.
+  - Dispatcher passes the cap as the harness timeout.
+  - Timed-out runs are recorded with `outcome=timed_out` and the task is blocked.
+- **Rollback / deactivation:** Set `FF_MAX_RUNTIME=false` to hide/gate the `--max-runtime` option.
 - **Deprecation plan:** N/A
 
 ### `ff_kanban_dispatch` — Planned

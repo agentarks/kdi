@@ -14,13 +14,14 @@ import {
   completeTask,
   reviewTask,
   scheduleTask,
+  parseDuration,
 } from "../models/task";
 import { addComment, getComments } from "../models/comment";
 import { getRuns } from "../models/taskRun";
 import { getEvents, tailEvents, getRecentEvents, getEventsAfter } from "../models/taskEvent";
 import { atomicClaim, reclaimTask, heartbeat } from "../models/claim";
 import { getTaskLogPath } from "../observability";
-import { isEnabled, FF_SCHEDULED_STATUS, FF_REVIEW_STATUS, FF_COMPLETE_METADATA, FF_PRIORITY_INTEGER } from "../flags";
+import { isEnabled, FF_SCHEDULED_STATUS, FF_REVIEW_STATUS, FF_COMPLETE_METADATA, FF_PRIORITY_INTEGER, FF_SKILLS_ARRAY, FF_MAX_RUNTIME, FF_TENANT_NAMESPACE } from "../flags";
 
 const VALID_STATUSES = ["triage", "todo", "scheduled", "ready", "running", "done", "blocked", "review"] as const;
 type ValidStatus = typeof VALID_STATUSES[number];
@@ -56,6 +57,10 @@ function parseTimestamp(raw: string): number {
   return Math.floor(date.getTime() / 1000);
 }
 
+function collectSkill(value: string, previous: string[] = []): string[] {
+  return previous.concat(value);
+}
+
 export const createTaskCommand = new Command("create")
   .description("Create a new task")
   .argument("<title>", "Task title")
@@ -67,7 +72,10 @@ export const createTaskCommand = new Command("create")
   .option("--at <timestamp>", "ISO 8601 or Unix timestamp for scheduled tasks (required when --initial-status=scheduled)")
   .option("--priority <n>", "Integer priority, higher is more urgent (default: 0)")
   .option("--idempotency-key <key>", "Dedup key; returns existing non-archived task id if matched")
-  .action((title: string, options: { board: string; assignee?: string; body?: string; triage?: boolean; initialStatus?: string; at?: string; priority?: string; idempotencyKey?: string }) => {
+  .option("--max-runtime <duration>", "Maximum runtime (e.g. 30m, 1h, 90s). Feature-flagged.")
+  .option("--tenant <name>", "Tenant namespace for the task")
+  .option("--skill <skill>", "Add a skill to the task (repeatable)", collectSkill, [])
+  .action((title: string, options: { board: string; assignee?: string; body?: string; triage?: boolean; initialStatus?: string; at?: string; priority?: string; idempotencyKey?: string; maxRuntime?: string; tenant?: string; skill: string[] }) => {
     try {
       if (!title || title.trim() === "") {
         throw new Error("Title is required.");
@@ -113,6 +121,31 @@ export const createTaskCommand = new Command("create")
         throw new Error("--initial-status scheduled requires --at");
       }
 
+      let maxRuntimeSeconds: number | undefined;
+      if (options.maxRuntime !== undefined) {
+        if (!isEnabled(FF_MAX_RUNTIME)) {
+          throw new Error("Max runtime feature is not enabled.");
+        }
+        maxRuntimeSeconds = parseDuration(options.maxRuntime);
+      }
+
+      if (options.tenant !== undefined) {
+        if (!isEnabled(FF_TENANT_NAMESPACE)) {
+          throw new Error("Tenant namespace feature is not enabled.");
+        }
+        if (options.tenant.trim() === "") {
+          throw new Error("Tenant cannot be empty.");
+        }
+      }
+
+      let skills: string[] | undefined;
+      if (options.skill.length > 0) {
+        if (!isEnabled(FF_SKILLS_ARRAY)) {
+          throw new Error("Skills array feature is not enabled.");
+        }
+        skills = options.skill.filter((s) => s.trim() !== "");
+      }
+
       const boardId = getBoardIdBySlug(options.board);
       const task = createTask({
         board_id: boardId,
@@ -124,6 +157,9 @@ export const createTaskCommand = new Command("create")
         priority,
         idempotency_key: options.idempotencyKey,
         scheduled_at: scheduledAt,
+        max_runtime_seconds: maxRuntimeSeconds,
+        tenant: options.tenant,
+        skills,
       });
       console.log(task.id);
     } catch (err: any) {
@@ -136,13 +172,22 @@ export const listTasksCommand = new Command("list")
   .description("List tasks")
   .requiredOption("--board <slug>", "Board slug")
   .option("--status <status>", "Filter by status")
-  .action((options: { board: string; status?: string }) => {
+  .option("--tenant <name>", "Filter by tenant namespace")
+  .action((options: { board: string; status?: string; tenant?: string }) => {
     try {
       if (options.status && !isValidStatus(options.status)) {
         throw new Error(`Invalid status "${options.status}". Valid: ${VALID_STATUSES.join(", ")}`);
       }
+      if (options.tenant !== undefined) {
+        if (!isEnabled(FF_TENANT_NAMESPACE)) {
+          throw new Error("Tenant namespace feature is not enabled.");
+        }
+        if (options.tenant.trim() === "") {
+          throw new Error("Tenant cannot be empty.");
+        }
+      }
       const boardId = getBoardIdBySlug(options.board);
-      const tasks = listTasks({ board_id: boardId, status: options.status as any });
+      const tasks = listTasks({ board_id: boardId, status: options.status as any, tenant: options.tenant });
       if (tasks.length === 0) {
         console.log("No tasks.");
         return;
@@ -179,6 +224,9 @@ export const showTaskCommand = new Command("show")
       if (task.scheduled_at) console.log(`Scheduled at: ${new Date(task.scheduled_at * 1000).toISOString()}`);
       if (task.review_reason) console.log(`Review reason: ${task.review_reason}`);
       if (task.schedule_reason) console.log(`Schedule reason: ${task.schedule_reason}`);
+      if (task.max_runtime_seconds) console.log(`Max runtime: ${task.max_runtime_seconds}s`);
+      if (task.tenant) console.log(`Tenant: ${task.tenant}`);
+      if (task.skills && task.skills.length > 0) console.log(`Skills: ${task.skills.join(", ")}`);
 
       const comments = getComments(id);
       if (comments.length > 0) {

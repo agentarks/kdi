@@ -93,7 +93,7 @@
 ## Harness Profiles — Accepted
 - [x] Profile registry at `~/.config/kdi/profiles.yaml`
 - [x] Built-in profiles: opencode, claude, codex, pi
-- [x] Template substitution: `{{workdir}}`, `{{branch}}`, `{{task_id}}`, `{{agent}}`
+- [x] Template substitution: `{{workdir}}`, `{{branch}}`, `{{task_id}}`, `{{agent}}`, `{{skills}}`
 - [x] Profile validation on load
 
 ## Dispatcher — Accepted
@@ -110,6 +110,13 @@
 - [x] Auto-create worktree branch `wt/<profile>/<task_id>`
 - [x] Configurable base ref (default `origin/main`)
 - [x] Cleanup on completion
+
+## Skills Array (KDI-009) — Done
+- [x] `skills TEXT` JSON-array column added to tasks (with migration)
+- [x] `kdi create <title> --board <slug> --skill <skill>` repeatable; gated by `FF_SKILLS_ARRAY`
+- [x] `kdi show <task_id>` displays skills as comma-separated list
+- [x] Dispatcher substitutes `{{skills}}` in profile commands
+- [x] Dispatcher sets `KDI_SKILLS` env var for harness process
 
 ## Dependencies
 - [ ] Parent/child task blocking

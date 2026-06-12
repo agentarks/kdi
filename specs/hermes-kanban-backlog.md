@@ -346,7 +346,7 @@
   - Dispatcher SIGTERMs then SIGKILLs worker when exceeded
   - `kdi create --max-runtime 30m`
 
-- [ ] **KDI-009: Skills array**
+- [x] **KDI-009: Skills array**
   - Add `skills TEXT` (JSON array)
   - `kdi create --skill github --skill code-review`
   - Dispatcher passes skills to harness

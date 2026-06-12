@@ -388,6 +388,37 @@ describe("kdi e2e acceptance", () => {
     rmSync(tmp, { recursive: true, force: true });
   });
 
+  it("create --skill stores skills array when flag enabled", () => {
+    const tmp = makeTempDir("skills");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_SKILLS_ARRAY: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const taskId = runKdi(`create "skill task" --board myproj --skill github --skill code-review`, env);
+
+    const output = runKdi(`show ${taskId}`, env);
+    expect(output).toContain("Skills: github, code-review");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("create --skill is rejected when flag disabled", () => {
+    const tmp = makeTempDir("skills-disabled");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    expect(() => runKdi(`create "skill task" --board myproj --skill github`, env)).toThrow();
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
   it("create --idempotency-key deduplicates", () => {
     const tmp = makeTempDir("idempotency");
     const dbPath = join(tmp, "kdi.db");
@@ -508,6 +539,66 @@ describe("kdi e2e acceptance", () => {
     rmSync(tmp, { recursive: true, force: true });
   });
 
+  it("create --max-runtime stores seconds when flag enabled", () => {
+    const tmp = makeTempDir("max-runtime");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_MAX_RUNTIME: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const taskId = runKdi(`create "capped task" --board myproj --max-runtime 5m`, env);
+
+    const output = runKdi(`show ${taskId}`, env);
+    expect(output).toContain("Max runtime: 300s");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("create --max-runtime is rejected when flag disabled", () => {
+    const tmp = makeTempDir("max-runtime-disabled");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    expect(() => runKdi(`create "capped task" --board myproj --max-runtime 30s`, env)).toThrow();
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it(
+    "dispatcher times out harness exceeding --max-runtime",
+    async () => {
+      const tmp = makeTempDir("max-runtime-timeout");
+      const dbPath = join(tmp, "kdi.db");
+      const repoDir = join(tmp, "repo");
+      mkdirSync(repoDir, { recursive: true });
+      setupGitRepo(repoDir);
+      setupProfiles(tmp, [{ name: "slowagent", command: "sleep 5" }]);
+      const env = { KDI_DB: dbPath, HOME: tmp, FF_ENABLE_KANBAN_DISPATCH: "true", FF_MAX_RUNTIME: "true" };
+
+      runKdi(`boards create myproj --workdir ${repoDir}`, env);
+      const taskId = runKdi(`create "slow task" --board myproj --assignee slowagent --max-runtime 1s`, env);
+
+      const dispatcher = startDispatcher(env);
+      runKdi(`promote ${taskId}`, env);
+
+      const ok = await waitForTaskStatus(taskId, "blocked", env, 10000);
+      dispatcher.kill("SIGTERM");
+
+      expect(ok).toBe(true);
+      const output = runKdi(`show ${taskId}`, env);
+      expect(output).toContain("timed out");
+
+      rmSync(tmp, { recursive: true, force: true });
+    },
+    20000
+  );
+
   it("kdi --version returns semantic version", () => {
     const tmp = makeTempDir("version");
     const dbPath = join(tmp, "kdi.db");
@@ -545,4 +636,5 @@ describe("kdi e2e acceptance", () => {
     },
     20000
   );
+
 });

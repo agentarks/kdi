@@ -191,6 +191,30 @@ describe("profiles", () => {
     expect(p.command).toBe("echo {{workdir}} {{branch}} {{task_id}} {{agent}}");
   });
 
+  it("validateProfile allows {{skills}} template variable", () => {
+    const p = validateProfile(
+      { name: "test", command: "echo {{skills}}" },
+      0
+    );
+    expect(p.command).toBe("echo {{skills}}");
+  });
+
+  it("substitutes {{skills}} with comma-separated values", () => {
+    const result = substituteCommand(
+      "opencode run --skills {{skills}} --cwd {{workdir}}",
+      {
+        workdir: "/home/user/project",
+        branch: "main",
+        task_id: "123",
+        agent: "coder",
+        skills: "github,code-review",
+      }
+    );
+    expect(result).toBe(
+      "opencode run --skills github,code-review --cwd /home/user/project"
+    );
+  });
+
   it("loadProfiles falls back to built-ins for empty file", () => {
     writeFileSync(TEST_PROFILES_PATH, "");
     try {
