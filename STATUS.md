@@ -1,5 +1,13 @@
 # kdi — Status
 
+## Created-by Tracking (KDI-007) — Done
+- [x] `created_by` column on tasks with migration default `"unknown"`
+- [x] `kdi create --created-by <actor>` stores creator explicitly
+- [x] Creator fallback chain: `--created-by` → `KDI_CREATED_BY` → `USER` → `"unknown"`
+- [x] `kdi show <id>` displays `Created by:` when flag enabled
+- [x] `kdi list --board <slug> --created-by <actor>` filters by creator
+- [x] Feature flag `ff_created_by` registered and defaults to `false`
+
 ## Board Management
 - [x] `kdi boards create <slug> --workdir <path>` — creates board with SQLite db
 - [x] `kdi boards list` — list all boards (excludes archived; use `--all` to include)

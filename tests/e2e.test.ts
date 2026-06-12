@@ -2,11 +2,11 @@ import { describe, it, expect } from "bun:test";
 import { execSync, spawn } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { initDb, closeDb } from "../src/db";
 import { addDependency } from "../src/models/dependency";
 
-const PROJECT_ROOT = "/Users/shakilakram/projects/kdi";
+const PROJECT_ROOT = resolve(import.meta.dir, "..");
 
 function runKdi(args: string, env: Record<string, string> = {}): string {
   const output = execSync(`bun run src/index.ts ${args}`, {
@@ -545,4 +545,152 @@ describe("kdi e2e acceptance", () => {
     },
     20000
   );
+
+  it("create --created-by stores and displays creator when enabled", () => {
+    const tmp = makeTempDir("created-by");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_CREATED_BY: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const taskId = runKdi(`create "track me" --board myproj --created-by alice`, env);
+
+    const output = runKdi(`show ${taskId}`, env);
+    expect(output).toContain("Created by: alice");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("create falls back to KDI_CREATED_BY env var when enabled", () => {
+    const tmp = makeTempDir("created-by-env");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_CREATED_BY: "true", KDI_CREATED_BY: "bob" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const taskId = runKdi(`create "env creator" --board myproj`, env);
+
+    const output = runKdi(`show ${taskId}`, env);
+    expect(output).toContain("Created by: bob");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("create falls back to USER env var when enabled and no explicit creator", () => {
+    const tmp = makeTempDir("created-by-user");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_CREATED_BY: "true", KDI_CREATED_BY: "", USER: "charlie" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const taskId = runKdi(`create "default creator" --board myproj`, env);
+
+    const output = runKdi(`show ${taskId}`, env);
+    expect(output).toContain("Created by: charlie");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("create ignores empty KDI_CREATED_BY and falls back to USER", () => {
+    const tmp = makeTempDir("created-by-empty-env");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_CREATED_BY: "true", KDI_CREATED_BY: "", USER: "dave" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const taskId = runKdi(`create "skip empty env" --board myproj`, env);
+
+    const output = runKdi(`show ${taskId}`, env);
+    expect(output).toContain("Created by: dave");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("list --created-by filters tasks when enabled", () => {
+    const tmp = makeTempDir("created-by-list");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_CREATED_BY: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    runKdi(`create "alice task" --board myproj --created-by alice`, env);
+    runKdi(`create "bob task" --board myproj --created-by bob`, env);
+
+    const output = runKdi(`list --board myproj --created-by alice`, env);
+    expect(output).toContain("alice task");
+    expect(output).not.toContain("bob task");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("create --created-by is rejected when flag is disabled", () => {
+    const tmp = makeTempDir("created-by-disabled");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_CREATED_BY: "false" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    expect(() => runKdi(`create "hidden" --board myproj --created-by alice`, env)).toThrow();
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("list --created-by is rejected when flag is disabled", () => {
+    const tmp = makeTempDir("created-by-list-disabled");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_CREATED_BY: "false" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    runKdi(`create "plain" --board myproj`, env);
+    expect(() => runKdi(`list --board myproj --created-by alice`, env)).toThrow();
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("show does not display created_by when flag is disabled", () => {
+    const tmp = makeTempDir("created-by-show-disabled");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_CREATED_BY: "false" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const taskId = runKdi(`create "plain" --board myproj`, env);
+
+    const output = runKdi(`show ${taskId}`, env);
+    expect(output).not.toContain("Created by:");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("create --created-by rejects identifiers longer than 255 chars", () => {
+    const tmp = makeTempDir("created-by-too-long");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_CREATED_BY: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const longCreator = "a".repeat(256);
+    expect(() => runKdi(`create "bad" --board myproj --created-by ${longCreator}`, env)).toThrow();
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
 });

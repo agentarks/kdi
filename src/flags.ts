@@ -3,6 +3,7 @@ export const FF_SCHEDULED_STATUS = "FF_SCHEDULED_STATUS";
 export const FF_REVIEW_STATUS = "FF_REVIEW_STATUS";
 export const FF_COMPLETE_METADATA = "FF_COMPLETE_METADATA";
 export const FF_PRIORITY_INTEGER = "FF_PRIORITY_INTEGER";
+export const FF_CREATED_BY = "FF_CREATED_BY";
 
 const flagRegistry = new Map<string, boolean>();
 const flagOverrides = new Map<string, boolean>();
@@ -49,3 +50,4 @@ registerFlag(FF_SCHEDULED_STATUS, false);
 registerFlag(FF_REVIEW_STATUS, false);
 registerFlag(FF_COMPLETE_METADATA, false);
 registerFlag(FF_PRIORITY_INTEGER, false);
+registerFlag(FF_CREATED_BY, false);

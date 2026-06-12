@@ -27,6 +27,7 @@ stateDiagram-v2
 
 | Flag | Env Var | Scope | Status | Default | Since | Description |
 |---|---|---|---|---|---|---|
+| `ff_created_by` | `FF_CREATED_BY` | CLI / task metadata | InDev | `false` | KDI-007 | Tracks and displays the actor that created a task. |
 | `ff_complete_metadata` | `FF_COMPLETE_METADATA` | CLI / complete | InDev | `false` | KDI-005 | Gates --metadata option only. Base --result / --summary always available. |
 | `ff_kanban_dispatch` | `FF_ENABLE_KANBAN_DISPATCH` | CLI / dispatcher | Planned | `false` | — | Background dispatcher loop that polls ready tasks and spawns harness profiles. |
 | `ff_scheduled_status` | `FF_SCHEDULED_STATUS` | CLI / task lifecycle | InDev | `false` | KDI-002 | Scheduled status, schedule/unblock commands, and scheduled_at field. |
@@ -34,6 +35,19 @@ stateDiagram-v2
 | `ff_priority_integer` | `FF_PRIORITY_INTEGER` | CLI / create | InDev | `false` | KDI-005 | Integer priority validation for create --priority (advisory — schema migration always runs). |
 
 ## Lifecycle Notes
+
+### `ff_created_by` — InDev
+
+- **Owner:** kdi core team
+- **BRD:** [BRD-KDI-007](brd-kdi-007-created-by.md)
+- **Status transitions:**
+  - `InDev` → `Active` when creator tracking is safe to enable by default.
+- **Activation criteria:**
+  - `create --created-by` stores and displays the creator.
+  - `list --created-by` filters tasks by creator.
+  - `show` displays the creator when the flag is enabled.
+- **Rollback / deactivation:** Set `FF_CREATED_BY=false` to hide creator fields and reject creator options.
+- **Deprecation plan:** N/A
 
 ### `ff_scheduled_status` — InDev
 

@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   schedule_reason TEXT,
   review_reason TEXT,
   scheduled_at INTEGER,
+  created_by TEXT NOT NULL DEFAULT 'unknown',
   created_at INTEGER NOT NULL DEFAULT (unixepoch()),
   updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
   started_at INTEGER,
@@ -222,6 +223,13 @@ export function initDb(path?: string): Database {
       dbInstance.exec("ALTER TABLE tasks ADD COLUMN review_reason TEXT");
     }
 
+    // Migrate: add created_by if missing
+    const hasCreatedBy = tableInfo.some((col) => col.name === "created_by");
+    if (!hasCreatedBy) {
+      dbInstance.exec("ALTER TABLE tasks ADD COLUMN created_by TEXT NOT NULL DEFAULT 'unknown'");
+    }
+    dbInstance.exec("CREATE INDEX IF NOT EXISTS idx_tasks_created_by ON tasks(board_id, created_by)");
+
     // Migrate: add status column to task_runs if missing (for existing DBs)
     const runsTableInfo = dbInstance.query("PRAGMA table_info(task_runs)").all() as any[];
     const hasRunStatus = runsTableInfo.some((col) => col.name === "status");
@@ -269,6 +277,7 @@ export function initDb(path?: string): Database {
             schedule_reason TEXT,
             review_reason TEXT,
             scheduled_at INTEGER,
+            created_by TEXT NOT NULL DEFAULT 'unknown',
             created_at INTEGER NOT NULL DEFAULT (unixepoch()),
             updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
             started_at INTEGER,
@@ -280,11 +289,11 @@ export function initDb(path?: string): Database {
             idempotency_key TEXT
           );
           INSERT INTO tasks_new
-            (id, board_id, title, body, assignee, status, priority, workspace_kind, branch, result, summary, block_reason, schedule_reason, review_reason, scheduled_at, created_at, updated_at, started_at, archived_at, current_run_id, claim_lock, claim_expires, last_heartbeat_at, idempotency_key)
+            (id, board_id, title, body, assignee, status, priority, workspace_kind, branch, result, summary, block_reason, schedule_reason, review_reason, scheduled_at, created_by, created_at, updated_at, started_at, archived_at, current_run_id, claim_lock, claim_expires, last_heartbeat_at, idempotency_key)
           SELECT
             id, board_id, title, body, assignee, status,
             CASE priority WHEN 'low' THEN 1 WHEN 'medium' THEN 2 WHEN 'high' THEN 3 ELSE COALESCE(priority, 0) END,
-            workspace_kind, branch, result, summary, block_reason, schedule_reason, review_reason, scheduled_at, created_at, updated_at, started_at, archived_at, current_run_id, claim_lock, claim_expires, last_heartbeat_at, idempotency_key
+            workspace_kind, branch, result, summary, block_reason, schedule_reason, review_reason, scheduled_at, COALESCE(created_by, 'unknown'), created_at, updated_at, started_at, archived_at, current_run_id, claim_lock, claim_expires, last_heartbeat_at, idempotency_key
           FROM tasks;
           DROP TABLE tasks;
           ALTER TABLE tasks_new RENAME TO tasks;
@@ -294,6 +303,7 @@ export function initDb(path?: string): Database {
           CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_active_idempotency ON tasks(board_id, idempotency_key) WHERE archived_at IS NULL;
           CREATE INDEX IF NOT EXISTS idx_tasks_priority ON tasks(priority);
           CREATE INDEX IF NOT EXISTS idx_tasks_scheduled_at ON tasks(status, scheduled_at);
+          CREATE INDEX IF NOT EXISTS idx_tasks_created_by ON tasks(board_id, created_by);
         `);
       });
       migrate();

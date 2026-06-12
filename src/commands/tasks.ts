@@ -20,7 +20,7 @@ import { getRuns } from "../models/taskRun";
 import { getEvents, tailEvents, getRecentEvents, getEventsAfter } from "../models/taskEvent";
 import { atomicClaim, reclaimTask, heartbeat } from "../models/claim";
 import { getTaskLogPath } from "../observability";
-import { isEnabled, FF_SCHEDULED_STATUS, FF_REVIEW_STATUS, FF_COMPLETE_METADATA, FF_PRIORITY_INTEGER } from "../flags";
+import { isEnabled, FF_SCHEDULED_STATUS, FF_REVIEW_STATUS, FF_COMPLETE_METADATA, FF_PRIORITY_INTEGER, FF_CREATED_BY } from "../flags";
 
 const VALID_STATUSES = ["triage", "todo", "scheduled", "ready", "running", "done", "blocked", "review"] as const;
 type ValidStatus = typeof VALID_STATUSES[number];
@@ -45,6 +45,22 @@ function parseTaskId(raw: string): number {
   return id;
 }
 
+const MAX_CREATED_BY_LENGTH = 255;
+
+function resolveCreator(optionsCreatedBy?: string): string {
+  const candidates = [optionsCreatedBy, process.env.KDI_CREATED_BY, process.env.USER];
+  for (const candidate of candidates) {
+    if (candidate !== undefined && candidate.trim() !== "") {
+      const value = candidate.trim();
+      if (value.length > MAX_CREATED_BY_LENGTH) {
+        throw new Error(`Created-by identifier must be ${MAX_CREATED_BY_LENGTH} characters or fewer.`);
+      }
+      return value;
+    }
+  }
+  return "unknown";
+}
+
 function parseTimestamp(raw: string): number {
   if (/^\d+$/.test(raw)) {
     return parseInt(raw, 10);
@@ -67,7 +83,8 @@ export const createTaskCommand = new Command("create")
   .option("--at <timestamp>", "ISO 8601 or Unix timestamp for scheduled tasks (required when --initial-status=scheduled)")
   .option("--priority <n>", "Integer priority, higher is more urgent (default: 0)")
   .option("--idempotency-key <key>", "Dedup key; returns existing non-archived task id if matched")
-  .action((title: string, options: { board: string; assignee?: string; body?: string; triage?: boolean; initialStatus?: string; at?: string; priority?: string; idempotencyKey?: string }) => {
+  .option("--created-by <actor>", "Actor that created the task")
+  .action((title: string, options: { board: string; assignee?: string; body?: string; triage?: boolean; initialStatus?: string; at?: string; priority?: string; idempotencyKey?: string; createdBy?: string }) => {
     try {
       if (!title || title.trim() === "") {
         throw new Error("Title is required.");
@@ -113,6 +130,15 @@ export const createTaskCommand = new Command("create")
         throw new Error("--initial-status scheduled requires --at");
       }
 
+      if (options.createdBy !== undefined && !isEnabled(FF_CREATED_BY)) {
+        throw new Error("Created-by tracking is not enabled.");
+      }
+
+      let createdBy: string | undefined;
+      if (isEnabled(FF_CREATED_BY)) {
+        createdBy = resolveCreator(options.createdBy);
+      }
+
       const boardId = getBoardIdBySlug(options.board);
       const task = createTask({
         board_id: boardId,
@@ -124,6 +150,7 @@ export const createTaskCommand = new Command("create")
         priority,
         idempotency_key: options.idempotencyKey,
         scheduled_at: scheduledAt,
+        created_by: createdBy,
       });
       console.log(task.id);
     } catch (err: any) {
@@ -136,13 +163,17 @@ export const listTasksCommand = new Command("list")
   .description("List tasks")
   .requiredOption("--board <slug>", "Board slug")
   .option("--status <status>", "Filter by status")
-  .action((options: { board: string; status?: string }) => {
+  .option("--created-by <actor>", "Filter by creator")
+  .action((options: { board: string; status?: string; createdBy?: string }) => {
     try {
       if (options.status && !isValidStatus(options.status)) {
         throw new Error(`Invalid status "${options.status}". Valid: ${VALID_STATUSES.join(", ")}`);
       }
+      if (options.createdBy !== undefined && !isEnabled(FF_CREATED_BY)) {
+        throw new Error("Created-by tracking is not enabled.");
+      }
       const boardId = getBoardIdBySlug(options.board);
-      const tasks = listTasks({ board_id: boardId, status: options.status as any });
+      const tasks = listTasks({ board_id: boardId, status: options.status as any, created_by: options.createdBy });
       if (tasks.length === 0) {
         console.log("No tasks.");
         return;
@@ -179,6 +210,7 @@ export const showTaskCommand = new Command("show")
       if (task.scheduled_at) console.log(`Scheduled at: ${new Date(task.scheduled_at * 1000).toISOString()}`);
       if (task.review_reason) console.log(`Review reason: ${task.review_reason}`);
       if (task.schedule_reason) console.log(`Schedule reason: ${task.schedule_reason}`);
+      if (isEnabled(FF_CREATED_BY)) console.log(`Created by: ${task.created_by}`);
 
       const comments = getComments(id);
       if (comments.length > 0) {
