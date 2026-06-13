@@ -7,6 +7,7 @@ import { createBoard } from "../src/models/board";
 import { createTask, promoteTask, showTask } from "../src/models/task";
 import { addDependency } from "../src/models/dependency";
 import { setFlag, clearOverrides, FF_RATE_LIMIT_EXIT_CODE } from "../src/flags";
+import { atomicClaim, heartbeat } from "../src/models/claim";
 import { tick, startDispatcher } from "../src/dispatcher";
 import { getEvents } from "../src/models/taskEvent";
 import { getRuns } from "../src/models/taskRun";
@@ -877,5 +878,135 @@ describe("dispatcher", () => {
     const updated = showTask(task.id);
     expect(updated!.status).toBe("done");
     expect(updated!.consecutive_failures).toBe(0);
+  });
+
+  it("seeds initial heartbeat on claim when FF_HEARTBEAT is enabled", async () => {
+    setFlag("FF_HEARTBEAT", true);
+    const board = createBoard("hb-board", "/tmp/hb-board");
+    const task = createTask({ board_id: board.id, title: "Heartbeat seed", assignee: "opencode" });
+    promoteTask(task.id);
+
+    const before = Math.floor(Date.now() / 1000);
+    await tick({
+      spawnHarness: () => new Promise((resolve) => setTimeout(() => resolve({ stdout: "ok", stderr: "", exitCode: 0 }), 50)),
+      createWorktree: () => "/tmp/mock-worktree",
+      removeWorktree: () => ({ worktreeRemoved: true, branchDeleted: true, found: true }),
+    });
+    const after = Math.floor(Date.now() / 1000);
+
+    const updated = showTask(task.id);
+    expect(updated!.status).toBe("done");
+    expect(updated!.last_heartbeat_at).toBeGreaterThanOrEqual(before);
+    expect(updated!.last_heartbeat_at).toBeLessThanOrEqual(after);
+  });
+
+  it("does not seed initial heartbeat when FF_HEARTBEAT is disabled", async () => {
+    setFlag("FF_HEARTBEAT", false);
+    const board = createBoard("hb-off-board", "/tmp/hb-off-board");
+    const task = createTask({ board_id: board.id, title: "No heartbeat seed", assignee: "opencode" });
+    promoteTask(task.id);
+
+    await tick({
+      spawnHarness: () => Promise.resolve({ stdout: "ok", stderr: "", exitCode: 0 }),
+      createWorktree: () => "/tmp/mock-worktree",
+      removeWorktree: () => ({ worktreeRemoved: true, branchDeleted: true, found: true }),
+    });
+
+    const updated = showTask(task.id);
+    expect(updated!.status).toBe("done");
+    expect(updated!.last_heartbeat_at).toBeNull();
+  });
+
+  it("reclaims task with stale heartbeat when FF_HEARTBEAT is enabled", async () => {
+    setFlag("FF_HEARTBEAT", true);
+    const board = createBoard("stale-hb-board", "/tmp/stale-hb-board");
+    const task = createTask({ board_id: board.id, title: "Stale heartbeat", assignee: "opencode" });
+    promoteTask(task.id);
+
+    // Claim and seed heartbeat, then roll timestamps back beyond the 60-minute threshold
+    atomicClaim(task.id, "opencode");
+    heartbeat(task.id);
+
+    const staleTime = Math.floor(Date.now() / 1000) - 3601;
+    getDb().run(
+      `UPDATE tasks SET last_heartbeat_at = ?, claim_expires = ? WHERE id = ?`,
+      [staleTime, staleTime + 900, task.id]
+    );
+    const run = getDb().query("SELECT id FROM task_runs WHERE task_id = ?").get(task.id) as { id: number };
+    getDb().run(`UPDATE task_runs SET last_heartbeat_at = ? WHERE id = ?`, [staleTime, run.id]);
+
+    // Use maxSpawnsPerTick=0 so tick only reaps/promotes without re-claiming the reclaimed task
+    await tick({
+      spawnHarness: () => Promise.resolve({ stdout: "ok", stderr: "", exitCode: 0 }),
+      createWorktree: () => "/tmp/mock-worktree",
+      removeWorktree: () => ({ worktreeRemoved: true, branchDeleted: true, found: true }),
+      maxSpawnsPerTick: 0,
+    });
+
+    const updated = showTask(task.id);
+    expect(updated!.status).toBe("ready");
+    expect(updated!.claim_lock).toBeNull();
+    expect(updated!.claim_expires).toBeNull();
+    expect(updated!.current_run_id).toBeNull();
+
+    const { getRuns } = await import("../src/models/taskRun");
+    const runs = getRuns(task.id);
+    expect(runs[0].outcome).toBe("reclaimed");
+    expect(runs[0].status).toBe("released");
+    expect(runs[0].error).toBe("stale heartbeat detected by dispatcher");
+  });
+
+  it("ignores heartbeat age when FF_HEARTBEAT is disabled", async () => {
+    setFlag("FF_HEARTBEAT", false);
+    const board = createBoard("no-stale-hb-board", "/tmp/no-stale-hb-board");
+    const task = createTask({ board_id: board.id, title: "No stale heartbeat", assignee: "opencode" });
+    promoteTask(task.id);
+
+    // Claim with a far-past heartbeat but a claim_expires still in the future
+    atomicClaim(task.id, "opencode");
+    const now = Math.floor(Date.now() / 1000);
+    const staleTime = now - 7200;
+    const futureExpiry = now + 900;
+    getDb().run(
+      `UPDATE tasks SET last_heartbeat_at = ?, claim_expires = ? WHERE id = ?`,
+      [staleTime, futureExpiry, task.id]
+    );
+
+    // Use maxSpawnsPerTick=0 so tick only reaps/promotes without claiming the task
+    await tick({
+      spawnHarness: () => Promise.resolve({ stdout: "ok", stderr: "", exitCode: 0 }),
+      createWorktree: () => "/tmp/mock-worktree",
+      removeWorktree: () => ({ worktreeRemoved: true, branchDeleted: true, found: true }),
+      maxSpawnsPerTick: 0,
+    });
+
+    const updated = showTask(task.id);
+    expect(updated!.status).toBe("running");
+  });
+
+  it("reaps task with null heartbeat when claim_expires passed", async () => {
+    setFlag("FF_HEARTBEAT", true);
+    const board = createBoard("null-hb-board", "/tmp/null-hb-board");
+    const task = createTask({ board_id: board.id, title: "Null heartbeat", assignee: "opencode" });
+    promoteTask(task.id);
+
+    atomicClaim(task.id, "opencode");
+    const now = Math.floor(Date.now() / 1000);
+    const pastExpiry = now - 1;
+    getDb().run(
+      `UPDATE tasks SET last_heartbeat_at = NULL, claim_expires = ? WHERE id = ?`,
+      [pastExpiry, task.id]
+    );
+
+    // Use maxSpawnsPerTick=0 so tick only reaps/promotes without re-claiming the reclaimed task
+    await tick({
+      spawnHarness: () => Promise.resolve({ stdout: "ok", stderr: "", exitCode: 0 }),
+      createWorktree: () => "/tmp/mock-worktree",
+      removeWorktree: () => ({ worktreeRemoved: true, branchDeleted: true, found: true }),
+      maxSpawnsPerTick: 0,
+    });
+
+    const updated = showTask(task.id);
+    expect(updated!.status).toBe("ready");
   });
 });

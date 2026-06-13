@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { initDb, closeDb, getDb } from "../src/db";
 import { addDependency } from "../src/models/dependency";
+import { getEvents } from "../src/models/taskEvent";
 
 const PROJECT_ROOT = resolve(import.meta.dir, "..");
 
@@ -1679,6 +1680,68 @@ describe("kdi e2e acceptance", () => {
 
     const output = runKdi(`show ${taskId}`, enabledEnv);
     expect(output).not.toContain("Workspace:");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("heartbeat is rejected when flag is disabled", () => {
+    const tmp = makeTempDir("heartbeat-disabled");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_HEARTBEAT: "false" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const taskId = runKdi(`create "heartbeat disabled" --board myproj --initial-status running`, env);
+
+    expect(() => runKdi(`heartbeat ${taskId}`, env)).toThrow(/Heartbeat feature is not enabled/);
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("heartbeat updates timestamps and records note event when flag enabled", () => {
+    const tmp = makeTempDir("heartbeat-enabled");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_HEARTBEAT: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const taskId = runKdi(`create "heartbeat enabled" --board myproj --initial-status running`, env);
+
+    const output = runKdi(`heartbeat ${taskId} --note "step 1 done"`, env);
+    expect(output).toContain(`Heartbeat recorded for task ${taskId}`);
+
+    const showOutput = runKdi(`show ${taskId}`, env);
+    expect(showOutput).toContain("Last heartbeat:");
+
+    initDb(dbPath);
+    const events = getEvents(parseInt(taskId, 10));
+    closeDb();
+    const heartbeatEvents = events.filter((e) => e.kind === "heartbeat");
+    expect(heartbeatEvents).toHaveLength(1);
+    expect(heartbeatEvents[0].payload).toContain('"note":"step 1 done"');
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("show hides last heartbeat when flag is disabled", () => {
+    const tmp = makeTempDir("heartbeat-show-hidden");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const enabledEnv = { KDI_DB: dbPath, HOME: tmp, FF_HEARTBEAT: "true" };
+    const disabledEnv = { KDI_DB: dbPath, HOME: tmp, FF_HEARTBEAT: "false" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, enabledEnv);
+    const taskId = runKdi(`create "heartbeat hidden" --board myproj --initial-status running`, enabledEnv);
+    runKdi(`heartbeat ${taskId}`, enabledEnv);
+
+    const disabledOutput = runKdi(`show ${taskId}`, disabledEnv);
+    expect(disabledOutput).not.toContain("Last heartbeat:");
 
     rmSync(tmp, { recursive: true, force: true });
   });

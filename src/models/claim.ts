@@ -108,10 +108,12 @@ export function isClaimExpired(taskId: number): boolean {
   return row.claim_expires < now;
 }
 
+const MAX_HEARTBEAT_NOTE_BYTES = 4096;
+
 export function heartbeat(taskId: number, note?: string): boolean {
   const db = getDb();
   const result = db.run(
-    `UPDATE tasks SET last_heartbeat_at = unixepoch(), updated_at = unixepoch() WHERE id = ?`,
+    `UPDATE tasks SET last_heartbeat_at = unixepoch(), updated_at = unixepoch() WHERE id = ? AND archived_at IS NULL`,
     [taskId]
   );
 
@@ -131,8 +133,12 @@ export function heartbeat(taskId: number, note?: string): boolean {
     );
   }
 
-  if (note) {
-    addEvent(taskId, "heartbeat", { note });
+  if (note !== undefined) {
+    // Cap note payload at 4 KiB to avoid runaway storage
+    const trimmedNote = note.length > MAX_HEARTBEAT_NOTE_BYTES
+      ? note.slice(0, MAX_HEARTBEAT_NOTE_BYTES)
+      : note;
+    addEvent(taskId, "heartbeat", { note: trimmedNote });
   }
 
   return true;
