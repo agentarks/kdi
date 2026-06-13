@@ -19,6 +19,7 @@
 - [x] `kdi boards list` — list all boards (excludes archived; use `--all` to include)
 - [x] `kdi boards show <slug>` — show board details + task counts (triage, todo, ready, running, done, blocked, archived)
 - [x] `kdi boards archive <slug>` — archive board (soft delete)
+- [x] `kdi boards rename <old-slug> <new-slug>` — rename a board (slug, data directory, current-board)
 
 ## Board Metadata (KDI-012) — Done
 - [x] `name`, `icon`, `color` columns added to `boards` table (schema + migration)

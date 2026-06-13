@@ -399,7 +399,7 @@ export function initDb(path?: string): Database {
 }
 
 export function getDb(): Database {
-  if (!dbInstance) throw new Error("Database not initialized. Call initDb() first.");
+  if (!dbInstance) throw new Error("Database not initialized. Run 'kdi init' first.");
   return dbInstance;
 }
 

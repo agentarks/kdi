@@ -1381,4 +1381,76 @@ describe("kdi e2e acceptance", () => {
     rmSync(tmp, { recursive: true, force: true });
   });
 
+  describe("kdi init", () => {
+    it("kdi init creates database and reports path", () => {
+      const tmp = makeTempDir("init-create");
+      const dbPath = join(tmp, "kdi.db");
+      const env = { KDI_DB: dbPath, HOME: tmp };
+
+      const output = runKdi("init", env);
+      expect(output).toContain("Database initialized at");
+      expect(output).toContain(dbPath);
+      expect(existsSync(dbPath)).toBe(true);
+
+      rmSync(tmp, { recursive: true, force: true });
+    });
+
+    it("kdi init is idempotent", () => {
+      const tmp = makeTempDir("init-idempotent");
+      const dbPath = join(tmp, "kdi.db");
+      const env = { KDI_DB: dbPath, HOME: tmp };
+
+      runKdi("init", env);
+      const output = runKdi("init", env);
+      expect(output).toContain("Database initialized at");
+
+      rmSync(tmp, { recursive: true, force: true });
+    });
+
+    it("kdi init --force re-runs schema and migrations", () => {
+      const tmp = makeTempDir("init-force");
+      const dbPath = join(tmp, "kdi.db");
+      const env = { KDI_DB: dbPath, HOME: tmp };
+
+      // Initialize once
+      runKdi("init", env);
+      expect(existsSync(dbPath)).toBe(true);
+
+      // Force re-init
+      const output = runKdi("init --force", env);
+      expect(output).toContain("Database initialized at");
+
+      rmSync(tmp, { recursive: true, force: true });
+    });
+
+    it("kdi init --path <path> initializes at custom path", () => {
+      const tmp = makeTempDir("init-path");
+      const customDbPath = join(tmp, "custom", "nested", "kdi.db");
+      const env = { KDI_DB: join(tmp, "other.db"), HOME: tmp };
+
+      const output = runKdi(`init --path ${customDbPath}`, env);
+      expect(output).toContain("Database initialized at");
+      expect(output).toContain(customDbPath);
+      expect(existsSync(customDbPath)).toBe(true);
+
+      // The custom path DB is used; eager init also creates the default DB
+      // (which is fine since it's just for convenience)
+
+      rmSync(tmp, { recursive: true, force: true });
+    });
+
+    it("kdi init --help shows documentation", () => {
+      const tmp = makeTempDir("init-help");
+      const dbPath = join(tmp, "kdi.db");
+      const env = { KDI_DB: dbPath, HOME: tmp };
+
+      const output = runKdi("init --help", env);
+      expect(output).toContain("Initialize the kdi database");
+      expect(output).toContain("--force");
+      expect(output).toContain("--path");
+
+      rmSync(tmp, { recursive: true, force: true });
+    });
+  });
+
 });

@@ -162,6 +162,8 @@ boardsCommand
       if (!isEnabled(FF_BOARD_RENAME)) {
         throw new Error("Board rename feature is not enabled.");
       }
+      assertValidBoardSlug(oldSlug, "old board slug");
+      assertValidBoardSlug(newSlug, "new board slug");
 
       const { board } = renameBoard(oldSlug, newSlug);
 
