@@ -89,6 +89,7 @@ CREATE TABLE IF NOT EXISTS task_runs (
   max_runtime_seconds INTEGER,
   last_heartbeat_at INTEGER,
   started_at INTEGER NOT NULL,
+  spawned_at INTEGER,
   ended_at INTEGER,
   outcome TEXT CHECK (outcome IN ('completed', 'blocked', 'crashed', 'timed_out', 'spawn_failed', 'gave_up', 'reclaimed')),
   summary TEXT,
@@ -318,6 +319,12 @@ export function initDb(path?: string): Database {
     const hasRunMaxRuntime = runsTableInfo.some((col) => col.name === "max_runtime_seconds");
     if (!hasRunMaxRuntime) {
       dbInstance.exec("ALTER TABLE task_runs ADD COLUMN max_runtime_seconds INTEGER");
+    }
+
+    // Migrate: add spawned_at to task_runs if missing
+    const hasRunSpawnedAt = runsTableInfo.some((col) => col.name === "spawned_at");
+    if (!hasRunSpawnedAt) {
+      dbInstance.exec("ALTER TABLE task_runs ADD COLUMN spawned_at INTEGER");
     }
 
     // Migrate: optimize idempotency index to composite

@@ -8,6 +8,8 @@ import { createTask, promoteTask, showTask } from "../src/models/task";
 import { addDependency } from "../src/models/dependency";
 import { setFlag, clearOverrides } from "../src/flags";
 import { tick, startDispatcher } from "../src/dispatcher";
+import { atomicClaim } from "../src/models/claim";
+import { getRuns, updateRun } from "../src/models/taskRun";
 import { cleanupDb } from "./cleanupDb";
 
 let testDbPath: string;
@@ -710,5 +712,156 @@ describe("dispatcher", () => {
     const updated = showTask(task.id);
     expect(updated!.status).toBe("done");
     expect(updated!.consecutive_failures).toBe(0);
+  });
+
+  describe("crash grace period", () => {
+    it("records spawned_at on the active run", async () => {
+      setFlag("FF_CRASH_GRACE_PERIOD", true);
+      const board = createBoard("grace-board", "/tmp/grace-board");
+      const task = createTask({ board_id: board.id, title: "Grace task", assignee: "opencode" });
+      promoteTask(task.id);
+
+      await tick({
+        spawnHarness: () => Promise.resolve({ stdout: "ok", stderr: "", exitCode: 0, pid: 1234 }),
+        createWorktree: () => "/tmp/mock-worktree",
+        removeWorktree: () => ({ worktreeRemoved: true, branchDeleted: true, found: true }),
+      });
+
+      const runs = getRuns(task.id);
+      expect(runs).toHaveLength(1);
+      expect(runs[0].spawned_at).toBeNumber();
+      expect(runs[0].worker_pid).toBe(1234);
+    });
+
+    it("does not reclaim a dead PID within the grace period when flag enabled", async () => {
+      setFlag("FF_CRASH_GRACE_PERIOD", true);
+      const board = createBoard("grace-board", "/tmp/grace-board");
+      const task = createTask({ board_id: board.id, title: "Grace task", assignee: "opencode" });
+      promoteTask(task.id);
+
+      const claim = atomicClaim(task.id, "opencode");
+      expect(claim.success).toBe(true);
+
+      const now = Math.floor(Date.now() / 1000);
+      updateRun(claim.runId!, { worker_pid: 999999, spawned_at: now });
+
+      await tick();
+
+      const updated = showTask(task.id);
+      expect(updated!.status).toBe("running");
+      const runs = getRuns(task.id);
+      expect(runs[0].status).toBe("running");
+    });
+
+    it("reclaims a dead PID after the grace period when flag enabled", async () => {
+      setFlag("FF_CRASH_GRACE_PERIOD", true);
+      const board = createBoard("grace-board", "/tmp/grace-board");
+      const task = createTask({ board_id: board.id, title: "Grace task", assignee: "opencode" });
+      promoteTask(task.id);
+
+      const claim = atomicClaim(task.id, "opencode");
+      expect(claim.success).toBe(true);
+
+      const now = Math.floor(Date.now() / 1000);
+      updateRun(claim.runId!, { worker_pid: 999999, spawned_at: now - 31 });
+
+      await tick();
+
+      const updated = showTask(task.id);
+      expect(updated!.status).toBe("blocked");
+      const runs = getRuns(task.id);
+      expect(runs[0].status).toBe("crashed");
+      expect(runs[0].outcome).toBe("crashed");
+      expect(runs[0].error).toContain("grace period");
+    });
+
+    it("treats an immediate dead PID as a crash when flag disabled", async () => {
+      setFlag("FF_CRASH_GRACE_PERIOD", false);
+      const board = createBoard("grace-board", "/tmp/grace-board");
+      const task = createTask({ board_id: board.id, title: "Grace task", assignee: "opencode" });
+      promoteTask(task.id);
+
+      const claim = atomicClaim(task.id, "opencode");
+      expect(claim.success).toBe(true);
+
+      const now = Math.floor(Date.now() / 1000);
+      updateRun(claim.runId!, { worker_pid: 999999, spawned_at: now });
+
+      await tick();
+
+      const updated = showTask(task.id);
+      expect(updated!.status).toBe("blocked");
+      const runs = getRuns(task.id);
+      expect(runs[0].status).toBe("crashed");
+      expect(runs[0].outcome).toBe("crashed");
+    });
+
+    it("requeues crashed task with max_retries after grace period", async () => {
+      setFlag("FF_CRASH_GRACE_PERIOD", true);
+      const board = createBoard("grace-board", "/tmp/grace-board");
+      const task = createTask({ board_id: board.id, title: "Grace retry task", assignee: "opencode", max_retries: 3 });
+      promoteTask(task.id);
+
+      const claim = atomicClaim(task.id, "opencode");
+      const now = Math.floor(Date.now() / 1000);
+      updateRun(claim.runId!, { worker_pid: 999999, spawned_at: now - 31 });
+
+      await tick({
+        createWorktree: () => "/tmp/mock-worktree",
+        removeWorktree: () => ({ worktreeRemoved: true, branchDeleted: true, found: true }),
+        maxSpawnsPerTick: 0,
+      });
+
+      const updated = showTask(task.id);
+      expect(updated!.status).toBe("ready");
+      expect(updated!.consecutive_failures).toBe(1);
+      const runs = getRuns(task.id);
+      expect(runs[0].status).toBe("crashed");
+      expect(runs[0].outcome).toBe("crashed");
+    });
+
+    it("keeps successful harness runs unchanged when flag enabled", async () => {
+      setFlag("FF_CRASH_GRACE_PERIOD", true);
+      const board = createBoard("grace-board", "/tmp/grace-board");
+      const task = createTask({ board_id: board.id, title: "Normal task", assignee: "opencode" });
+      promoteTask(task.id);
+
+      const result = await tick({
+        spawnHarness: () => Promise.resolve({ stdout: "done", stderr: "", exitCode: 0 }),
+        createWorktree: () => "/tmp/mock-worktree",
+        removeWorktree: () => ({ worktreeRemoved: true, branchDeleted: true, found: true }),
+      });
+
+      expect(result.processed).toBe(1);
+      expect(showTask(task.id)!.status).toBe("done");
+    });
+
+    it("keeps timeout behavior unchanged when flag enabled", async () => {
+      setFlag("FF_CRASH_GRACE_PERIOD", true);
+      const board = createBoard("grace-board", "/tmp/grace-board");
+      const task = createTask({
+        board_id: board.id,
+        title: "Slow task",
+        assignee: "opencode",
+        max_runtime_seconds: 1,
+      });
+      promoteTask(task.id);
+
+      const result = await tick({
+        spawnHarness: async (_command, _cwd, _logPath, timeoutMs) => {
+          await new Promise((resolve) => setTimeout(resolve, timeoutMs! + 50));
+          throw new Error(`Harness timed out after ${timeoutMs}ms`);
+        },
+        createWorktree: () => "/tmp/mock-worktree",
+        removeWorktree: () => ({ worktreeRemoved: true, branchDeleted: true, found: true }),
+      });
+
+      expect(result.processed).toBe(0);
+      const updated = showTask(task.id);
+      expect(updated!.status).toBe("blocked");
+      expect(updated!.block_reason).toContain("timed out");
+      const runs = getRuns(task.id);
+      expect(runs[0].status).toBe("timed_out");
+    });
   });
 });
