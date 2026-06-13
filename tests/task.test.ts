@@ -14,11 +14,15 @@ import {
   scheduleTask,
   promoteScheduledTasks,
   parseDuration,
+  assignTask,
+  unassignTask,
+  reassignTask,
   type Task,
 } from "../src/models/task";
 import { createBoard } from "../src/models/board";
 import { getRuns, createRun } from "../src/models/taskRun";
 import { getEvents } from "../src/models/taskEvent";
+import { atomicClaim } from "../src/models/claim";
 import { cleanupDb } from "./cleanupDb";
 
 const TEST_DB = "/tmp/kdi-task-test.db";
@@ -698,5 +702,126 @@ describe("task model", () => {
     promoteScheduledTasks(now + 10);
     const events = getEvents(task.id);
     expect(events.some((e) => e.kind === "ready")).toBe(true);
+  });
+
+  it("assignTask sets assignee and emits assigned event", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Assign me" });
+
+    const assigned = assignTask(task.id, "opencode");
+    expect(assigned.assignee).toBe("opencode");
+
+    const fetched = showTask(task.id);
+    expect(fetched!.assignee).toBe("opencode");
+
+    const events = getEvents(task.id);
+    const event = events.find((e) => e.kind === "assigned");
+    expect(event).toBeDefined();
+    expect(JSON.parse(event!.payload!)).toEqual({ assignee: "opencode" });
+  });
+
+  it("unassignTask clears assignee and emits unassigned event", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Unassign me", assignee: "opencode" });
+
+    const unassigned = unassignTask(task.id);
+    expect(unassigned.assignee).toBeNull();
+
+    const fetched = showTask(task.id);
+    expect(fetched!.assignee).toBeNull();
+
+    const events = getEvents(task.id);
+    const event = events.find((e) => e.kind === "unassigned");
+    expect(event).toBeDefined();
+    expect(event!.payload).toBeNull();
+  });
+
+  it("assignTask rejects archived task", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Archived" });
+    archiveTask(task.id);
+
+    expect(() => assignTask(task.id, "opencode")).toThrow("archived");
+  });
+
+  it("unassignTask rejects archived task", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Archived", assignee: "opencode" });
+    archiveTask(task.id);
+
+    expect(() => unassignTask(task.id)).toThrow("archived");
+  });
+
+  it("reassignTask updates assignee when task is not running", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Reassign me", assignee: "opencode" });
+
+    const reassigned = reassignTask(task.id, "codex");
+    expect(reassigned.assignee).toBe("codex");
+
+    const events = getEvents(task.id);
+    expect(events.some((e) => e.kind === "assigned")).toBe(true);
+  });
+
+  it("reassignTask unassigns when profile is null", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Clear me", assignee: "opencode" });
+
+    const reassigned = reassignTask(task.id, null);
+    expect(reassigned.assignee).toBeNull();
+
+    const events = getEvents(task.id);
+    expect(events.some((e) => e.kind === "unassigned")).toBe(true);
+  });
+
+  it("reassignTask with reclaim releases active claim and assigns new profile", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Reclaim me", assignee: "opencode" });
+    promoteTask(task.id);
+    const claim = atomicClaim(task.id, "opencode");
+    expect(claim.success).toBe(true);
+
+    const reassigned = reassignTask(task.id, "codex", { reclaim: true });
+    expect(reassigned.status).toBe("ready");
+    expect(reassigned.assignee).toBe("codex");
+    expect(reassigned.claim_lock).toBeNull();
+
+    const events = getEvents(task.id);
+    expect(events.some((e) => e.kind === "reclaimed")).toBe(true);
+    expect(events.some((e) => e.kind === "assigned")).toBe(true);
+
+    const runs = getRuns(task.id);
+    const reclaimedRun = runs.find((r) => r.id === claim.runId);
+    expect(reclaimedRun).toBeDefined();
+    expect(reclaimedRun!.outcome).toBe("reclaimed");
+  });
+
+  it("reassignTask with reclaim records reason on reclaimed event", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Reclaim reason", assignee: "opencode" });
+    promoteTask(task.id);
+    atomicClaim(task.id, "opencode");
+
+    reassignTask(task.id, "codex", { reclaim: true, reason: "slow" });
+
+    const events = getEvents(task.id);
+    const reclaimed = events.find((e) => e.kind === "reclaimed");
+    expect(reclaimed).toBeDefined();
+    expect(JSON.parse(reclaimed!.payload!)).toEqual({ reason: "slow" });
+  });
+
+  it("reassignTask with reclaim to none clears assignee and leaves task ready", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Reclaim none", assignee: "opencode" });
+    promoteTask(task.id);
+    atomicClaim(task.id, "opencode");
+
+    const reassigned = reassignTask(task.id, null, { reclaim: true, reason: "abort" });
+    expect(reassigned.status).toBe("ready");
+    expect(reassigned.assignee).toBeNull();
+
+    const events = getEvents(task.id);
+    expect(events.some((e) => e.kind === "reclaimed")).toBe(true);
+    expect(events.some((e) => e.kind === "unassigned")).toBe(true);
   });
 });

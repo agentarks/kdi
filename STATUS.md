@@ -106,17 +106,17 @@
 - [ ] Unit/dispatcher integration tests cover EX_TEMPFAIL requeue, cooldown suppression, override, flag-disabled fallback, and `kdi show` display
 - [ ] `bun run lint`, `bun run test`, `bun run build` pass
 
-## Assign / Reassign (KDI-017) — Spec Ready
+## Assign / Reassign (KDI-017) — Done
 - [x] BRD drafted at `specs/brd-kdi-017-assign-reassign.md`
 - [x] Feature flag `ff_assign_reassign` / `FF_ASSIGN_REASSIGN` registered in `specs/feature-flags.md`, defaults to `false`
-- [ ] `FF_ASSIGN_REASSIGN` constant added to `src/flags.ts`
-- [ ] `assignTask()` / `unassignTask()` / `reassignTask()` model functions in `src/models/task.ts`
-- [ ] `kdi assign <task_id> <profile>` and `kdi assign <task_id> none` commands
-- [ ] `kdi reassign <task_id> <profile> [--reclaim] [--reason <text>]` command
-- [ ] `kdi reclaim <task_id> --reason <text>` option gated by `FF_ASSIGN_REASSIGN`
-- [ ] `assigned`, `unassigned`, and `reclaimed` event emissions covered by tests
-- [ ] Unit/e2e tests added and passing
-- [ ] `bun run lint`, `bun run test`, `bun run build` pass
+- [x] `FF_ASSIGN_REASSIGN` constant added to `src/flags.ts`
+- [x] `assignTask()` / `unassignTask()` / `reassignTask()` model functions in `src/models/task.ts`
+- [x] `kdi assign <task_id> <profile>` and `kdi assign <task_id> none` commands
+- [x] `kdi reassign <task_id> <profile> [--reclaim] [--reason <text>]` command
+- [x] `kdi reclaim <task_id> --reason <text>` option gated by `FF_ASSIGN_REASSIGN`
+- [x] `assigned`, `unassigned`, and `reclaimed` event emissions covered by tests
+- [x] Unit/e2e tests added and passing
+- [x] `bun run lint`, `bun run test`, `bun run build` pass
 
 ## Worker Log Capture (KDI-018) — Spec Ready
 - [x] BRD drafted at `specs/brd-kdi-018-worker-log-capture.md`
