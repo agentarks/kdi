@@ -2,6 +2,7 @@ import { Database } from "bun:sqlite";
 import { homedir } from "node:os";
 import { mkdirSync, openSync, closeSync, writeFileSync, readFileSync, unlinkSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { assertValidBoardSlug } from "./slugs";
 
 let dbInstance: Database | null = null;
 let currentDbPath: string | null = null;
@@ -11,6 +12,7 @@ export function defaultDbPath(): string {
 }
 
 export function getBoardDataDir(slug: string): string {
+  assertValidBoardSlug(slug);
   return join(dirname(defaultDbPath()), "boards", slug);
 }
 

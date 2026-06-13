@@ -1,5 +1,11 @@
 # kdi — Status
 
+## Board Slug Path Traversal Hardening — Done
+- [x] Shared board slug validation requires `^[a-zA-Z0-9_-]+$`
+- [x] `boards create <slug>` and `createBoard()` reject traversal slugs
+- [x] `getBoardDataDir()` validates slugs before constructing board data paths
+- [x] Unit/e2e coverage proves traversal slugs are rejected
+
 ## Created-by Tracking (KDI-007) — Done
 - [x] `created_by` column on tasks with migration default `"unknown"`
 - [x] `kdi create --created-by <actor>` stores creator explicitly

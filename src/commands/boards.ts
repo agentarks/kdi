@@ -1,6 +1,7 @@
 import { Command } from "commander";
 import { createBoard, listBoards, showBoard, archiveBoard, updateBoardMetadata, removeBoard } from "../models/board";
 import { isEnabled, FF_BOARD_METADATA, FF_BOARD_RM_DELETE } from "../flags";
+import { assertValidBoardSlug } from "../slugs";
 
 export const boardsCommand = new Command("boards")
   .description("Manage kanban boards");
@@ -15,6 +16,7 @@ boardsCommand
   .option("--color <color>", "Color for the board")
   .action((slug: string, options: { workdir: string; baseRef: string; name?: string; icon?: string; color?: string }) => {
     try {
+      assertValidBoardSlug(slug);
       const metadataRequested = options.name !== undefined || options.icon !== undefined || options.color !== undefined;
       if (metadataRequested && !isEnabled(FF_BOARD_METADATA)) {
         throw new Error("Board metadata feature is not enabled.");

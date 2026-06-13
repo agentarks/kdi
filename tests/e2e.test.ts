@@ -74,6 +74,19 @@ function getTaskStatus(taskId: string, env: Record<string, string>): string | nu
 }
 
 describe("kdi e2e acceptance", () => {
+  it("boards create rejects path traversal slugs", () => {
+    const tmp = makeTempDir("board-traversal");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp };
+
+    expect(() => runKdi(`boards create ../../bad --workdir ${repoDir}`, env)).toThrow(/Invalid board slug/);
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
   it("create returns task ID", () => {
     const tmp = makeTempDir("create");
     const dbPath = join(tmp, "kdi.db");

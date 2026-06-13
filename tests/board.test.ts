@@ -36,6 +36,14 @@ describe("board model", () => {
     expect(board.base_ref).toBe("origin/develop");
   });
 
+  it("createBoard rejects path traversal slugs", () => {
+    expect(() => createBoard("../../bad", "/tmp/bad")).toThrow(/Invalid board slug/);
+  });
+
+  it("getBoardDataDir rejects path traversal slugs", () => {
+    expect(() => getBoardDataDir("../")).toThrow(/Invalid board slug/);
+  });
+
   it("createBoard defaults name to slug when omitted", () => {
     const board = createBoard("alpha", "/tmp/alpha");
     expect(board.name).toBe("alpha");

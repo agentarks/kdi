@@ -1,5 +1,6 @@
 import { getDb, getBoardDataDir } from "../db";
 import { rmSync } from "node:fs";
+import { assertValidBoardSlug } from "../slugs";
 
 export interface Board {
   id: number;
@@ -47,6 +48,7 @@ export function createBoard(
   baseRef: string = "origin/main",
   metadata: BoardMetadata = {}
 ): Board {
+  assertValidBoardSlug(slug);
   validateMetadataField(metadata.name, "Name");
   validateMetadataField(metadata.icon, "Icon");
   validateMetadataField(metadata.color, "Color");
