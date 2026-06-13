@@ -13,20 +13,13 @@ export const initCommand = new Command("init")
       if (options.force) {
         closeDb();
         // Delete WAL artifacts so initDb creates a fresh connection
-        try {
-          unlinkSync(dbPath);
-        } catch {
-          /* file may not exist */
-        }
-        try {
-          unlinkSync(dbPath + "-wal");
-        } catch {
-          /* file may not exist */
-        }
-        try {
-          unlinkSync(dbPath + "-shm");
-        } catch {
-          /* file may not exist */
+        for (const suffix of ["", "-wal", "-shm"]) {
+          const filePath = dbPath + suffix;
+          try {
+            unlinkSync(filePath);
+          } catch {
+            /* file may not exist — expected on first --force run */
+          }
         }
       }
 

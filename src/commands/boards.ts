@@ -201,7 +201,7 @@ boardsCommand
       console.error(`Error: ${err.message}`);
       process.exit(1);
     }
-  })
+  });
 
 boardsCommand
   .command("rm <slug>")
