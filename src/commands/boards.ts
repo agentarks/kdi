@@ -1,7 +1,8 @@
 import { Command } from "commander";
-import { createBoard, listBoards, showBoard, archiveBoard, updateBoardMetadata, removeBoard } from "../models/board";
-import { isEnabled, FF_BOARD_METADATA, FF_BOARD_RM_DELETE } from "../flags";
+import { createBoard, listBoards, showBoard, archiveBoard, updateBoardMetadata, removeBoard, renameBoard, setDefaultWorkdir } from "../models/board";
+import { isEnabled, FF_BOARD_METADATA, FF_BOARD_RM_DELETE, FF_BOARD_SWITCH, FF_BOARD_RENAME, FF_DEFAULT_WORKDIR } from "../flags";
 import { assertValidBoardSlug } from "../slugs";
+import { readCurrentBoard, writeCurrentBoard, resolveBoard } from "../resolveBoard";
 
 export const boardsCommand = new Command("boards")
   .description("Manage kanban boards");
@@ -62,13 +63,36 @@ boardsCommand
   });
 
 boardsCommand
-  .command("show <slug>")
-  .description("Show board details and task counts")
+  .command("switch <slug>")
+  .description("Switch the current board")
   .action((slug: string) => {
     try {
+      if (!isEnabled(FF_BOARD_SWITCH)) {
+        throw new Error("Board switch feature is not enabled.");
+      }
+      assertValidBoardSlug(slug);
       const board = showBoard(slug, true);
       if (!board) {
         console.error(`Board "${slug}" not found.`);
+        process.exit(1);
+      }
+      writeCurrentBoard(slug);
+      console.log(`Switched to board "${slug}".`);
+    } catch (err: any) {
+      console.error(`Error: ${err.message}`);
+      process.exit(1);
+    }
+  });
+
+boardsCommand
+  .command("show [slug]")
+  .description("Show board details and task counts (uses current board when slug omitted)")
+  .action((slug?: string) => {
+    try {
+      const effectiveSlug = slug ?? resolveBoard();
+      const board = showBoard(effectiveSlug, true);
+      if (!board) {
+        console.error(`Board "${effectiveSlug}" not found.`);
         process.exit(1);
       }
       const archived = board.archived_at ? " (archived)" : "";
@@ -79,6 +103,9 @@ boardsCommand
         if (board.color) console.log(`Color: ${board.color}`);
       }
       console.log(`Workdir: ${board.workdir}`);
+      if (isEnabled(FF_DEFAULT_WORKDIR) && board.default_workdir) {
+        console.log(`Default workdir: ${board.default_workdir}`);
+      }
       console.log(`Base ref: ${board.base_ref}`);
       console.log(`Created: ${new Date(board.created_at * 1000).toISOString()}`);
       console.log("Tasks:");
@@ -118,12 +145,58 @@ boardsCommand
   });
 
 boardsCommand
+  .command("set-default-workdir <slug> [workdir]")
+  .description("Set or clear a board's default task workspace directory")
+  .action((slug: string, workdir: string | undefined) => {
+    try {
+      if (!isEnabled(FF_DEFAULT_WORKDIR)) {
+        throw new Error("Default workdir feature is not enabled.");
+      }
+      const board = setDefaultWorkdir(slug, workdir ?? null);
+      if (board.default_workdir) {
+        console.log(`Default workdir for board "${board.slug}" set to ${board.default_workdir}`);
+      } else {
+        console.log(`Default workdir for board "${board.slug}" cleared`);
+      }
+    } catch (err: any) {
+      console.error(`Error: ${err.message}`);
+      process.exit(1);
+    }
+  });
+
+boardsCommand
   .command("archive <slug>")
   .description("Archive a board")
   .action((slug: string) => {
     try {
       archiveBoard(slug);
       console.log(`Archived board "${slug}".`);
+    } catch (err: any) {
+      console.error(`Error: ${err.message}`);
+      process.exit(1);
+    }
+  });
+
+boardsCommand
+  .command("rename <old-slug> <new-slug>")
+  .description("Rename a board (updates slug, data directory, and current-board file)")
+  .action((oldSlug: string, newSlug: string) => {
+    try {
+      if (!isEnabled(FF_BOARD_RENAME)) {
+        throw new Error("Board rename feature is not enabled.");
+      }
+      assertValidBoardSlug(oldSlug, "old board slug");
+      assertValidBoardSlug(newSlug, "new board slug");
+
+      const { board } = renameBoard(oldSlug, newSlug);
+
+      // Update current-board file if it referenced the old slug
+      const current = readCurrentBoard();
+      if (current === oldSlug) {
+        writeCurrentBoard(newSlug);
+      }
+
+      console.log(`Renamed board "${oldSlug}" to "${board.slug}".`);
     } catch (err: any) {
       console.error(`Error: ${err.message}`);
       process.exit(1);

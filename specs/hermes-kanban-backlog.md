@@ -375,22 +375,22 @@
   - Hard-delete board directory instead of soft-archive to `boards/_archived/`
   - Gated by `FF_BOARD_RM_DELETE`, default `false`
 
-- [ ] **KDI-013: Board switch / current**
+- [x] **KDI-013: Board switch / current**
   - `kdi boards switch <slug>` — write to `~/.local/share/kdi/current`
   - `kdi boards show` — print current board
   - `--board` flag on all commands
   - Env var `KDI_BOARD` overrides current file
   - Resolution chain: `--board` → `KDI_BOARD` env → `~/.local/share/kdi/current` → `default`
 
-- [ ] **KDI-013b: `kdi init`**
+- [x] **KDI-013b: `kdi init`**
   - Idempotent DB creation command (`kdi init`)
   - Separate from implicit init on first command
 
-- [ ] **KDI-014: Rename board**
+- [x] **KDI-014: Rename board**
   - `kdi boards rename <slug> "New Name"`
   - Slug immutable, display name mutable
 
-- [ ] **KDI-015: Default workdir**
+- [x] **KDI-015: Default workdir**
   - `kdi boards set-default-workdir <slug> /path/to/project`
   - `kdi boards set-default-workdir <slug>` (no path) — clears default
   - Tasks created without `--workspace` inherit board default
@@ -526,9 +526,9 @@
 | `hermes kanban boards create` | `kdi boards create` | **Done** (basic) | KDI-012, KDI-013, KDI-014, KDI-015 |
 | `hermes kanban boards list` | `kdi boards list` | **Done** (basic) | KDI-012 |
 | `hermes kanban boards show` | `kdi boards show` | **Done** (basic) | KDI-013 |
-| `hermes kanban boards switch` | `kdi boards switch` | Missing | KDI-013 |
-| `hermes kanban boards rename` | `kdi boards rename` | Missing | KDI-014 |
-| `hermes kanban boards set-default-workdir` | `kdi boards set-default-workdir` | Missing | KDI-015 |
+| `hermes kanban boards switch` | `kdi boards switch` | **Done** | KDI-013 |
+| `hermes kanban boards rename` | `kdi boards rename` | **Done** | KDI-014 |
+| `hermes kanban boards set-default-workdir` | `kdi boards set-default-workdir` | **Done** | KDI-015 |
 | `hermes kanban create` | `kdi create` | Partial | KDI-004, KDI-006, KDI-007, KDI-008, KDI-009, KDI-010, KDI-011 |
 | `hermes kanban list` | `kdi list` | Partial | KDI-006 |
 | `hermes kanban show` | `kdi show` | Exists | KDI-000b (events) |
@@ -561,7 +561,7 @@
 | `hermes kanban diagnostics` | `kdi diagnostics` | Missing | KDI-020 |
 | `hermes kanban notify-subscribe` | `kdi notify-subscribe` | Missing | KDI-025 |
 | `hermes kanban notify-unsubscribe` | `kdi notify-unsubscribe` | Missing | KDI-025 |
-| `hermes kanban init` | `kdi init` | Missing | KDI-013b |
+| `hermes kanban init` | `kdi init` | **Done** | KDI-013b |
 | `--board` flag + env resolution | `--board` + `KDI_BOARD` | Missing | KDI-013 |
 | `boards list --all` | `kdi boards list --all` | **Done** | KDI-012b |
 | `boards rm --delete` | `kdi boards rm --delete` | **Done** | KDI-012c |
@@ -638,10 +638,10 @@
 16. ~~KDI-012~~: Board metadata (name, icon, color)
 17. ~~KDI-012b~~: `boards list --all`
 18. ~~KDI-012c~~: `boards rm --delete`
-19. **KDI-013**: Board switch / current + resolution chain
-20. **KDI-013b**: `kdi init` command
-21. **KDI-014**: Rename board
-22. **KDI-015**: Default workdir
+19. ~~KDI-013~~: Board switch / current + resolution chain
+20. ~~KDI-013b~~: `kdi init` command
+21. ~~KDI-014~~: Rename board
+22. ~~KDI-015~~: Default workdir
 
 ### P3 — Observability
 23. **KDI-019**: Stats

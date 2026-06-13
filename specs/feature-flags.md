@@ -9,6 +9,7 @@ This document is the single source of truth for all `ff_*` feature flags in `kdi
 - Browser environment variable form: not applicable (kdi is a Bun CLI binary)
 - All flags default to `false` in every environment unless explicitly promoted.
 - A flag is removed from code and this registry only after completing the deprecation window.
+- **Foundational commands** (`kdi init`, `kdi boards create`, `kdi boards list`, `kdi boards show`, `kdi boards archive`) are exempt from feature-flag gating. These commands provide the minimum viable surface for board and database management and must always be available.
 
 ## Lifecycle
 
@@ -40,6 +41,9 @@ stateDiagram-v2
 | `ff_model_override` | `FF_MODEL_OVERRIDE` | CLI / create + dispatcher | InDev | `false` | KDI-010 | Per-task model override; `create --model`; dispatcher passes `{{model}}` and `KDI_MODEL` to harness. |
 | `ff_max_retries` | `FF_MAX_RETRIES` | CLI / create + dispatcher | InDev | `false` | KDI-011 | Per-task max retries; auto-block after N consecutive spawn/execution failures. |
 | `ff_board_metadata` | `FF_BOARD_METADATA` | CLI / board metadata | InDev | `false` | KDI-012 | Board name, icon, and color; `boards create --name/--icon/--color`, `boards edit`, and metadata display. |
+| `ff_board_switch` | `FF_BOARD_SWITCH` | CLI / board management | InDev | `false` | KDI-013 | Board switch command and resolution chain; `boards switch`, `boards show` without slug. |
+| `ff_board_rename` | `FF_BOARD_RENAME` | CLI / board management | InDev | `false` | KDI-014 | Board rename command; `boards rename <old> <new>` renames slug and data directory. |
+| `ff_default_workdir` | `FF_DEFAULT_WORKDIR` | CLI / board management + create | InDev | `false` | KDI-015 | Board default task workspace; `boards set-default-workdir`; create inheritance and `--workspace`. |
 
 ## Lifecycle Notes
 
@@ -196,6 +200,46 @@ stateDiagram-v2
   - `boards edit` updates board metadata.
   - `boards show` and `boards list` display metadata when set.
 - **Rollback / deactivation:** Set `FF_BOARD_METADATA=false` to hide/gate the `--name`, `--icon`, `--color`, and `boards edit` options.
+- **Deprecation plan:** N/A
+
+### `ff_board_switch` — InDev
+
+- **Owner:** kdi core team
+- **BRD:** KDI-013
+- **Status transitions:**
+  - `Planned` → `InDev` when board switch command and resolution chain are implemented.
+- **Activation criteria:**
+  - `boards switch <slug>` writes to `~/.local/share/kdi/current`.
+  - `boards show` without slug resolves the current board via the chain.
+  - Resolution chain: `--board` flag → `KDI_BOARD` env → current file → `"default"`.
+- **Rollback / deactivation:** Set `FF_BOARD_SWITCH=false` to reject the `boards switch` command and disable chain resolution.
+- **Deprecation plan:** N/A
+
+### `ff_board_rename` — InDev
+
+- **Owner:** kdi core team
+- **BRD:** KDI-014
+- **Status transitions:**
+  - `Planned` → `InDev` when board rename command is implemented.
+- **Activation criteria:**
+  - `boards rename <old> <new>` updates the slug, renames the data directory, and updates the current-board file.
+  - All error cases handled: invalid slugs, same slug, not found, archived, slug conflict.
+- **Rollback / deactivation:** Set `FF_BOARD_RENAME=false` to reject the `boards rename` command.
+- **Deprecation plan:** N/A
+
+### `ff_default_workdir` — InDev
+
+- **Owner:** kdi core team
+- **BRD:** KDI-015
+- **Status transitions:**
+  - `Planned` → `InDev` when board default workdir storage and create inheritance are implemented.
+- **Schema note:** `default_workdir` is a schema-level TEXT column on `boards`; task `workspace` is persisted so inherited/explicit workspaces can be used by the dispatcher. This flag gates the CLI command, `create --workspace`, and default inheritance.
+- **Activation criteria:**
+  - `boards set-default-workdir <slug> <path>` stores and displays the default workdir.
+  - `boards set-default-workdir <slug>` clears the default workdir.
+  - `create` inherits the board default when `--workspace` is omitted.
+  - `create --workspace <path>` overrides the board default.
+- **Rollback / deactivation:** Set `FF_DEFAULT_WORKDIR=false` to reject the command and prevent create from inheriting board defaults.
 - **Deprecation plan:** N/A
 
 ### `ff_kanban_dispatch` — Planned

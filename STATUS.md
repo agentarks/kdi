@@ -19,6 +19,7 @@
 - [x] `kdi boards list` — list all boards (excludes archived; use `--all` to include)
 - [x] `kdi boards show <slug>` — show board details + task counts (triage, todo, ready, running, done, blocked, archived)
 - [x] `kdi boards archive <slug>` — archive board (soft delete)
+- [x] `kdi boards rename <old-slug> <new-slug>` — rename a board (slug, data directory, current-board)
 
 ## Board Metadata (KDI-012) — Done
 - [x] `name`, `icon`, `color` columns added to `boards` table (schema + migration)
@@ -29,6 +30,16 @@
 - [x] `kdi boards list` shows metadata compactly when flag enabled
 - [x] Board name defaults to slug when omitted; icon and color default to null
 
+## Board Rename (KDI-014) — Done
+- [x] `FF_BOARD_RENAME` flag registered in `src/flags.ts`, defaults to `false`
+- [x] `kdi boards rename <old-slug> <new-slug>` command added to `src/commands/boards.ts`
+- [x] `renameBoard()` model function in `src/models/board.ts` handles DB slug update and directory rename
+- [x] All error cases handled: flag disabled, invalid slugs, same slug, not found, archived, conflict with existing slug (active or archived)
+- [x] Board data directory renamed on disk when it exists; warning on stderr when it doesn't
+- [x] Current-board file updated when it references the old slug
+- [x] Tasks preserved after rename (board_id FK doesn't change)
+- [x] Tests cover AC-01 through AC-14 from the BRD
+
 ## `kdi boards rm --delete` (KDI-012c) — Done
 - [x] `kdi boards rm <slug>` — soft-archive board (sets `archived_at`, keeps row and files)
 - [x] `kdi boards rm <slug> --delete` — permanently delete board row and board data directory
@@ -36,6 +47,26 @@
 - [x] Clear error when `--delete` is used on a non-existent slug
 - [x] Cascade-delete tasks and related rows when hard-deleting a board
 - [x] Feature flag `ff_board_rm_delete` registered in `specs/feature-flags.md`
+
+## Board Switch / Resolution Chain (KDI-013) — Done
+- [x] `kdi boards switch <slug>` — writes slug to `~/.local/share/kdi/current`
+- [x] `kdi boards show` (without slug) — displays current board via resolution chain
+- [x] Resolution chain: `--board` flag → `KDI_BOARD` env → current file → `"default"`
+- [x] `kdi create`, `kdi list`, `kdi specify` all resolve board via chain when `--board` is omitted
+- [x] `kdi boards switch` rejects path traversal and non-existent slugs
+- [x] Feature flag `ff_board_switch` registered and defaults to `false`
+- [x] Unit tests for `resolveBoard()`, `writeCurrentBoard()`, `readCurrentBoard()`
+- [x] E2e tests for `boards switch`, resolution chain priority, and flag gating
+
+## Default Workdir (KDI-015) — Done
+- [x] `default_workdir` column added to `boards` table (schema + migration)
+- [x] `workspace` column added to `tasks` so explicit/inherited task workspace paths persist
+- [x] Feature flag `ff_default_workdir` / `FF_DEFAULT_WORKDIR` registered in `src/flags.ts` and `specs/feature-flags.md`, defaults to `false`
+- [x] `kdi boards set-default-workdir <slug> <path>` stores and displays a board default workdir when the flag is enabled
+- [x] `kdi boards set-default-workdir <slug>` clears the board default workdir when the flag is enabled
+- [x] `kdi create <title> --board <slug>` inherits the board default when `--workspace` is omitted and the flag is enabled
+- [x] `kdi create <title> --board <slug> --workspace <path>` overrides the board default when the flag is enabled
+- [x] When `FF_DEFAULT_WORKDIR=false`, the command/`--workspace` option are rejected and default inheritance is skipped
 
 ## Task Lifecycle
 - [x] `kdi create <title> --board <slug> --assignee <profile>` — create task

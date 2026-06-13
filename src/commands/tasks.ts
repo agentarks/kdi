@@ -21,7 +21,8 @@ import { getRuns } from "../models/taskRun";
 import { getEvents, tailEvents, getRecentEvents, getEventsAfter } from "../models/taskEvent";
 import { atomicClaim, reclaimTask, heartbeat } from "../models/claim";
 import { getTaskLogPath } from "../observability";
-import { isEnabled, FF_SCHEDULED_STATUS, FF_REVIEW_STATUS, FF_COMPLETE_METADATA, FF_PRIORITY_INTEGER, FF_SKILLS_ARRAY, FF_MAX_RUNTIME, FF_MAX_RETRIES, FF_TENANT_NAMESPACE, FF_CREATED_BY, FF_MODEL_OVERRIDE } from "../flags";
+import { isEnabled, FF_SCHEDULED_STATUS, FF_REVIEW_STATUS, FF_COMPLETE_METADATA, FF_PRIORITY_INTEGER, FF_SKILLS_ARRAY, FF_MAX_RUNTIME, FF_MAX_RETRIES, FF_TENANT_NAMESPACE, FF_CREATED_BY, FF_MODEL_OVERRIDE, FF_DEFAULT_WORKDIR } from "../flags";
+import { resolveBoard } from "../resolveBoard";
 
 const VALID_STATUSES = ["triage", "todo", "scheduled", "ready", "running", "done", "blocked", "review"] as const;
 type ValidStatus = typeof VALID_STATUSES[number];
@@ -30,12 +31,16 @@ function isValidStatus(status: string): status is ValidStatus {
   return (VALID_STATUSES as readonly string[]).includes(status);
 }
 
-function getBoardIdBySlug(slug: string): number {
+function getBoardBySlug(slug: string): NonNullable<ReturnType<typeof showBoard>> {
   const board = showBoard(slug, false);
   if (!board) {
     throw new Error(`Board "${slug}" not found.`);
   }
-  return board.id;
+  return board;
+}
+
+function getBoardIdBySlug(slug: string): number {
+  return getBoardBySlug(slug).id;
 }
 
 function parseTaskId(raw: string): number {
@@ -90,7 +95,7 @@ function validateSkillName(name: string): void {
 export const createTaskCommand = new Command("create")
   .description("Create a new task")
   .argument("<title>", "Task title")
-  .requiredOption("--board <slug>", "Board slug")
+  .option("--board <slug>", "Board slug (resolved via chain: --board, KDI_BOARD, current, default)")
   .option("--assignee <profile>", "Assignee profile")
   .option("--body <text>", "Task body")
   .option("--triage", "Park in triage status instead of todo")
@@ -104,7 +109,8 @@ export const createTaskCommand = new Command("create")
   .option("--skill <skill>", "Add a skill to the task (repeatable)", collectSkill, [])
   .option("--model <model>", "Model override for the harness")
   .option("--created-by <actor>", "Actor that created the task")
-  .action((title: string, options: { board: string; assignee?: string; body?: string; triage?: boolean; initialStatus?: string; at?: string; priority?: string; idempotencyKey?: string; maxRuntime?: string; maxRetries?: string; tenant?: string; skill: string[]; createdBy?: string; model?: string }) => {
+  .option("--workspace <path>", "Workspace path for this task. Feature-flagged.")
+  .action((title: string, options: { board?: string; assignee?: string; body?: string; triage?: boolean; initialStatus?: string; at?: string; priority?: string; idempotencyKey?: string; maxRuntime?: string; maxRetries?: string; tenant?: string; skill: string[]; createdBy?: string; model?: string; workspace?: string }) => {
     try {
       if (!title || title.trim() === "") {
         throw new Error("Title is required.");
@@ -211,9 +217,26 @@ export const createTaskCommand = new Command("create")
         createdBy = resolveCreator(options.createdBy);
       }
 
-      const boardId = getBoardIdBySlug(options.board);
+      const boardSlug = resolveBoard(options.board);
+      const board = getBoardBySlug(boardSlug);
+
+      let workspace: string | undefined;
+      if (options.workspace !== undefined) {
+        if (!isEnabled(FF_DEFAULT_WORKDIR)) {
+          throw new Error("Default workdir feature is not enabled.");
+        }
+        workspace = options.workspace.trim();
+        if (workspace === "") {
+          throw new Error("Workspace cannot be empty.");
+        }
+      }
+
+      if (workspace === undefined && isEnabled(FF_DEFAULT_WORKDIR) && board.default_workdir) {
+        workspace = board.default_workdir;
+      }
+
       const task = createTask({
-        board_id: boardId,
+        board_id: board.id,
         title,
         assignee: options.assignee,
         body: options.body,
@@ -228,6 +251,7 @@ export const createTaskCommand = new Command("create")
         skills,
         created_by: createdBy,
         model_override: options.model,
+        workspace,
       });
       console.log(task.id);
     } catch (err: any) {
@@ -238,12 +262,12 @@ export const createTaskCommand = new Command("create")
 
 export const listTasksCommand = new Command("list")
   .description("List tasks")
-  .requiredOption("--board <slug>", "Board slug")
+  .option("--board <slug>", "Board slug (resolved via chain: --board, KDI_BOARD, current, default)")
   .option("--status <status>", "Filter by status")
   .option("--assignee <profile>", "Filter by assignee")
   .option("--tenant <name>", "Filter by tenant namespace")
   .option("--created-by <actor>", "Filter by creator")
-  .action((options: { board: string; status?: string; assignee?: string; tenant?: string; createdBy?: string }) => {
+  .action((options: { board?: string; status?: string; assignee?: string; tenant?: string; createdBy?: string }) => {
     try {
       if (options.status && !isValidStatus(options.status)) {
         throw new Error(`Invalid status "${options.status}". Valid: ${VALID_STATUSES.join(", ")}`);
@@ -259,7 +283,8 @@ export const listTasksCommand = new Command("list")
       if (options.createdBy !== undefined && !isEnabled(FF_CREATED_BY)) {
         throw new Error("Created-by tracking is not enabled.");
       }
-      const boardId = getBoardIdBySlug(options.board);
+      const boardSlug = resolveBoard(options.board);
+      const boardId = getBoardIdBySlug(boardSlug);
       const tasks = listTasks({ board_id: boardId, status: options.status as any, assignee: options.assignee, tenant: options.tenant, created_by: options.createdBy });
       if (tasks.length === 0) {
         console.log("No tasks.");
@@ -290,6 +315,7 @@ export const showTaskCommand = new Command("show")
       console.log(`Status: ${task.status}`);
       console.log(`Priority: ${task.priority}`);
       if (task.assignee) console.log(`Assignee: ${task.assignee}`);
+      if (isEnabled(FF_DEFAULT_WORKDIR) && task.workspace) console.log(`Workspace: ${task.workspace}`);
       if (task.body) console.log(`Body: ${task.body}`);
       if (task.result) console.log(`Result: ${task.result}`);
       if (task.summary) console.log(`Summary: ${task.summary}`);
@@ -465,10 +491,11 @@ export const specifyTaskCommand = new Command("specify")
   .description("Promote a triage task to todo")
   .argument("[task_id]", "Task ID")
   .option("--all", "Promote all triage tasks for the current board")
-  .requiredOption("--board <slug>", "Board slug")
-  .action((taskId: string | undefined, options: { all?: boolean; board: string }) => {
+  .option("--board <slug>", "Board slug (resolved via chain: --board, KDI_BOARD, current, default)")
+  .action((taskId: string | undefined, options: { all?: boolean; board?: string }) => {
     try {
-      const boardId = getBoardIdBySlug(options.board);
+      const boardSlug = resolveBoard(options.board);
+      const boardId = getBoardIdBySlug(boardSlug);
 
       if (options.all) {
         const tasks = listTasks({ board_id: boardId, status: "triage" });

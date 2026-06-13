@@ -45,6 +45,7 @@ describe("task model", () => {
     expect(task.status).toBe("todo");
     expect(task.priority).toBe(0);
     expect(task.workspace_kind).toBe("worktree");
+    expect(task.workspace).toBeNull();
     expect(task.branch).toBeNull();
     expect(task.result).toBeNull();
     expect(task.summary).toBeNull();
@@ -55,7 +56,7 @@ describe("task model", () => {
     expect(task.archived_at).toBeNull();
   });
 
-  it("createTask with all optional fields", () => {
+  it("createTask with all optional fields including workspace", () => {
     const board = createBoard("alpha", "/tmp/alpha");
     const task = createTask({
       board_id: board.id,
@@ -64,6 +65,7 @@ describe("task model", () => {
       assignee: "alice",
       priority: 5,
       workspace_kind: "scratch",
+      workspace: "/tmp/task-workspace",
       branch: "feature-123",
     });
 
@@ -72,7 +74,11 @@ describe("task model", () => {
     expect(task.assignee).toBe("alice");
     expect(task.priority).toBe(5);
     expect(task.workspace_kind).toBe("scratch");
+    expect(task.workspace).toBe("/tmp/task-workspace");
     expect(task.branch).toBe("feature-123");
+
+    const fetched = showTask(task.id);
+    expect(fetched!.workspace).toBe("/tmp/task-workspace");
   });
 
   it("createTask stores skills array", () => {

@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS boards (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   slug TEXT NOT NULL UNIQUE,
   workdir TEXT NOT NULL,
+  default_workdir TEXT,
   base_ref TEXT NOT NULL DEFAULT 'origin/main',
   name TEXT,
   icon TEXT,
@@ -39,6 +40,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   priority INTEGER DEFAULT 0,
   tenant TEXT,
   workspace_kind TEXT DEFAULT 'worktree' CHECK (workspace_kind IN ('dir', 'worktree', 'scratch')),
+  workspace TEXT,
   branch TEXT,
   result TEXT,
   summary TEXT,
@@ -188,6 +190,12 @@ export function initDb(path?: string): Database {
       dbInstance.exec("ALTER TABLE boards ADD COLUMN base_ref TEXT NOT NULL DEFAULT 'origin/main'");
     }
 
+    // Migrate: add default_workdir column to boards if missing
+    const hasDefaultWorkdir = boardTableInfo.some((col) => col.name === "default_workdir");
+    if (!hasDefaultWorkdir) {
+      dbInstance.exec("ALTER TABLE boards ADD COLUMN default_workdir TEXT");
+    }
+
     // Migrate: add board metadata columns if missing
     const hasBoardName = boardTableInfo.some((col) => col.name === "name");
     if (!hasBoardName) {
@@ -229,6 +237,12 @@ export function initDb(path?: string): Database {
     const hasLastHeartbeat = tableInfo.some((col) => col.name === "last_heartbeat_at");
     if (!hasLastHeartbeat) {
       dbInstance.exec("ALTER TABLE tasks ADD COLUMN last_heartbeat_at INTEGER");
+    }
+
+    // Migrate: add workspace if missing
+    const hasWorkspace = tableInfo.some((col) => col.name === "workspace");
+    if (!hasWorkspace) {
+      dbInstance.exec("ALTER TABLE tasks ADD COLUMN workspace TEXT");
     }
 
     // Migrate: add idempotency_key if missing
@@ -340,6 +354,7 @@ export function initDb(path?: string): Database {
             priority INTEGER DEFAULT 0,
             tenant TEXT,
             workspace_kind TEXT DEFAULT 'worktree' CHECK (workspace_kind IN ('dir', 'worktree', 'scratch')),
+            workspace TEXT,
             branch TEXT,
             result TEXT,
             summary TEXT,
@@ -364,11 +379,11 @@ export function initDb(path?: string): Database {
             model_override TEXT
           );
           INSERT INTO tasks_new
-            (id, board_id, title, body, assignee, status, priority, tenant, workspace_kind, branch, result, summary, block_reason, schedule_reason, review_reason, scheduled_at, created_by, skills, created_at, updated_at, started_at, archived_at, current_run_id, claim_lock, claim_expires, last_heartbeat_at, max_runtime_seconds, max_retries, consecutive_failures, idempotency_key, model_override)
+            (id, board_id, title, body, assignee, status, priority, tenant, workspace_kind, workspace, branch, result, summary, block_reason, schedule_reason, review_reason, scheduled_at, created_by, skills, created_at, updated_at, started_at, archived_at, current_run_id, claim_lock, claim_expires, last_heartbeat_at, max_runtime_seconds, max_retries, consecutive_failures, idempotency_key, model_override)
           SELECT
             id, board_id, title, body, assignee, status,
             CASE priority WHEN 'low' THEN 1 WHEN 'medium' THEN 2 WHEN 'high' THEN 3 ELSE COALESCE(priority, 0) END,
-            tenant, workspace_kind, branch, result, summary, block_reason, schedule_reason, review_reason, scheduled_at, COALESCE(created_by, 'unknown'), skills, created_at, updated_at, started_at, archived_at, current_run_id, claim_lock, claim_expires, last_heartbeat_at, max_runtime_seconds, max_retries, COALESCE(consecutive_failures, 0), idempotency_key, model_override
+            tenant, workspace_kind, workspace, branch, result, summary, block_reason, schedule_reason, review_reason, scheduled_at, COALESCE(created_by, 'unknown'), skills, created_at, updated_at, started_at, archived_at, current_run_id, claim_lock, claim_expires, last_heartbeat_at, max_runtime_seconds, max_retries, COALESCE(consecutive_failures, 0), idempotency_key, model_override
           FROM tasks;
           DROP TABLE tasks;
           ALTER TABLE tasks_new RENAME TO tasks;
@@ -399,7 +414,7 @@ export function initDb(path?: string): Database {
 }
 
 export function getDb(): Database {
-  if (!dbInstance) throw new Error("Database not initialized. Call initDb() first.");
+  if (!dbInstance) throw new Error("Database not initialized. Run 'kdi init' first.");
   return dbInstance;
 }
 

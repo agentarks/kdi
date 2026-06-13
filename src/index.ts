@@ -25,6 +25,7 @@ import {
   scheduleTaskCommand,
 } from "./commands/tasks";
 import { dispatchCommand } from "./commands/dispatch";
+import { initCommand } from "./commands/init";
 import { ensureProfiles } from "./profiles";
 const program = new Command();
 
@@ -36,15 +37,14 @@ program
 try {
   initDb();
 } catch (err: any) {
-  console.error(`Failed to initialize database: ${err.message}`);
-  process.exit(1);
+  console.warn(`Warning: Could not initialize database: ${err.message}`);
+  console.warn(`Run "kdi init" to initialize the database.`);
 }
 
 try {
   ensureProfiles();
 } catch (err: any) {
-  console.error(`Failed to initialize profiles: ${err.message}`);
-  process.exit(1);
+  console.warn(`Warning: Could not initialize profiles: ${err.message}`);
 }
 
 program.addCommand(boardsCommand);
@@ -68,6 +68,7 @@ program.addCommand(heartbeatTaskCommand);
 program.addCommand(logTaskCommand);
 program.addCommand(completeTaskCommand);
 program.addCommand(scheduleTaskCommand);
+program.addCommand(initCommand);
 program.addCommand(dispatchCommand);
 
 program.parse();
