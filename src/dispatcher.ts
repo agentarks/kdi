@@ -9,7 +9,7 @@ import { atomicClaim, heartbeat } from "./models/claim";
 import { isBlockedByDependencies } from "./models/dependency";
 import { getProfile, substituteCommand } from "./profiles";
 import { createWorktree, removeWorktree, type RemoveWorktreeResult } from "./worktree";
-import { isEnabled, FF_ENABLE_KANBAN_DISPATCH } from "./flags";
+import { isEnabled, FF_ENABLE_KANBAN_DISPATCH, FF_RATE_LIMIT_EXIT_CODE } from "./flags";
 import {
   recordTick,
   recordClaim,
@@ -32,6 +32,7 @@ export interface TickOptions {
   createWorktree?: (repoDir: string, profile: string, taskId: string, baseRef: string) => string;
   removeWorktree?: (repoDir: string, profile: string, taskId: string, worktreePath?: string) => RemoveWorktreeResult;
   maxSpawnsPerTick?: number;
+  rateLimitCooldownSeconds?: number;
 }
 
 export interface TickResult {
@@ -110,7 +111,9 @@ export async function spawnHarness(command: string, cwd: string, logPath?: strin
 function listReadyTasks(): Task[] {
   const db = getDb();
   const rows = db.query(
-    `SELECT ${TASK_COLUMNS} FROM tasks WHERE status = 'ready' AND archived_at IS NULL ORDER BY priority DESC, created_at ASC`
+    `SELECT ${TASK_COLUMNS} FROM tasks WHERE status = 'ready' AND archived_at IS NULL
+     AND (rate_limited_until IS NULL OR rate_limited_until <= unixepoch())
+     ORDER BY priority DESC, created_at ASC`
   ).all() as Task[];
   return rows.map(hydrateTask);
 }
@@ -169,7 +172,7 @@ function determineOutcome(reason: string): Parameters<typeof finishRun>[1] {
 function blockTask(id: number, result: string, blockReason: string, runError: string, runId: number | null, consecutiveFailures: number): void {
   const db = getDb();
   db.run(
-    `UPDATE tasks SET status = 'blocked', result = ?, block_reason = ?, consecutive_failures = ?, claim_lock = NULL, claim_expires = NULL, started_at = NULL, updated_at = unixepoch() WHERE id = ?`,
+    `UPDATE tasks SET status = 'blocked', result = ?, block_reason = ?, consecutive_failures = ?, claim_lock = NULL, claim_expires = NULL, started_at = NULL, rate_limited_until = NULL, updated_at = unixepoch() WHERE id = ?`,
     [result, blockReason, consecutiveFailures, id]
   );
   const outcome = determineOutcome(runError);
@@ -181,7 +184,7 @@ function blockTask(id: number, result: string, blockReason: string, runError: st
 
 function requeueTask(id: number, reason: string, runId: number | null, consecutiveFailures?: number): void {
   const db = getDb();
-  const updates = ["status = 'ready'", "result = ?", "claim_lock = NULL", "claim_expires = NULL", "started_at = NULL", "updated_at = unixepoch()"];
+  const updates = ["status = 'ready'", "result = ?", "claim_lock = NULL", "claim_expires = NULL", "started_at = NULL", "rate_limited_until = NULL", "updated_at = unixepoch()"];
   const params: any[] = [reason];
   if (consecutiveFailures !== undefined) {
     updates.push("consecutive_failures = ?");
@@ -196,6 +199,24 @@ function requeueTask(id: number, reason: string, runId: number | null, consecuti
     finishRun(runId, "reclaimed", null, null, reason);
   }
   addEvent(id, "reclaimed", { reason, consecutive_failures: consecutiveFailures }, runId ?? undefined);
+}
+
+function handleRateLimit(task: Task, runId: number | null, cooldownSeconds: number, reason: string): void {
+  const db = getDb();
+  const now = Math.floor(Date.now() / 1000);
+  const cooldownUntil = now + cooldownSeconds;
+  const errorMessage = `Rate-limited (EX_TEMPFAIL); requeued until ${new Date(cooldownUntil * 1000).toISOString()}`;
+
+  db.run(
+    `UPDATE tasks SET status = 'ready', claim_lock = NULL, claim_expires = NULL, started_at = NULL, current_run_id = NULL, rate_limited_until = ?, updated_at = unixepoch() WHERE id = ?`,
+    [cooldownUntil, task.id]
+  );
+
+  if (runId !== null) {
+    finishRun(runId, "reclaimed", null, null, errorMessage);
+  }
+
+  addEvent(task.id, "rate_limited", { exit_code: 75, cooldown_until: cooldownUntil, reason }, runId ?? undefined);
 }
 
 function handleFailure(task: Task, result: string, reason: string, runId: number | null): void {
@@ -230,9 +251,21 @@ function reapStaleClaims(): void {
   }
 
   db.run(
-    `UPDATE tasks SET status = 'ready', started_at = NULL, claim_lock = NULL, claim_expires = NULL, updated_at = unixepoch() WHERE status = 'running' AND (claim_expires < ? OR (last_heartbeat_at IS NOT NULL AND last_heartbeat_at < ?))`,
+    `UPDATE tasks SET status = 'ready', started_at = NULL, claim_lock = NULL, claim_expires = NULL, rate_limited_until = NULL, updated_at = unixepoch() WHERE status = 'running' AND (claim_expires < ? OR (last_heartbeat_at IS NOT NULL AND last_heartbeat_at < ?))`,
     [now, oneHourAgo]
   );
+}
+
+function getRateLimitCooldownSeconds(options: TickOptions): number {
+  if (options.rateLimitCooldownSeconds !== undefined) {
+    return options.rateLimitCooldownSeconds;
+  }
+  const env = process.env.KDI_RATE_LIMIT_COOLDOWN_SECONDS;
+  if (env) {
+    const parsed = parseInt(env, 10);
+    if (!isNaN(parsed) && parsed > 0) return parsed;
+  }
+  return 60;
 }
 
 export async function tick(options: TickOptions = {}): Promise<TickResult> {
@@ -240,6 +273,7 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
   const doCreateWorktree = options.createWorktree ?? createWorktree;
   const doRemoveWorktree = options.removeWorktree ?? removeWorktree;
   const maxSpawns = options.maxSpawnsPerTick ?? Infinity;
+  const rateLimitCooldownSeconds = getRateLimitCooldownSeconds(options);
 
   recordTick();
 
@@ -340,9 +374,8 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
       if (exitCode === 0) {
         finishTask(task.id, stdout, runId);
         processed++;
-      } else if (exitCode === 75) {
-        // EX_TEMPFAIL — requeue to ready without counting as failure
-        requeueTask(task.id, `Rate-limited (EX_TEMPFAIL), requeued to ready: ${stderr || stdout}`, runId);
+      } else if (exitCode === 75 && isEnabled(FF_RATE_LIMIT_EXIT_CODE)) {
+        handleRateLimit(task, runId, rateLimitCooldownSeconds, stderr || stdout);
       } else {
         recordAgentError(profile.agent ?? profile.name);
         handleFailure(task, stdout, `Harness failed (exit ${exitCode}): ${stderr || "unknown error"}`, runId);

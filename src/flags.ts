@@ -14,6 +14,7 @@ export const FF_BOARD_RM_DELETE = "FF_BOARD_RM_DELETE";
 export const FF_BOARD_RENAME = "FF_BOARD_RENAME";
 export const FF_BOARD_SWITCH = "FF_BOARD_SWITCH";
 export const FF_DEFAULT_WORKDIR = "FF_DEFAULT_WORKDIR";
+export const FF_RATE_LIMIT_EXIT_CODE = "FF_RATE_LIMIT_EXIT_CODE";
 export const FF_STATS = "FF_STATS";
 
 const flagRegistry = new Map<string, boolean>();
@@ -72,4 +73,5 @@ registerFlag(FF_BOARD_RM_DELETE, false);
 registerFlag(FF_BOARD_RENAME, false);
 registerFlag(FF_BOARD_SWITCH, false);
 registerFlag(FF_DEFAULT_WORKDIR, false);
+registerFlag(FF_RATE_LIMIT_EXIT_CODE, false);
 registerFlag(FF_STATS, false);

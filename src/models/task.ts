@@ -6,7 +6,7 @@ export const TASK_COLUMNS =
   "id, board_id, title, body, assignee, status, priority, tenant, " +
   "workspace_kind, workspace, branch, result, summary, block_reason, schedule_reason, review_reason, " +
   "created_by, created_at, updated_at, started_at, archived_at, current_run_id, " +
-  "claim_lock, claim_expires, last_heartbeat_at, max_runtime_seconds, max_retries, consecutive_failures, idempotency_key, model_override, scheduled_at, skills";
+  "claim_lock, claim_expires, last_heartbeat_at, max_runtime_seconds, max_retries, consecutive_failures, idempotency_key, model_override, rate_limited_until, scheduled_at, skills";
 
 export interface Task {
   id: number;
@@ -41,6 +41,7 @@ export interface Task {
   consecutive_failures: number;
   idempotency_key: string | null;
   model_override: string | null;
+  rate_limited_until: number | null;
 }
 
 export type InitialTaskStatus = Exclude<Task["status"], "archived">;
@@ -234,6 +235,7 @@ export function createTask(input: CreateTaskInput): Task {
     consecutive_failures: 0,
     idempotency_key: input.idempotency_key ?? null,
     model_override: input.model_override ?? null,
+    rate_limited_until: null,
   };
   addEvent(task.id, "created");
   return task;
@@ -306,6 +308,7 @@ export function hydrateTask(raw: unknown): Task {
   task.skills = parseSkills(task.skills);
   task.consecutive_failures = Number(task.consecutive_failures ?? 0);
   task.max_retries = task.max_retries === null || task.max_retries === undefined ? null : Number(task.max_retries);
+  task.rate_limited_until = task.rate_limited_until === null || task.rate_limited_until === undefined ? null : Number(task.rate_limited_until);
   return task;
 }
 
@@ -384,7 +387,7 @@ export function unblockTask(id: number, reason?: string): Task {
 
   const targetStatus = task.status === "scheduled" ? "ready" : "todo";
   const result = db.run(
-    `UPDATE tasks SET status = ?, block_reason = NULL, schedule_reason = NULL, scheduled_at = NULL, updated_at = unixepoch() WHERE id = ? AND archived_at IS NULL`,
+    `UPDATE tasks SET status = ?, block_reason = NULL, schedule_reason = NULL, scheduled_at = NULL, rate_limited_until = NULL, updated_at = unixepoch() WHERE id = ? AND archived_at IS NULL`,
     [targetStatus, id]
   );
 
