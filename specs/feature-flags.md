@@ -36,6 +36,7 @@ stateDiagram-v2
 | `ff_tenant_namespace` | `FF_TENANT_NAMESPACE` | CLI / task lifecycle | InDev | `false` | KDI-006 | Tenant namespace on tasks; `create --tenant`; `list --tenant` filters by tenant. |
 | `ff_skills_array` | `FF_SKILLS_ARRAY` | CLI / create, dispatcher | InDev | `false` | KDI-009 | Skills array on tasks; `create --skill`; dispatcher passes skills to harness via `{{skills}}` and `KDI_SKILLS`. |
 | `ff_max_runtime` | `FF_MAX_RUNTIME` | CLI / create + dispatcher | InDev | `false` | KDI-008 | Per-task max runtime cap; dispatcher SIGTERMs/SIGKILLs worker when exceeded. |
+| `ff_board_metadata` | `FF_BOARD_METADATA` | CLI / board metadata | InDev | `false` | KDI-012 | Board name, icon, and color; `boards create --name/--icon/--color`, `boards edit`, and metadata display. |
 
 ## Lifecycle Notes
 
@@ -138,6 +139,20 @@ stateDiagram-v2
   - Dispatcher passes the cap as the harness timeout.
   - Timed-out runs are recorded with `outcome=timed_out` and the task is blocked.
 - **Rollback / deactivation:** Set `FF_MAX_RUNTIME=false` to hide/gate the `--max-runtime` option.
+- **Deprecation plan:** N/A
+
+### `ff_board_metadata` — InDev
+
+- **Owner:** kdi core team
+- **BRD:** KDI-012
+- **Status transitions:**
+  - `Planned` → `InDev` when `boards` metadata columns and CLI options are implemented.
+- **Schema note:** `name`, `icon`, and `color` are schema-level TEXT columns on `boards` — this flag gates the CLI options and display; the schema migrations always run.
+- **Activation criteria:**
+  - `boards create --name/--icon/--color` stores metadata on the board.
+  - `boards edit` updates board metadata.
+  - `boards show` and `boards list` display metadata when set.
+- **Rollback / deactivation:** Set `FF_BOARD_METADATA=false` to hide/gate the `--name`, `--icon`, `--color`, and `boards edit` options.
 - **Deprecation plan:** N/A
 
 ### `ff_kanban_dispatch` — Planned

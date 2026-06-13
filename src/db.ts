@@ -16,6 +16,9 @@ CREATE TABLE IF NOT EXISTS boards (
   slug TEXT NOT NULL UNIQUE,
   workdir TEXT NOT NULL,
   base_ref TEXT NOT NULL DEFAULT 'origin/main',
+  name TEXT,
+  icon TEXT,
+  color TEXT,
   created_at INTEGER NOT NULL DEFAULT (unixepoch()),
   archived_at INTEGER
 );
@@ -174,6 +177,22 @@ export function initDb(path?: string): Database {
     const hasBaseRef = boardTableInfo.some((col) => col.name === "base_ref");
     if (!hasBaseRef) {
       dbInstance.exec("ALTER TABLE boards ADD COLUMN base_ref TEXT NOT NULL DEFAULT 'origin/main'");
+    }
+
+    // Migrate: add board metadata columns if missing
+    const hasBoardName = boardTableInfo.some((col) => col.name === "name");
+    if (!hasBoardName) {
+      dbInstance.exec("ALTER TABLE boards ADD COLUMN name TEXT");
+      // Backfill existing boards so every board has a display name.
+      dbInstance.exec("UPDATE boards SET name = slug WHERE name IS NULL");
+    }
+    const hasBoardIcon = boardTableInfo.some((col) => col.name === "icon");
+    if (!hasBoardIcon) {
+      dbInstance.exec("ALTER TABLE boards ADD COLUMN icon TEXT");
+    }
+    const hasBoardColor = boardTableInfo.some((col) => col.name === "color");
+    if (!hasBoardColor) {
+      dbInstance.exec("ALTER TABLE boards ADD COLUMN color TEXT");
     }
 
     // Migrate: add started_at column if missing

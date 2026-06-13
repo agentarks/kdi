@@ -935,4 +935,65 @@ describe("kdi e2e acceptance", () => {
 
     rmSync(tmp, { recursive: true, force: true });
   });
+
+  it("boards create stores metadata when flag enabled", () => {
+    const tmp = makeTempDir("board-metadata");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_BOARD_METADATA: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir} --name "My Project" --icon rocket --color "#123456"`, env);
+    const output = runKdi(`boards show myproj`, env);
+    expect(output).toContain("Name: My Project");
+    expect(output).toContain("Icon: rocket");
+    expect(output).toContain("Color: #123456");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("boards create --name is rejected when flag disabled", () => {
+    const tmp = makeTempDir("board-metadata-disabled");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp };
+
+    expect(() => runKdi(`boards create myproj --workdir ${repoDir} --name "My Project"`, env)).toThrow();
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("boards edit updates metadata when flag enabled", () => {
+    const tmp = makeTempDir("board-metadata-edit");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_BOARD_METADATA: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    runKdi(`boards edit myproj --name "Updated" --icon star`, env);
+    const output = runKdi(`boards show myproj`, env);
+    expect(output).toContain("Name: Updated");
+    expect(output).toContain("Icon: star");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("boards edit is rejected when flag disabled", () => {
+    const tmp = makeTempDir("board-metadata-edit-disabled");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    expect(() => runKdi(`boards edit myproj --name "Updated"`, env)).toThrow();
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
 });

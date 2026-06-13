@@ -1,9 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
+import { Database } from "bun:sqlite";
 import { initDb, closeDb, getDb } from "../src/db";
-import { createBoard, listBoards, showBoard, archiveBoard } from "../src/models/board";
+import { createBoard, listBoards, showBoard, archiveBoard, updateBoardMetadata } from "../src/models/board";
 import { cleanupDb } from "./cleanupDb";
 
 const TEST_DB = "/tmp/kdi-board-test.db";
+const MIGRATION_DB = "/tmp/kdi-board-migration-test.db";
 
 describe("board model", () => {
   beforeEach(() => {
@@ -28,6 +30,56 @@ describe("board model", () => {
   it("createBoard accepts custom base_ref", () => {
     const board = createBoard("beta", "/tmp/beta", "origin/develop");
     expect(board.base_ref).toBe("origin/develop");
+  });
+
+  it("createBoard defaults name to slug when omitted", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    expect(board.name).toBe("alpha");
+    expect(board.icon).toBeNull();
+    expect(board.color).toBeNull();
+  });
+
+  it("createBoard stores name, icon, and color when provided", () => {
+    const board = createBoard("alpha", "/tmp/alpha", "origin/main", {
+      name: "Alpha Board",
+      icon: "rocket",
+      color: "#ff0000",
+    });
+    expect(board.name).toBe("Alpha Board");
+    expect(board.icon).toBe("rocket");
+    expect(board.color).toBe("#ff0000");
+  });
+
+  it("createBoard trims metadata values", () => {
+    const board = createBoard("alpha", "/tmp/alpha", "origin/main", {
+      name: "  Alpha Board  ",
+      icon: "  rocket  ",
+      color: "  #ff0000  ",
+    });
+    expect(board.name).toBe("Alpha Board");
+    expect(board.icon).toBe("rocket");
+    expect(board.color).toBe("#ff0000");
+  });
+
+  it("createBoard rejects empty metadata strings", () => {
+    expect(() => createBoard("alpha", "/tmp/alpha", "origin/main", { name: "" })).toThrow();
+    expect(() => createBoard("alpha", "/tmp/alpha", "origin/main", { icon: "" })).toThrow();
+    expect(() => createBoard("alpha", "/tmp/alpha", "origin/main", { color: "" })).toThrow();
+    expect(() => createBoard("alpha", "/tmp/alpha", "origin/main", { name: "   " })).toThrow();
+  });
+
+  it("listBoards returns metadata fields", () => {
+    createBoard("alpha", "/tmp/alpha", "origin/main", { name: "Alpha", icon: "a", color: "red" });
+    createBoard("beta", "/tmp/beta");
+    const boards = listBoards();
+    const alpha = boards.find((b) => b.slug === "alpha");
+    const beta = boards.find((b) => b.slug === "beta");
+    expect(alpha?.name).toBe("Alpha");
+    expect(alpha?.icon).toBe("a");
+    expect(alpha?.color).toBe("red");
+    expect(beta?.name).toBe("beta");
+    expect(beta?.icon).toBeNull();
+    expect(beta?.color).toBeNull();
   });
 
   it("listBoards excludes archived boards by default", () => {
@@ -72,6 +124,16 @@ describe("board model", () => {
     expect(result!.taskCounts.archived).toBe(0);
   });
 
+  it("showBoard returns board details with metadata", () => {
+    createBoard("alpha", "/tmp/alpha", "origin/main", { name: "Alpha", icon: "a", color: "red" });
+    const result = showBoard("alpha");
+    expect(result).not.toBeNull();
+    expect(result!.slug).toBe("alpha");
+    expect(result!.name).toBe("Alpha");
+    expect(result!.icon).toBe("a");
+    expect(result!.color).toBe("red");
+  });
+
   it("showBoard returns board details with task counts per status", () => {
     const board = createBoard("alpha", "/tmp/alpha");
     const db = getDb();
@@ -107,6 +169,57 @@ describe("board model", () => {
     expect(result!.taskCounts.archived).toBe(1);
   });
 
+  it("updateBoardMetadata edits name, icon, and color", () => {
+    createBoard("alpha", "/tmp/alpha");
+    const updated = updateBoardMetadata("alpha", { name: "Alpha 2", icon: "star", color: "blue" });
+    expect(updated.name).toBe("Alpha 2");
+    expect(updated.icon).toBe("star");
+    expect(updated.color).toBe("blue");
+
+    const result = showBoard("alpha");
+    expect(result?.name).toBe("Alpha 2");
+    expect(result?.icon).toBe("star");
+    expect(result?.color).toBe("blue");
+  });
+
+  it("updateBoardMetadata can update a single field", () => {
+    createBoard("alpha", "/tmp/alpha");
+    const updated = updateBoardMetadata("alpha", { name: "Only Name" });
+    expect(updated.name).toBe("Only Name");
+    expect(updated.icon).toBeNull();
+    expect(updated.color).toBeNull();
+  });
+
+  it("updateBoardMetadata trims whitespace from values", () => {
+    createBoard("alpha", "/tmp/alpha");
+    const updated = updateBoardMetadata("alpha", { name: "  Alpha 2  ", icon: "  star  ", color: "  blue  " });
+    expect(updated.name).toBe("Alpha 2");
+    expect(updated.icon).toBe("star");
+    expect(updated.color).toBe("blue");
+  });
+
+  it("updateBoardMetadata throws when no fields are provided", () => {
+    createBoard("alpha", "/tmp/alpha");
+    expect(() => updateBoardMetadata("alpha", {})).toThrow();
+  });
+
+  it("updateBoardMetadata throws for empty string values", () => {
+    createBoard("alpha", "/tmp/alpha");
+    expect(() => updateBoardMetadata("alpha", { name: "" })).toThrow();
+    expect(() => updateBoardMetadata("alpha", { icon: "" })).toThrow();
+    expect(() => updateBoardMetadata("alpha", { color: "" })).toThrow();
+  });
+
+  it("updateBoardMetadata throws for non-existent board", () => {
+    expect(() => updateBoardMetadata("nonexistent", { name: "X" })).toThrow();
+  });
+
+  it("updateBoardMetadata throws for archived board", () => {
+    createBoard("alpha", "/tmp/alpha");
+    archiveBoard("alpha");
+    expect(() => updateBoardMetadata("alpha", { name: "X" })).toThrow();
+  });
+
   it("archiveBoard sets archived_at", () => {
     createBoard("alpha", "/tmp/alpha");
     archiveBoard("alpha");
@@ -121,5 +234,38 @@ describe("board model", () => {
 
   it("archiveBoard throws on non-existent slug", () => {
     expect(() => archiveBoard("nonexistent")).toThrow();
+  });
+
+  it("migrates existing boards table to include name, icon, and color columns", () => {
+    cleanupDb(MIGRATION_DB);
+    // Create a raw database with the pre-metadata boards schema.
+    const raw = new Database(MIGRATION_DB);
+    raw.exec(`
+      CREATE TABLE boards (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        slug TEXT NOT NULL UNIQUE,
+        workdir TEXT NOT NULL,
+        base_ref TEXT NOT NULL DEFAULT 'origin/main',
+        created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+        archived_at INTEGER
+      )
+    `);
+    raw.exec("INSERT INTO boards (slug, workdir) VALUES ('legacy', '/tmp/legacy')");
+    raw.close();
+
+    const db = initDb(MIGRATION_DB);
+    const columns = db.query("PRAGMA table_info(boards)").all() as any[];
+    expect(columns.map((c) => c.name)).toContain("name");
+    expect(columns.map((c) => c.name)).toContain("icon");
+    expect(columns.map((c) => c.name)).toContain("color");
+
+    const migrated = showBoard("legacy");
+    expect(migrated).not.toBeNull();
+    expect(migrated!.name).toBe("legacy");
+    expect(migrated!.icon).toBeNull();
+    expect(migrated!.color).toBeNull();
+
+    closeDb();
+    cleanupDb(MIGRATION_DB);
   });
 });
