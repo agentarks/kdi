@@ -21,7 +21,7 @@ import { getRuns } from "../models/taskRun";
 import { getEvents, tailEvents, getRecentEvents, getEventsAfter } from "../models/taskEvent";
 import { atomicClaim, reclaimTask, heartbeat } from "../models/claim";
 import { getTaskLogPath } from "../observability";
-import { isEnabled, FF_SCHEDULED_STATUS, FF_REVIEW_STATUS, FF_COMPLETE_METADATA, FF_PRIORITY_INTEGER, FF_SKILLS_ARRAY, FF_MAX_RUNTIME, FF_MAX_RETRIES, FF_TENANT_NAMESPACE, FF_CREATED_BY, FF_MODEL_OVERRIDE, FF_DEFAULT_WORKDIR, FF_CRASH_GRACE_PERIOD } from "../flags";
+import { isEnabled, FF_SCHEDULED_STATUS, FF_REVIEW_STATUS, FF_COMPLETE_METADATA, FF_PRIORITY_INTEGER, FF_SKILLS_ARRAY, FF_MAX_RUNTIME, FF_MAX_RETRIES, FF_TENANT_NAMESPACE, FF_CREATED_BY, FF_MODEL_OVERRIDE, FF_DEFAULT_WORKDIR, FF_CRASH_GRACE_PERIOD, FF_HEARTBEAT, FF_RATE_LIMIT_EXIT_CODE } from "../flags";
 import { resolveBoard } from "../resolveBoard";
 
 const VALID_STATUSES = ["triage", "todo", "scheduled", "ready", "running", "done", "blocked", "review"] as const;
@@ -326,10 +326,14 @@ export const showTaskCommand = new Command("show")
       if (task.max_runtime_seconds) console.log(`Max runtime: ${task.max_runtime_seconds}s`);
       if (isEnabled(FF_MAX_RETRIES) && task.max_retries !== null && task.max_retries !== undefined) console.log(`Max retries: ${task.max_retries}`);
       if (isEnabled(FF_MAX_RETRIES) && task.consecutive_failures > 0) console.log(`Consecutive failures: ${task.consecutive_failures}`);
+      if (isEnabled(FF_RATE_LIMIT_EXIT_CODE) && task.rate_limited_until) console.log(`Rate limited until: ${new Date(task.rate_limited_until * 1000).toISOString()}`);
       if (task.tenant) console.log(`Tenant: ${task.tenant}`);
       if (task.skills && task.skills.length > 0) console.log(`Skills: ${task.skills.join(", ")}`);
       if (isEnabled(FF_MODEL_OVERRIDE) && task.model_override) console.log(`Model override: ${task.model_override}`);
       if (isEnabled(FF_CREATED_BY)) console.log(`Created by: ${task.created_by}`);
+      if (isEnabled(FF_HEARTBEAT) && task.status === "running" && task.last_heartbeat_at) {
+        console.log(`Last heartbeat: ${new Date(task.last_heartbeat_at * 1000).toISOString()}`);
+      }
 
       const comments = getComments(id);
       if (comments.length > 0) {
@@ -705,17 +709,38 @@ export const reclaimTaskCommand = new Command("reclaim")
     }
   });
 
+const MAX_HEARTBEAT_NOTE_BYTES = 4096;
+
 export const heartbeatTaskCommand = new Command("heartbeat")
   .description("Emit a heartbeat for a running task")
   .argument("<task_id>", "Task ID")
   .option("--note <text>", "Optional note")
   .action((taskId: string, options: { note?: string }) => {
     try {
+      if (!isEnabled(FF_HEARTBEAT)) {
+        throw new Error("Heartbeat feature is not enabled.");
+      }
+
       const id = parseTaskId(taskId);
-      const ok = heartbeat(id, options.note);
+      const task = showTask(id);
+      if (!task) {
+        throw new Error(`Task ${id} not found.`);
+      }
+      if (task.status === "archived") {
+        throw new Error(`Task ${id} is archived.`);
+      }
+      if (task.status !== "running") {
+        throw new Error(`Task ${id} is not running.`);
+      }
+
+      let note = options.note;
+      if (note !== undefined && note.length > MAX_HEARTBEAT_NOTE_BYTES) {
+        note = note.slice(0, MAX_HEARTBEAT_NOTE_BYTES);
+      }
+
+      const ok = heartbeat(id, note);
       if (!ok) {
-        console.error(`Task ${id} is not running.`);
-        process.exit(1);
+        throw new Error(`Task ${id} is not running.`);
       }
       console.log(`Heartbeat recorded for task ${id}.`);
     } catch (err: any) {

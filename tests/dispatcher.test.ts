@@ -6,9 +6,10 @@ import { initDb, closeDb, getDb } from "../src/db";
 import { createBoard } from "../src/models/board";
 import { createTask, promoteTask, showTask } from "../src/models/task";
 import { addDependency } from "../src/models/dependency";
-import { setFlag, clearOverrides } from "../src/flags";
+import { setFlag, clearOverrides, FF_RATE_LIMIT_EXIT_CODE } from "../src/flags";
+import { atomicClaim, heartbeat } from "../src/models/claim";
 import { tick, startDispatcher } from "../src/dispatcher";
-import { atomicClaim } from "../src/models/claim";
+import { getEvents } from "../src/models/taskEvent";
 import { getRuns, updateRun } from "../src/models/taskRun";
 import { cleanupDb } from "./cleanupDb";
 
@@ -590,11 +591,11 @@ describe("dispatcher", () => {
     expect(updated!.consecutive_failures).toBe(0);
   });
 
-  it("EX_TEMPFAIL does not increment consecutive_failures", async () => {
-    const board = createBoard("tempfail-board", "/tmp/tempfail-board");
+  it("EX_TEMPFAIL treats exit 75 as normal failure when flag is disabled", async () => {
+    const board = createBoard("tempfail-disabled-board", "/tmp/tempfail-disabled-board");
     const task = createTask({
       board_id: board.id,
-      title: "Tempfail me",
+      title: "Tempfail me disabled",
       assignee: "opencode",
       max_retries: 3,
     });
@@ -608,7 +609,172 @@ describe("dispatcher", () => {
 
     const updated = showTask(task.id);
     expect(updated!.status).toBe("ready");
+    expect(updated!.consecutive_failures).toBe(1);
+    expect(updated!.rate_limited_until).toBeNull();
+  });
+
+  it("EX_TEMPFAIL does not increment consecutive_failures when flag is enabled", async () => {
+    setFlag(FF_RATE_LIMIT_EXIT_CODE, true);
+
+    const board = createBoard("tempfail-board", "/tmp/tempfail-board");
+    const task = createTask({
+      board_id: board.id,
+      title: "Tempfail me",
+      assignee: "opencode",
+      max_retries: 3,
+    });
+    promoteTask(task.id);
+
+    const before = Math.floor(Date.now() / 1000);
+    await tick({
+      spawnHarness: () => Promise.resolve({ stdout: "", stderr: "rate limited", exitCode: 75 }),
+      createWorktree: () => "/tmp/mock-worktree",
+      removeWorktree: () => ({ worktreeRemoved: true, branchDeleted: true, found: true }),
+    });
+    const after = Math.floor(Date.now() / 1000);
+
+    const updated = showTask(task.id);
+    expect(updated!.status).toBe("ready");
     expect(updated!.consecutive_failures).toBe(0);
+    expect(updated!.rate_limited_until).not.toBeNull();
+    expect(updated!.rate_limited_until).toBeGreaterThanOrEqual(before + 60);
+    expect(updated!.rate_limited_until).toBeLessThanOrEqual(after + 60);
+
+    const events = getEvents(task.id);
+    const rateLimitedEvent = events.find((e) => e.kind === "rate_limited");
+    expect(rateLimitedEvent).toBeDefined();
+    const payload = JSON.parse(rateLimitedEvent!.payload ?? "{}");
+    expect(payload.exit_code).toBe(75);
+    expect(payload.cooldown_until).toBe(updated!.rate_limited_until);
+    expect(payload.reason).toBe("rate limited");
+
+    const runs = getRuns(task.id);
+    expect(runs).toHaveLength(1);
+    expect(runs[0].outcome).toBe("reclaimed");
+    expect(runs[0].status).toBe("released");
+    expect(runs[0].error).toContain("Rate-limited");
+  });
+
+  it("rate-limited task is skipped during cooldown window", async () => {
+    setFlag(FF_RATE_LIMIT_EXIT_CODE, true);
+
+    const board = createBoard("cooldown-board", "/tmp/cooldown-board");
+    const task = createTask({
+      board_id: board.id,
+      title: "Cooldown task",
+      assignee: "opencode",
+    });
+    promoteTask(task.id);
+
+    const harness = mock(() => Promise.resolve({ stdout: "", stderr: "rate limited", exitCode: 75 }));
+
+    // First tick: rate-limit the task
+    await tick({
+      spawnHarness: harness,
+      createWorktree: () => "/tmp/mock-worktree",
+      removeWorktree: () => ({ worktreeRemoved: true, branchDeleted: true, found: true }),
+    });
+
+    let updated = showTask(task.id);
+    expect(updated!.status).toBe("ready");
+    expect(updated!.rate_limited_until).not.toBeNull();
+
+    // Second tick: should not claim or spawn the task
+    const result = await tick({
+      spawnHarness: harness,
+      createWorktree: () => "/tmp/mock-worktree",
+      removeWorktree: () => ({ worktreeRemoved: true, branchDeleted: true, found: true }),
+    });
+
+    expect(result.processed).toBe(0);
+    expect(harness).toHaveBeenCalledTimes(1);
+
+    updated = showTask(task.id);
+    expect(updated!.status).toBe("ready");
+  });
+
+  it("rate-limited task is claimed again after cooldown passes", async () => {
+    setFlag(FF_RATE_LIMIT_EXIT_CODE, true);
+
+    const board = createBoard("cooldown-expired-board", "/tmp/cooldown-expired-board");
+    const task = createTask({
+      board_id: board.id,
+      title: "Cooldown expired task",
+      assignee: "opencode",
+    });
+    promoteTask(task.id);
+
+    const db = getDb();
+    db.run("UPDATE tasks SET rate_limited_until = unixepoch() - 1 WHERE id = ?", [task.id]);
+
+    const result = await tick({
+      spawnHarness: () => Promise.resolve({ stdout: "ok", stderr: "", exitCode: 0 }),
+      createWorktree: () => "/tmp/mock-worktree",
+      removeWorktree: () => ({ worktreeRemoved: true, branchDeleted: true, found: true }),
+    });
+
+    expect(result.processed).toBe(1);
+
+    const updated = showTask(task.id);
+    expect(updated!.status).toBe("done");
+    expect(updated!.rate_limited_until).toBeNull();
+  });
+
+  it("rate-limit cooldown can be overridden via tick option", async () => {
+    setFlag(FF_RATE_LIMIT_EXIT_CODE, true);
+
+    const board = createBoard("cooldown-override-board", "/tmp/cooldown-override-board");
+    const task = createTask({
+      board_id: board.id,
+      title: "Cooldown override task",
+      assignee: "opencode",
+    });
+    promoteTask(task.id);
+
+    const before = Math.floor(Date.now() / 1000);
+    await tick({
+      spawnHarness: () => Promise.resolve({ stdout: "", stderr: "rate limited", exitCode: 75 }),
+      createWorktree: () => "/tmp/mock-worktree",
+      removeWorktree: () => ({ worktreeRemoved: true, branchDeleted: true, found: true }),
+      rateLimitCooldownSeconds: 300,
+    });
+    const after = Math.floor(Date.now() / 1000);
+
+    const updated = showTask(task.id);
+    expect(updated!.rate_limited_until).toBeGreaterThanOrEqual(before + 300);
+    expect(updated!.rate_limited_until).toBeLessThanOrEqual(after + 300);
+  });
+
+  it("rate-limit cooldown can be overridden via KDI_RATE_LIMIT_COOLDOWN_SECONDS", async () => {
+    setFlag(FF_RATE_LIMIT_EXIT_CODE, true);
+    const originalEnv = process.env.KDI_RATE_LIMIT_COOLDOWN_SECONDS;
+    process.env.KDI_RATE_LIMIT_COOLDOWN_SECONDS = "180";
+
+    const board = createBoard("cooldown-env-board", "/tmp/cooldown-env-board");
+    const task = createTask({
+      board_id: board.id,
+      title: "Cooldown env task",
+      assignee: "opencode",
+    });
+    promoteTask(task.id);
+
+    const before = Math.floor(Date.now() / 1000);
+    await tick({
+      spawnHarness: () => Promise.resolve({ stdout: "", stderr: "rate limited", exitCode: 75 }),
+      createWorktree: () => "/tmp/mock-worktree",
+      removeWorktree: () => ({ worktreeRemoved: true, branchDeleted: true, found: true }),
+    });
+    const after = Math.floor(Date.now() / 1000);
+
+    if (originalEnv !== undefined) {
+      process.env.KDI_RATE_LIMIT_COOLDOWN_SECONDS = originalEnv;
+    } else {
+      delete process.env.KDI_RATE_LIMIT_COOLDOWN_SECONDS;
+    }
+
+    const updated = showTask(task.id);
+    expect(updated!.rate_limited_until).toBeGreaterThanOrEqual(before + 180);
+    expect(updated!.rate_limited_until).toBeLessThanOrEqual(after + 180);
   });
 
   it("requeues task with max_retries on first failures and blocks on final failure", async () => {
@@ -712,6 +878,136 @@ describe("dispatcher", () => {
     const updated = showTask(task.id);
     expect(updated!.status).toBe("done");
     expect(updated!.consecutive_failures).toBe(0);
+  });
+
+  it("seeds initial heartbeat on claim when FF_HEARTBEAT is enabled", async () => {
+    setFlag("FF_HEARTBEAT", true);
+    const board = createBoard("hb-board", "/tmp/hb-board");
+    const task = createTask({ board_id: board.id, title: "Heartbeat seed", assignee: "opencode" });
+    promoteTask(task.id);
+
+    const before = Math.floor(Date.now() / 1000);
+    await tick({
+      spawnHarness: () => new Promise((resolve) => setTimeout(() => resolve({ stdout: "ok", stderr: "", exitCode: 0 }), 50)),
+      createWorktree: () => "/tmp/mock-worktree",
+      removeWorktree: () => ({ worktreeRemoved: true, branchDeleted: true, found: true }),
+    });
+    const after = Math.floor(Date.now() / 1000);
+
+    const updated = showTask(task.id);
+    expect(updated!.status).toBe("done");
+    expect(updated!.last_heartbeat_at).toBeGreaterThanOrEqual(before);
+    expect(updated!.last_heartbeat_at).toBeLessThanOrEqual(after);
+  });
+
+  it("does not seed initial heartbeat when FF_HEARTBEAT is disabled", async () => {
+    setFlag("FF_HEARTBEAT", false);
+    const board = createBoard("hb-off-board", "/tmp/hb-off-board");
+    const task = createTask({ board_id: board.id, title: "No heartbeat seed", assignee: "opencode" });
+    promoteTask(task.id);
+
+    await tick({
+      spawnHarness: () => Promise.resolve({ stdout: "ok", stderr: "", exitCode: 0 }),
+      createWorktree: () => "/tmp/mock-worktree",
+      removeWorktree: () => ({ worktreeRemoved: true, branchDeleted: true, found: true }),
+    });
+
+    const updated = showTask(task.id);
+    expect(updated!.status).toBe("done");
+    expect(updated!.last_heartbeat_at).toBeNull();
+  });
+
+  it("reclaims task with stale heartbeat when FF_HEARTBEAT is enabled", async () => {
+    setFlag("FF_HEARTBEAT", true);
+    const board = createBoard("stale-hb-board", "/tmp/stale-hb-board");
+    const task = createTask({ board_id: board.id, title: "Stale heartbeat", assignee: "opencode" });
+    promoteTask(task.id);
+
+    // Claim and seed heartbeat, then roll timestamps back beyond the 60-minute threshold
+    atomicClaim(task.id, "opencode");
+    heartbeat(task.id);
+
+    const staleTime = Math.floor(Date.now() / 1000) - 3601;
+    getDb().run(
+      `UPDATE tasks SET last_heartbeat_at = ?, claim_expires = ? WHERE id = ?`,
+      [staleTime, staleTime + 900, task.id]
+    );
+    const run = getDb().query("SELECT id FROM task_runs WHERE task_id = ?").get(task.id) as { id: number };
+    getDb().run(`UPDATE task_runs SET last_heartbeat_at = ? WHERE id = ?`, [staleTime, run.id]);
+
+    // Use maxSpawnsPerTick=0 so tick only reaps/promotes without re-claiming the reclaimed task
+    await tick({
+      spawnHarness: () => Promise.resolve({ stdout: "ok", stderr: "", exitCode: 0 }),
+      createWorktree: () => "/tmp/mock-worktree",
+      removeWorktree: () => ({ worktreeRemoved: true, branchDeleted: true, found: true }),
+      maxSpawnsPerTick: 0,
+    });
+
+    const updated = showTask(task.id);
+    expect(updated!.status).toBe("ready");
+    expect(updated!.claim_lock).toBeNull();
+    expect(updated!.claim_expires).toBeNull();
+    expect(updated!.current_run_id).toBeNull();
+
+    const { getRuns } = await import("../src/models/taskRun");
+    const runs = getRuns(task.id);
+    expect(runs[0].outcome).toBe("reclaimed");
+    expect(runs[0].status).toBe("released");
+    expect(runs[0].error).toBe("stale heartbeat detected by dispatcher");
+  });
+
+  it("ignores heartbeat age when FF_HEARTBEAT is disabled", async () => {
+    setFlag("FF_HEARTBEAT", false);
+    const board = createBoard("no-stale-hb-board", "/tmp/no-stale-hb-board");
+    const task = createTask({ board_id: board.id, title: "No stale heartbeat", assignee: "opencode" });
+    promoteTask(task.id);
+
+    // Claim with a far-past heartbeat but a claim_expires still in the future
+    atomicClaim(task.id, "opencode");
+    const now = Math.floor(Date.now() / 1000);
+    const staleTime = now - 7200;
+    const futureExpiry = now + 900;
+    getDb().run(
+      `UPDATE tasks SET last_heartbeat_at = ?, claim_expires = ? WHERE id = ?`,
+      [staleTime, futureExpiry, task.id]
+    );
+
+    // Use maxSpawnsPerTick=0 so tick only reaps/promotes without claiming the task
+    await tick({
+      spawnHarness: () => Promise.resolve({ stdout: "ok", stderr: "", exitCode: 0 }),
+      createWorktree: () => "/tmp/mock-worktree",
+      removeWorktree: () => ({ worktreeRemoved: true, branchDeleted: true, found: true }),
+      maxSpawnsPerTick: 0,
+    });
+
+    const updated = showTask(task.id);
+    expect(updated!.status).toBe("running");
+  });
+
+  it("reaps task with null heartbeat when claim_expires passed", async () => {
+    setFlag("FF_HEARTBEAT", true);
+    const board = createBoard("null-hb-board", "/tmp/null-hb-board");
+    const task = createTask({ board_id: board.id, title: "Null heartbeat", assignee: "opencode" });
+    promoteTask(task.id);
+
+    atomicClaim(task.id, "opencode");
+    const now = Math.floor(Date.now() / 1000);
+    const pastExpiry = now - 1;
+    getDb().run(
+      `UPDATE tasks SET last_heartbeat_at = NULL, claim_expires = ? WHERE id = ?`,
+      [pastExpiry, task.id]
+    );
+
+    // Use maxSpawnsPerTick=0 so tick only reaps/promotes without re-claiming the reclaimed task
+    await tick({
+      spawnHarness: () => Promise.resolve({ stdout: "ok", stderr: "", exitCode: 0 }),
+      createWorktree: () => "/tmp/mock-worktree",
+      removeWorktree: () => ({ worktreeRemoved: true, branchDeleted: true, found: true }),
+      maxSpawnsPerTick: 0,
+    });
+
+    const updated = showTask(task.id);
+    expect(updated!.status).toBe("ready");
   });
 
   describe("crash grace period", () => {
@@ -863,5 +1159,6 @@ describe("dispatcher", () => {
       const runs = getRuns(task.id);
       expect(runs[0].status).toBe("timed_out");
     });
+
   });
 });
