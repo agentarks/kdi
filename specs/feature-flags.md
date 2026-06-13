@@ -40,10 +40,16 @@ stateDiagram-v2
 | `ff_max_runtime` | `FF_MAX_RUNTIME` | CLI / create + dispatcher | InDev | `false` | KDI-008 | Per-task max runtime cap; dispatcher SIGTERMs/SIGKILLs worker when exceeded. |
 | `ff_model_override` | `FF_MODEL_OVERRIDE` | CLI / create + dispatcher | InDev | `false` | KDI-010 | Per-task model override; `create --model`; dispatcher passes `{{model}}` and `KDI_MODEL` to harness. |
 | `ff_max_retries` | `FF_MAX_RETRIES` | CLI / create + dispatcher | InDev | `false` | KDI-011 | Per-task max retries; auto-block after N consecutive spawn/execution failures. |
+| `ff_rate_limit_exit_code` | `FF_RATE_LIMIT_EXIT_CODE` | CLI / dispatcher | InDev | `false` | KDI-016c | Treat harness exit code 75 (EX_TEMPFAIL) as a transient rate limit and requeue with a cooldown instead of counting it as a failure. |
 | `ff_board_metadata` | `FF_BOARD_METADATA` | CLI / board metadata | InDev | `false` | KDI-012 | Board name, icon, and color; `boards create --name/--icon/--color`, `boards edit`, and metadata display. |
 | `ff_board_switch` | `FF_BOARD_SWITCH` | CLI / board management | InDev | `false` | KDI-013 | Board switch command and resolution chain; `boards switch`, `boards show` without slug. |
 | `ff_board_rename` | `FF_BOARD_RENAME` | CLI / board management | InDev | `false` | KDI-014 | Board rename command; `boards rename <old> <new>` renames slug and data directory. |
 | `ff_default_workdir` | `FF_DEFAULT_WORKDIR` | CLI / board management + create | InDev | `false` | KDI-015 | Board default task workspace; `boards set-default-workdir`; create inheritance and `--workspace`. |
+| `ff_heartbeat` | `FF_HEARTBEAT` | CLI / task lifecycle + dispatcher | InDev | `false` | KDI-016 | Worker heartbeat command and dispatcher stale-heartbeat reclaim. |
+| `ff_crash_grace_period` | `FF_CRASH_GRACE_PERIOD` | CLI / dispatcher | InDev | `false` | KDI-016b | Crash grace period for slow-starting harnesses; delay PID liveness checks for 30s after spawn. |
+| `ff_assign_reassign` | `FF_ASSIGN_REASSIGN` | CLI / task lifecycle | InDev | `false` | KDI-017 | Assign/reassign task assignee; `assign`, `reassign`, and `reassign --reclaim`. |
+| `ff_worker_log_capture` | `FF_WORKER_LOG_CAPTURE` | CLI / dispatcher | InDev | `false` | KDI-018 | Worker stdout/stderr capture; `kdi log <task_id>` and `--tail`. |
+| `ff_stats` | `FF_STATS` | CLI / observability | InDev | `false` | KDI-019 | Board stats command; per-status counts, per-assignee counts, oldest-ready age, and `--json` output. |
 
 ## Lifecycle Notes
 
@@ -188,6 +194,20 @@ stateDiagram-v2
 - **Rollback / deactivation:** Set `FF_MAX_RETRIES=false` to hide/gate the `--max-retries` option.
 - **Deprecation plan:** N/A
 
+### `ff_rate_limit_exit_code` — InDev
+
+- **Owner:** kdi core team
+- **BRD:** [BRD-KDI-016c](brd-kdi-016c-rate-limit-exit-code.md)
+- **Status transitions:**
+  - `Planned` → `InDev` when dispatcher recognizes exit code 75 and applies a cooldown before requeuing.
+- **Schema note:** `rate_limited_until` is a schema-level INTEGER column on `tasks` — this flag gates the dispatcher behavior and CLI option; the schema migration always runs.
+- **Activation criteria:**
+  - A harness exiting 75 transitions the task to `ready` without incrementing `consecutive_failures`.
+  - `rate_limited_until` is set to `now + cooldown_seconds` and the dispatcher skips the task until that time passes.
+  - `kdi dispatch --rate-limit-cooldown <duration>` overrides the default cooldown when the flag is enabled.
+- **Rollback / deactivation:** Set `FF_RATE_LIMIT_EXIT_CODE=false` to treat exit 75 as a normal harness failure.
+- **Deprecation plan:** N/A
+
 ### `ff_board_metadata` — InDev
 
 - **Owner:** kdi core team
@@ -240,6 +260,79 @@ stateDiagram-v2
   - `create` inherits the board default when `--workspace` is omitted.
   - `create --workspace <path>` overrides the board default.
 - **Rollback / deactivation:** Set `FF_DEFAULT_WORKDIR=false` to reject the command and prevent create from inheriting board defaults.
+- **Deprecation plan:** N/A
+
+### `ff_heartbeat` — InDev
+
+- **Owner:** kdi core team
+- **BRD:** [BRD-KDI-016](brd-kdi-016-heartbeat.md)
+- **Status transitions:**
+  - `InDev` → `Active` when heartbeat command and stale-heartbeat reclaim are safe to enable by default.
+- **Activation criteria:**
+  - `kdi heartbeat <task_id>` updates `last_heartbeat_at` on the task and active run.
+  - `kdi heartbeat <task_id> --note "..."` records a `heartbeat` event.
+  - The dispatcher reclaims `running` tasks whose `last_heartbeat_at` is older than 60 minutes.
+- **Rollback / deactivation:** Set `FF_HEARTBEAT=false` to reject the `kdi heartbeat` command and disable stale-heartbeat reclaim.
+- **Deprecation plan:** N/A
+
+### `ff_crash_grace_period` — InDev
+
+- **Owner:** kdi core team
+- **BRD:** [BRD-KDI-016b](brd-kdi-016b-crash-grace.md)
+- **Status transitions:**
+  - `Planned` → `InDev` when PID liveness monitor and grace-period logic are implemented.
+  - `InDev` → `Active` when the grace window is safe to enable by default.
+- **Schema note:** `spawned_at` is a schema-level INTEGER column on `task_runs` — this flag gates the dispatcher behavior and display; the schema migration always runs.
+- **Activation criteria:**
+  - Dispatcher records `worker_pid` on the active run at spawn time.
+  - PID liveness monitor skips runs whose `started_at`/`spawned_at` is within the configured 30-second grace period.
+  - Runs with a dead PID after the grace period are finalized with `outcome=crashed` and the task is blocked.
+- **Rollback / deactivation:** Set `FF_CRASH_GRACE_PERIOD=false` to disable the PID liveness grace period and retain pre-feature behavior.
+- **Deprecation plan:** N/A
+
+### `ff_assign_reassign` — InDev
+
+- **Owner:** kdi core team
+- **BRD:** [BRD-KDI-017](brd-kdi-017-assign-reassign.md)
+- **Status transitions:**
+  - `Planned` → `InDev` when `assign`, `reassign`, and `--reclaim` CLI commands are implemented.
+- **Schema note:** No schema changes; reuses existing `tasks.assignee` TEXT column and `idx_tasks_assignee` index.
+- **Activation criteria:**
+  - `kdi assign <task_id> <profile>` and `kdi reassign <task_id> <profile>` update the task assignee.
+  - `kdi assign <task_id> none` and `kdi reassign <task_id> none` clear the assignee.
+  - `kdi reassign <task_id> <profile> --reclaim [--reason <text>]` releases an active claim before updating the assignee.
+  - `assigned` and `reclaimed` events are emitted appropriately.
+- **Rollback / deactivation:** Set `FF_ASSIGN_REASSIGN=false` to reject the `assign` and `reassign` commands and the `--reason` option on `reclaim`.
+- **Deprecation plan:** N/A
+
+### `ff_worker_log_capture` — InDev
+
+- **Owner:** kdi core team
+- **BRD:** [BRD-KDI-018](brd-kdi-018-worker-log-capture.md)
+- **Status transitions:**
+  - `Planned` → `InDev` when dispatcher log streaming and `kdi log` command are implemented.
+  - `InDev` → `Active` when log capture is safe to enable by default.
+- **Schema note:** No schema changes; log path is derived from board slug and task ID at runtime.
+- **Activation criteria:**
+  - Dispatcher writes combined stdout/stderr to `~/.local/share/kdi/logs/<board>/<task_id>.log`.
+  - `kdi log <task_id>` prints the captured log.
+  - `kdi log <task_id> --tail <bytes>` prints only trailing bytes.
+- **Rollback / deactivation:** Set `FF_WORKER_LOG_CAPTURE=false` to reject `kdi log` and disable per-task log file creation.
+- **Deprecation plan:** N/A
+
+### `ff_stats` — InDev
+
+- **Owner:** kdi core team
+- **BRD:** [BRD-KDI-019](brd-019-stats.md)
+- **Status transitions:**
+  - `Planned` → `InDev` when `kdi stats` command and query helpers are implemented.
+  - `InDev` → `Active` when stats output is stable and safe to enable by default.
+- **Schema note:** No schema changes; reads from the existing `tasks` table and `idx_tasks_board_status` index.
+- **Activation criteria:**
+  - `kdi stats` prints per-status counts, per-assignee counts, and oldest-ready age.
+  - `kdi stats --json` emits a stable JSON document.
+  - Flag gating rejects the command with a clear error when disabled.
+- **Rollback / deactivation:** Set `FF_STATS=false` to reject the `stats` command.
 - **Deprecation plan:** N/A
 
 ### `ff_kanban_dispatch` — Planned
