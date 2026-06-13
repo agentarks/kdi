@@ -1,4 +1,5 @@
-import { getDb } from "../db";
+import { getDb, getBoardDataDir } from "../db";
+import { rmSync } from "node:fs";
 
 export interface Board {
   id: number;
@@ -195,4 +196,35 @@ export function archiveBoard(slug: string): void {
   if (result.changes === 0) {
     throw new Error(`Board "${slug}" not found or already archived`);
   }
+}
+
+export function removeBoard(slug: string, hardDelete: boolean): void {
+  if (!hardDelete) {
+    archiveBoard(slug);
+    return;
+  }
+
+  const db = getDb();
+  const board = db.query(
+    "SELECT id FROM boards WHERE slug = ?"
+  ).get(slug) as { id: number } | undefined;
+  if (!board) {
+    throw new Error(`Board "${slug}" not found`);
+  }
+
+  const remove = db.transaction(() => {
+    // Cascade-delete all task-related data for this board.
+    db.run("DELETE FROM task_events WHERE task_id IN (SELECT id FROM tasks WHERE board_id = ?)", [board.id]);
+    db.run("DELETE FROM task_runs WHERE task_id IN (SELECT id FROM tasks WHERE board_id = ?)", [board.id]);
+    db.run("DELETE FROM comments WHERE task_id IN (SELECT id FROM tasks WHERE board_id = ?)", [board.id]);
+    db.run("DELETE FROM dependencies WHERE parent_id IN (SELECT id FROM tasks WHERE board_id = ?) OR child_id IN (SELECT id FROM tasks WHERE board_id = ?)", [board.id, board.id]);
+    db.run("DELETE FROM tasks WHERE board_id = ?", [board.id]);
+
+    const boardDir = getBoardDataDir(slug);
+    rmSync(boardDir, { recursive: true, force: true });
+
+    db.run("DELETE FROM boards WHERE slug = ?", [slug]);
+  });
+
+  remove();
 }

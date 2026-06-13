@@ -1,6 +1,7 @@
 import { describe, it, expect } from "bun:test";
 import { execSync, spawn } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from "node:fs";
+import { dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { initDb, closeDb } from "../src/db";
@@ -1121,4 +1122,69 @@ describe("kdi e2e acceptance", () => {
 
     rmSync(tmp, { recursive: true, force: true });
   });
-});
+
+  it("boards rm archives a board by default", () => {
+    const tmp = makeTempDir("boards-rm-soft");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const output = runKdi(`boards rm myproj`, env);
+    expect(output).toContain("Archived board");
+
+    const listOutput = runKdi(`boards list --all`, env);
+    expect(listOutput).toContain("myproj");
+    expect(listOutput).toContain("archived");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("boards rm --delete permanently deletes board when flag enabled", () => {
+    const tmp = makeTempDir("boards-rm-delete");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_BOARD_RM_DELETE: "true" };
+    const boardDir = join(dirname(dbPath), "boards", "myproj");
+    mkdirSync(boardDir, { recursive: true });
+    writeFileSync(join(boardDir, "kanban.db"), "dummy");
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const output = runKdi(`boards rm myproj --delete`, env);
+    expect(output).toContain("Deleted board");
+
+    const listOutput = runKdi(`boards list --all`, env);
+    expect(listOutput).not.toContain("myproj");
+    expect(existsSync(boardDir)).toBe(false);
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("boards rm --delete exits non-zero on non-existent slug", () => {
+    const tmp = makeTempDir("boards-rm-delete-missing");
+    const dbPath = join(tmp, "kdi.db");
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_BOARD_RM_DELETE: "true" };
+
+    expect(() => runKdi(`boards rm missing --delete`, env)).toThrow();
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("boards rm --delete is rejected when flag is disabled", () => {
+    const tmp = makeTempDir("boards-rm-delete-disabled");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_BOARD_RM_DELETE: "false" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    expect(() => runKdi(`boards rm myproj --delete`, env)).toThrow();
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+

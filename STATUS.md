@@ -23,6 +23,14 @@
 - [x] `kdi boards list` shows metadata compactly when flag enabled
 - [x] Board name defaults to slug when omitted; icon and color default to null
 
+## `kdi boards rm --delete` (KDI-012c) — Done
+- [x] `kdi boards rm <slug>` — soft-archive board (sets `archived_at`, keeps row and files)
+- [x] `kdi boards rm <slug> --delete` — permanently delete board row and board data directory
+- [x] `--delete` gated by `FF_BOARD_RM_DELETE` (defaults to `false`)
+- [x] Clear error when `--delete` is used on a non-existent slug
+- [x] Cascade-delete tasks and related rows when hard-deleting a board
+- [x] Feature flag `ff_board_rm_delete` registered in `specs/feature-flags.md`
+
 ## Task Lifecycle
 - [x] `kdi create <title> --board <slug> --assignee <profile>` — create task
 - [x] `kdi create <title> --board <slug> --triage` — create task in triage

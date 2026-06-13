@@ -1,6 +1,6 @@
 import { Command } from "commander";
-import { createBoard, listBoards, showBoard, archiveBoard, updateBoardMetadata } from "../models/board";
-import { isEnabled, FF_BOARD_METADATA } from "../flags";
+import { createBoard, listBoards, showBoard, archiveBoard, updateBoardMetadata, removeBoard } from "../models/board";
+import { isEnabled, FF_BOARD_METADATA, FF_BOARD_RM_DELETE } from "../flags";
 
 export const boardsCommand = new Command("boards")
   .description("Manage kanban boards");
@@ -122,6 +122,29 @@ boardsCommand
     try {
       archiveBoard(slug);
       console.log(`Archived board "${slug}".`);
+    } catch (err: any) {
+      console.error(`Error: ${err.message}`);
+      process.exit(1);
+    }
+  });
+
+boardsCommand
+  .command("rm <slug>")
+  .description("Remove (archive) a board; use --delete for permanent deletion")
+  .option("--delete", "Permanently delete the board and its data")
+  .action((slug: string, options: { delete?: boolean }) => {
+    try {
+      const hardDelete = options.delete ?? false;
+      if (hardDelete && !isEnabled(FF_BOARD_RM_DELETE)) {
+        console.error("Error: Board hard-delete is not enabled. Set FF_BOARD_RM_DELETE=true to use --delete.");
+        process.exit(1);
+      }
+      removeBoard(slug, hardDelete);
+      if (hardDelete) {
+        console.log(`Deleted board "${slug}" permanently.`);
+      } else {
+        console.log(`Archived board "${slug}".`);
+      }
     } catch (err: any) {
       console.error(`Error: ${err.message}`);
       process.exit(1);
