@@ -2,8 +2,9 @@ import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { initDb, closeDb } from "../src/db";
 import { createBoard } from "../src/models/board";
 import { createTask, promoteTask } from "../src/models/task";
-import { atomicClaim } from "../src/models/claim";
+import { atomicClaim, heartbeat } from "../src/models/claim";
 import { getRun, getRuns } from "../src/models/taskRun";
+import { getEvents } from "../src/models/taskEvent";
 import { cleanupDb } from "./cleanupDb";
 
 const TEST_DB = "/tmp/kdi-claim-test.db";
@@ -60,5 +61,53 @@ describe("claim model", () => {
     const result = atomicClaim(task.id, "opencode");
     expect(result.success).toBe(false);
     expect(getRuns(task.id)).toHaveLength(0);
+  });
+
+  it("heartbeat updates task and active run timestamps", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Heartbeat task", assignee: "opencode" });
+    promoteTask(task.id);
+
+    const before = Math.floor(Date.now() / 1000);
+    const claim = atomicClaim(task.id, "opencode");
+    expect(claim.success).toBe(true);
+
+    // Simulate time passing
+    const updatedTask = heartbeat(task.id);
+    expect(updatedTask).toBe(true);
+
+    const after = Math.floor(Date.now() / 1000);
+    const run = getRun(claim.runId!);
+    expect(run).not.toBeNull();
+    expect(run!.last_heartbeat_at).toBeGreaterThanOrEqual(before);
+    expect(run!.last_heartbeat_at).toBeLessThanOrEqual(after);
+  });
+
+  it("heartbeat records a heartbeat event with note", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Heartbeat note task", assignee: "opencode" });
+    promoteTask(task.id);
+    atomicClaim(task.id, "opencode");
+
+    const ok = heartbeat(task.id, "step 1 done");
+    expect(ok).toBe(true);
+
+    const events = getEvents(task.id);
+    const heartbeatEvents = events.filter((e) => e.kind === "heartbeat");
+    expect(heartbeatEvents).toHaveLength(1);
+    expect(JSON.parse(heartbeatEvents[0].payload!)).toEqual({ note: "step 1 done" });
+  });
+
+  it("heartbeat returns false for archived task", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Archived heartbeat task", assignee: "opencode" });
+    promoteTask(task.id);
+    atomicClaim(task.id, "opencode");
+
+    const { archiveTask } = require("../src/models/task");
+    archiveTask(task.id);
+
+    const ok = heartbeat(task.id);
+    expect(ok).toBe(false);
   });
 });

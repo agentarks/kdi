@@ -9,7 +9,7 @@ import { atomicClaim, heartbeat } from "./models/claim";
 import { isBlockedByDependencies } from "./models/dependency";
 import { getProfile, substituteCommand } from "./profiles";
 import { createWorktree, removeWorktree, type RemoveWorktreeResult } from "./worktree";
-import { isEnabled, FF_ENABLE_KANBAN_DISPATCH } from "./flags";
+import { isEnabled, FF_ENABLE_KANBAN_DISPATCH, FF_HEARTBEAT } from "./flags";
 import {
   recordTick,
   recordClaim,
@@ -215,24 +215,45 @@ function handleFailure(task: Task, result: string, reason: string, runId: number
 function reapStaleClaims(): void {
   const db = getDb();
   const now = Math.floor(Date.now() / 1000);
+  const heartbeatEnabled = isEnabled(FF_HEARTBEAT);
   const oneHourAgo = now - 3600;
 
-  // Find stale claims and their active runs
-  const staleTasks = db.query(
-    `SELECT id, current_run_id FROM tasks WHERE status = 'running' AND (claim_expires < ? OR (last_heartbeat_at IS NOT NULL AND last_heartbeat_at < ?))`
-  ).all(now, oneHourAgo) as { id: number; current_run_id: number | null }[];
-
-  for (const stale of staleTasks) {
-    if (stale.current_run_id) {
-      finishRun(stale.current_run_id, "reclaimed", null, null, "Reclaimed by dispatcher: stale claim");
-    }
-    addEvent(stale.id, "reclaimed", { reason: "stale claim detected by dispatcher" });
+  // Build stale condition: always reap by claim_expires; only reap by heartbeat age when enabled
+  const staleConditions = ["claim_expires < ?"];
+  const params: (number | string)[] = [now];
+  if (heartbeatEnabled) {
+    staleConditions.push("(last_heartbeat_at IS NOT NULL AND last_heartbeat_at < ?)");
+    params.push(oneHourAgo);
   }
 
-  db.run(
-    `UPDATE tasks SET status = 'ready', started_at = NULL, claim_lock = NULL, claim_expires = NULL, updated_at = unixepoch() WHERE status = 'running' AND (claim_expires < ? OR (last_heartbeat_at IS NOT NULL AND last_heartbeat_at < ?))`,
-    [now, oneHourAgo]
-  );
+  // Find stale claims and their active runs, preserving enough state to choose the reclaim reason
+  const staleTasks = db.query(
+    `SELECT id, current_run_id, claim_expires, last_heartbeat_at FROM tasks WHERE status = 'running' AND (${staleConditions.join(" OR ")})`
+  ).all(...params) as { id: number; current_run_id: number | null; claim_expires: number | null; last_heartbeat_at: number | null }[];
+
+  for (const stale of staleTasks) {
+    const heartbeatStale = heartbeatEnabled && stale.last_heartbeat_at !== null && stale.last_heartbeat_at < oneHourAgo;
+    const claimExpired = stale.claim_expires !== null && stale.claim_expires < now;
+
+    let reason: string;
+    if (heartbeatStale) {
+      reason = "stale heartbeat detected by dispatcher";
+    } else if (claimExpired) {
+      reason = "stale claim detected by dispatcher";
+    } else {
+      reason = "stale claim detected by dispatcher";
+    }
+
+    if (stale.current_run_id) {
+      finishRun(stale.current_run_id, "reclaimed", null, null, reason);
+    }
+    addEvent(stale.id, "reclaimed", { reason });
+
+    db.run(
+      `UPDATE tasks SET status = 'ready', started_at = NULL, claim_lock = NULL, claim_expires = NULL, current_run_id = NULL, updated_at = unixepoch() WHERE id = ? AND status = 'running'`,
+      [stale.id]
+    );
+  }
 }
 
 export async function tick(options: TickOptions = {}): Promise<TickResult> {
@@ -273,8 +294,10 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
     }
     const runId = claimResult.runId;
 
-    // Record initial heartbeat for worker liveness
-    heartbeat(task.id);
+    // Seed initial heartbeat so a freshly claimed task is not instantly considered stale
+    if (isEnabled(FF_HEARTBEAT)) {
+      heartbeat(task.id);
+    }
 
     const workdir = task.workspace ?? getBoardWorkdir(task.board_id);
     if (!workdir) {

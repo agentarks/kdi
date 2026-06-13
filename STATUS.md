@@ -68,17 +68,17 @@
 - [x] `kdi create <title> --board <slug> --workspace <path>` overrides the board default when the flag is enabled
 - [x] When `FF_DEFAULT_WORKDIR=false`, the command/`--workspace` option are rejected and default inheritance is skipped
 
-## Heartbeat (KDI-016) — Spec Ready
+## Heartbeat (KDI-016) — Done
 - [x] BRD drafted at `specs/brd-kdi-016-heartbeat.md`
 - [x] Feature flag `ff_heartbeat` / `FF_HEARTBEAT` registered in `specs/feature-flags.md`, defaults to `false`
-- [ ] `FF_HEARTBEAT` constant added to `src/flags.ts`
-- [ ] `kdi heartbeat <task_id> [--note <text>]` command gated by `FF_HEARTBEAT`
-- [ ] Heartbeat updates `last_heartbeat_at` on task and active `task_runs` row
-- [ ] Heartbeat records a `heartbeat` event with optional note payload
-- [ ] Dispatcher reclaims `running` tasks whose `last_heartbeat_at` is older than 60 minutes
-- [ ] `kdi show <id>` displays `Last heartbeat:` when flag enabled and task is running
-- [ ] Unit/e2e tests added and passing
-- [ ] `bun run lint`, `bun run test`, `bun run build` pass
+- [x] `FF_HEARTBEAT` constant added to `src/flags.ts`
+- [x] `kdi heartbeat <task_id> [--note <text>]` command gated by `FF_HEARTBEAT`
+- [x] Heartbeat updates `last_heartbeat_at` on task and active `task_runs` row
+- [x] Heartbeat records a `heartbeat` event with optional note payload
+- [x] Dispatcher reclaims `running` tasks whose `last_heartbeat_at` is older than 60 minutes
+- [x] `kdi show <id>` displays `Last heartbeat:` when flag enabled and task is running
+- [x] Unit/e2e tests added and passing
+- [x] `bun run lint`, `bun run test`, `bun run build` pass
 
 ## Crash Grace Period (KDI-016b) — Spec Ready
 - [x] BRD drafted at `specs/brd-kdi-016b-crash-grace.md`
