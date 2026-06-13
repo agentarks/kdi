@@ -129,16 +129,16 @@
 - [ ] Unit/dispatcher integration tests cover log creation, `--tail`, missing log handling, and flag gating
 - [ ] `bun run lint`, `bun run test`, `bun run build` pass
 
-## Board Stats (KDI-019) — Spec Ready
+## Board Stats (KDI-019) — Done
 - [x] BRD drafted at `specs/brd-019-stats.md`
 - [x] Feature flag `ff_stats` / `FF_STATS` registered in `specs/feature-flags.md`, defaults to `false`
-- [ ] `FF_STATS` constant added to `src/flags.ts`
-- [ ] `kdi stats [--board <slug>]` command gated by `FF_STATS`
-- [ ] `kdi stats` prints per-status counts, per-assignee counts, and oldest-ready age
-- [ ] `kdi stats --json` emits stable JSON document
-- [ ] Board resolved via standard chain
-- [ ] Unit/CLI tests cover counts, JSON output, board resolution, and flag gating
-- [ ] `bun run lint`, `bun run test`, `bun run build` pass
+- [x] `FF_STATS` constant added to `src/flags.ts`
+- [x] `kdi stats [--board <slug>]` command gated by `FF_STATS`
+- [x] `kdi stats` prints per-status counts, per-assignee counts, and oldest-ready age
+- [x] `kdi stats --json` emits stable JSON document
+- [x] Board resolved via standard chain
+- [x] Unit/CLI tests cover counts, JSON output, board resolution, and flag gating
+- [x] `bun run lint`, `bun run test`, `bun run build` pass
 
 ## Task Lifecycle
 - [x] `kdi create <title> --board <slug> --assignee <profile>` — create task
