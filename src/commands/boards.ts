@@ -1,6 +1,6 @@
 import { Command } from "commander";
-import { createBoard, listBoards, showBoard, archiveBoard, updateBoardMetadata, removeBoard } from "../models/board";
-import { isEnabled, FF_BOARD_METADATA, FF_BOARD_RM_DELETE } from "../flags";
+import { createBoard, listBoards, showBoard, archiveBoard, updateBoardMetadata, removeBoard, setDefaultWorkdir } from "../models/board";
+import { isEnabled, FF_BOARD_METADATA, FF_BOARD_RM_DELETE, FF_DEFAULT_WORKDIR } from "../flags";
 import { assertValidBoardSlug } from "../slugs";
 
 export const boardsCommand = new Command("boards")
@@ -79,6 +79,9 @@ boardsCommand
         if (board.color) console.log(`Color: ${board.color}`);
       }
       console.log(`Workdir: ${board.workdir}`);
+      if (isEnabled(FF_DEFAULT_WORKDIR) && board.default_workdir) {
+        console.log(`Default workdir: ${board.default_workdir}`);
+      }
       console.log(`Base ref: ${board.base_ref}`);
       console.log(`Created: ${new Date(board.created_at * 1000).toISOString()}`);
       console.log("Tasks:");
@@ -111,6 +114,26 @@ boardsCommand
       const metadata = { name: options.name, icon: options.icon, color: options.color };
       const board = updateBoardMetadata(slug, metadata);
       console.log(`Updated board "${board.slug}".`);
+    } catch (err: any) {
+      console.error(`Error: ${err.message}`);
+      process.exit(1);
+    }
+  });
+
+boardsCommand
+  .command("set-default-workdir <slug> [workdir]")
+  .description("Set or clear a board's default task workspace directory")
+  .action((slug: string, workdir: string | undefined) => {
+    try {
+      if (!isEnabled(FF_DEFAULT_WORKDIR)) {
+        throw new Error("Default workdir feature is not enabled.");
+      }
+      const board = setDefaultWorkdir(slug, workdir ?? null);
+      if (board.default_workdir) {
+        console.log(`Default workdir for board "${board.slug}" set to ${board.default_workdir}`);
+      } else {
+        console.log(`Default workdir for board "${board.slug}" cleared`);
+      }
     } catch (err: any) {
       console.error(`Error: ${err.message}`);
       process.exit(1);

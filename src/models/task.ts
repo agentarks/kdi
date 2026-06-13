@@ -4,7 +4,7 @@ import { createRun, finishRun } from "./taskRun";
 
 export const TASK_COLUMNS =
   "id, board_id, title, body, assignee, status, priority, tenant, " +
-  "workspace_kind, branch, result, summary, block_reason, schedule_reason, review_reason, " +
+  "workspace_kind, workspace, branch, result, summary, block_reason, schedule_reason, review_reason, " +
   "created_by, created_at, updated_at, started_at, archived_at, current_run_id, " +
   "claim_lock, claim_expires, last_heartbeat_at, max_runtime_seconds, max_retries, consecutive_failures, idempotency_key, model_override, scheduled_at, skills";
 
@@ -18,6 +18,7 @@ export interface Task {
   priority: number;
   tenant: string | null;
   workspace_kind: "dir" | "worktree" | "scratch";
+  workspace: string | null;
   branch: string | null;
   result: string | null;
   summary: string | null;
@@ -51,6 +52,7 @@ export interface CreateTaskInput {
   assignee?: string;
   priority?: number;
   workspace_kind?: "dir" | "worktree" | "scratch";
+  workspace?: string;
   branch?: string;
   tenant?: string;
   triage?: boolean;
@@ -149,12 +151,17 @@ export function createTask(input: CreateTaskInput): Task {
     throw new Error("created_by must be 255 characters or fewer.");
   }
 
+  const workspace = input.workspace?.trim();
+  if (workspace !== undefined && workspace === "") {
+    throw new Error("workspace cannot be empty.");
+  }
+
   const skillsJson = input.skills && input.skills.length > 0 ? JSON.stringify(input.skills) : null;
 
   const insert = db.transaction(() => {
     const result = db.run(
-      `INSERT INTO tasks (board_id, title, body, assignee, status, priority, tenant, workspace_kind, branch, idempotency_key, scheduled_at, created_by, max_runtime_seconds, max_retries, skills, model_override)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO tasks (board_id, title, body, assignee, status, priority, tenant, workspace_kind, workspace, branch, idempotency_key, scheduled_at, created_by, max_runtime_seconds, max_retries, skills, model_override)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         input.board_id,
         input.title,
@@ -164,6 +171,7 @@ export function createTask(input: CreateTaskInput): Task {
         input.priority ?? 0,
         input.tenant ?? null,
         input.workspace_kind ?? "worktree",
+        workspace ?? null,
         input.branch ?? null,
         input.idempotency_key ?? null,
         input.scheduled_at ?? null,
@@ -203,6 +211,7 @@ export function createTask(input: CreateTaskInput): Task {
     priority: input.priority ?? 0,
     tenant: input.tenant ?? null,
     workspace_kind: input.workspace_kind ?? "worktree",
+    workspace: workspace ?? null,
     branch: input.branch ?? null,
     result: null,
     summary: null,

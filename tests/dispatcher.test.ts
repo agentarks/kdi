@@ -69,6 +69,30 @@ describe("dispatcher", () => {
     expect(updated!.result).toBe("success");
   });
 
+  it("uses task workspace as worktree source when set", async () => {
+    const board = createBoard("test-board", "/tmp/board-workdir");
+    const task = createTask({
+      board_id: board.id,
+      title: "Workspace task",
+      assignee: "opencode",
+      workspace: "/tmp/task-workspace",
+    });
+    promoteTask(task.id);
+
+    const mockHarness = mock(() => Promise.resolve({ stdout: "success", stderr: "", exitCode: 0 }));
+    const mockCreateWorktree = mock(() => "/tmp/mock-worktree");
+    const mockRemoveWorktree = mock(() => ({ worktreeRemoved: true, branchDeleted: true, found: true }));
+
+    await tick({
+      spawnHarness: mockHarness,
+      createWorktree: mockCreateWorktree,
+      removeWorktree: mockRemoveWorktree,
+    });
+
+    expect(mockCreateWorktree).toHaveBeenCalledWith("/tmp/task-workspace", "opencode", String(task.id), "origin/main");
+    expect(mockRemoveWorktree).toHaveBeenCalledWith("/tmp/task-workspace", "opencode", String(task.id), "/tmp/mock-worktree");
+  });
+
   it("skips blocked tasks due to dependencies", async () => {
     const board = createBoard("test-board", "/tmp/test-board");
     const parent = createTask({ board_id: board.id, title: "Parent" });

@@ -1200,4 +1200,124 @@ describe("kdi e2e acceptance", () => {
     rmSync(tmp, { recursive: true, force: true });
   });
 
+  it("boards set-default-workdir stores and displays defaultWorkdir when flag enabled", () => {
+    const tmp = makeTempDir("default-workdir-set");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    const defaultDir = join(tmp, "default");
+    mkdirSync(repoDir, { recursive: true });
+    mkdirSync(defaultDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_DEFAULT_WORKDIR: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const output = runKdi(`boards set-default-workdir myproj ${defaultDir}`, env);
+    expect(output).toContain(`Default workdir for board "myproj" set to ${defaultDir}`);
+
+    const showOutput = runKdi(`boards show myproj`, env);
+    expect(showOutput).toContain(`Default workdir: ${defaultDir}`);
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("boards set-default-workdir clears defaultWorkdir when path is omitted", () => {
+    const tmp = makeTempDir("default-workdir-clear");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    const defaultDir = join(tmp, "default");
+    mkdirSync(repoDir, { recursive: true });
+    mkdirSync(defaultDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_DEFAULT_WORKDIR: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    runKdi(`boards set-default-workdir myproj ${defaultDir}`, env);
+    const output = runKdi(`boards set-default-workdir myproj`, env);
+    expect(output).toContain(`Default workdir for board "myproj" cleared`);
+
+    const showOutput = runKdi(`boards show myproj`, env);
+    expect(showOutput).not.toContain("Default workdir:");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("boards set-default-workdir is rejected when flag is disabled", () => {
+    const tmp = makeTempDir("default-workdir-disabled");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_DEFAULT_WORKDIR: "false" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    expect(() => runKdi(`boards set-default-workdir myproj ${repoDir}`, env)).toThrow();
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("create inherits defaultWorkdir when workspace is omitted and flag enabled", () => {
+    const tmp = makeTempDir("default-workdir-create");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    const defaultDir = join(tmp, "default");
+    mkdirSync(repoDir, { recursive: true });
+    mkdirSync(defaultDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_DEFAULT_WORKDIR: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    runKdi(`boards set-default-workdir myproj ${defaultDir}`, env);
+    const taskId = runKdi(`create "inherits workspace" --board myproj`, env);
+
+    const output = runKdi(`show ${taskId}`, env);
+    expect(output).toContain(`Workspace: ${defaultDir}`);
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("create --workspace overrides board defaultWorkdir", () => {
+    const tmp = makeTempDir("default-workdir-override");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    const defaultDir = join(tmp, "default");
+    const explicitDir = join(tmp, "explicit");
+    mkdirSync(repoDir, { recursive: true });
+    mkdirSync(defaultDir, { recursive: true });
+    mkdirSync(explicitDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_DEFAULT_WORKDIR: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    runKdi(`boards set-default-workdir myproj ${defaultDir}`, env);
+    const taskId = runKdi(`create "explicit workspace" --board myproj --workspace ${explicitDir}`, env);
+
+    const output = runKdi(`show ${taskId}`, env);
+    expect(output).toContain(`Workspace: ${explicitDir}`);
+    expect(output).not.toContain(`Workspace: ${defaultDir}`);
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("create ignores defaultWorkdir when flag is disabled", () => {
+    const tmp = makeTempDir("default-workdir-create-disabled");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    const defaultDir = join(tmp, "default");
+    mkdirSync(repoDir, { recursive: true });
+    mkdirSync(defaultDir, { recursive: true });
+    setupGitRepo(repoDir);
+
+    const enabledEnv = { KDI_DB: dbPath, HOME: tmp, FF_DEFAULT_WORKDIR: "true" };
+    runKdi(`boards create myproj --workdir ${repoDir}`, enabledEnv);
+    runKdi(`boards set-default-workdir myproj ${defaultDir}`, enabledEnv);
+
+    const disabledEnv = { KDI_DB: dbPath, HOME: tmp, FF_DEFAULT_WORKDIR: "false" };
+    const taskId = runKdi(`create "no inherit" --board myproj`, disabledEnv);
+
+    const output = runKdi(`show ${taskId}`, enabledEnv);
+    expect(output).not.toContain("Workspace:");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
 });
