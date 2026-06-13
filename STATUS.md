@@ -161,7 +161,7 @@
 - [x] Dispatcher passes cap as harness timeout; SIGTERM then SIGKILL on expiry
 - [x] Timed-out runs recorded with `outcome=timed_out` and task blocked
 
-## Max retries / circuit breaker (KDI-011) — In Progress
+## Max retries / circuit breaker (KDI-011) — Done
 - [x] Feature flag `ff_max_retries` / `FF_MAX_RETRIES` registered in `src/flags.ts` and `specs/feature-flags.md`
 - [x] Schema adds `max_retries` and `consecutive_failures` columns with migrations
 - [x] Task model, `CreateTaskInput`, `TASK_COLUMNS`, and hydration updated
