@@ -6,7 +6,7 @@ export const TASK_COLUMNS =
   "id, board_id, title, body, assignee, status, priority, tenant, " +
   "workspace_kind, branch, result, summary, block_reason, schedule_reason, review_reason, " +
   "created_by, created_at, updated_at, started_at, archived_at, current_run_id, " +
-  "claim_lock, claim_expires, last_heartbeat_at, max_runtime_seconds, idempotency_key, scheduled_at, skills";
+  "claim_lock, claim_expires, last_heartbeat_at, max_runtime_seconds, idempotency_key, model_override, scheduled_at, skills";
 
 export interface Task {
   id: number;
@@ -37,6 +37,7 @@ export interface Task {
   last_heartbeat_at: number | null;
   max_runtime_seconds: number | null;
   idempotency_key: string | null;
+  model_override: string | null;
 }
 
 export type InitialTaskStatus = Exclude<Task["status"], "archived">;
@@ -57,6 +58,7 @@ export interface CreateTaskInput {
   max_runtime_seconds?: number;
   skills?: string[];
   created_by?: string;
+  model_override?: string;
 }
 
 export interface CompleteTaskInput {
@@ -148,8 +150,8 @@ export function createTask(input: CreateTaskInput): Task {
 
   const insert = db.transaction(() => {
     const result = db.run(
-      `INSERT INTO tasks (board_id, title, body, assignee, status, priority, tenant, workspace_kind, branch, idempotency_key, scheduled_at, created_by, max_runtime_seconds, skills)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO tasks (board_id, title, body, assignee, status, priority, tenant, workspace_kind, branch, idempotency_key, scheduled_at, created_by, max_runtime_seconds, skills, model_override)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         input.board_id,
         input.title,
@@ -165,6 +167,7 @@ export function createTask(input: CreateTaskInput): Task {
         createdBy,
         input.max_runtime_seconds ?? null,
         skillsJson,
+        input.model_override ?? null,
       ]
     );
     return Number(result.lastInsertRowid);
@@ -215,6 +218,7 @@ export function createTask(input: CreateTaskInput): Task {
     last_heartbeat_at: null,
     max_runtime_seconds: input.max_runtime_seconds ?? null,
     idempotency_key: input.idempotency_key ?? null,
+    model_override: input.model_override ?? null,
   };
   addEvent(task.id, "created");
   return task;

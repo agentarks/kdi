@@ -47,7 +47,8 @@ CREATE TABLE IF NOT EXISTS tasks (
   claim_expires INTEGER,
   last_heartbeat_at INTEGER,
   max_runtime_seconds INTEGER,
-  idempotency_key TEXT
+  idempotency_key TEXT,
+  model_override TEXT
 );
 
 CREATE TABLE IF NOT EXISTS comments (
@@ -314,7 +315,8 @@ export function initDb(path?: string): Database {
             claim_expires INTEGER,
             last_heartbeat_at INTEGER,
             max_runtime_seconds INTEGER,
-            idempotency_key TEXT
+            idempotency_key TEXT,
+            model_override TEXT
           );
           INSERT INTO tasks_new
             (id, board_id, title, body, assignee, status, priority, tenant, workspace_kind, branch, result, summary, block_reason, schedule_reason, review_reason, scheduled_at, created_by, skills, created_at, updated_at, started_at, archived_at, current_run_id, claim_lock, claim_expires, last_heartbeat_at, max_runtime_seconds, idempotency_key)
@@ -333,6 +335,13 @@ export function initDb(path?: string): Database {
         `);
       });
       migrate();
+    }
+
+    // Migrate: add model_override if missing
+    const modelOverrideInfo = dbInstance.query("PRAGMA table_info(tasks)").all() as any[];
+    const hasModelOverride = modelOverrideInfo.some((col) => col.name === "model_override");
+    if (!hasModelOverride) {
+      dbInstance.exec("ALTER TABLE tasks ADD COLUMN model_override TEXT");
     }
 
     // Create indexes for columns that are added by migrations, so old databases

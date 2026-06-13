@@ -36,6 +36,7 @@ stateDiagram-v2
 | `ff_tenant_namespace` | `FF_TENANT_NAMESPACE` | CLI / task lifecycle | InDev | `false` | KDI-006 | Tenant namespace on tasks; `create --tenant`; `list --tenant` filters by tenant. |
 | `ff_skills_array` | `FF_SKILLS_ARRAY` | CLI / create, dispatcher | InDev | `false` | KDI-009 | Skills array on tasks; `create --skill`; dispatcher passes skills to harness via `{{skills}}` and `KDI_SKILLS`. |
 | `ff_max_runtime` | `FF_MAX_RUNTIME` | CLI / create + dispatcher | InDev | `false` | KDI-008 | Per-task max runtime cap; dispatcher SIGTERMs/SIGKILLs worker when exceeded. |
+| `ff_model_override` | `FF_MODEL_OVERRIDE` | CLI / create + dispatcher | InDev | `false` | KDI-010 | Per-task model override; `create --model`; dispatcher passes `{{model}}` and `KDI_MODEL` to harness. |
 
 ## Lifecycle Notes
 
@@ -138,6 +139,20 @@ stateDiagram-v2
   - Dispatcher passes the cap as the harness timeout.
   - Timed-out runs are recorded with `outcome=timed_out` and the task is blocked.
 - **Rollback / deactivation:** Set `FF_MAX_RUNTIME=false` to hide/gate the `--max-runtime` option.
+- **Deprecation plan:** N/A
+
+### `ff_model_override` — InDev
+
+- **Owner:** kdi core team
+- **BRD:** [BRD-KDI-010](brd-kdi-010-model-override.md)
+- **Status transitions:**
+  - `Planned` → `InDev` when `model_override` column, `create --model`, and dispatcher pass-through are implemented.
+- **Schema note:** `model_override` is a schema-level TEXT column on `tasks` — this flag gates the CLI option and dispatcher behavior; the schema migration always runs.
+- **Activation criteria:**
+  - `create --model <model>` stores `model_override` on the task.
+  - `kdi show` displays the model override when the flag is enabled.
+  - Dispatcher substitutes `{{model}}` in profile commands and sets `KDI_MODEL` env var for the harness process.
+- **Rollback / deactivation:** Set `FF_MODEL_OVERRIDE=false` to hide/gate the `--model` option and dispatcher model pass-through.
 - **Deprecation plan:** N/A
 
 ### `ff_kanban_dispatch` — Planned

@@ -289,18 +289,23 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
 
     try {
       const skillsValue = task.skills && task.skills.length > 0 ? task.skills.join(",") : "";
+      const modelValue = task.model_override ?? "";
       const command = substituteCommand(profile.command, {
         workdir: worktreePath,
         branch: worktreeBranch,
         task_id: String(task.id),
         agent: profile.agent ?? profile.name,
         skills: skillsValue,
+        model: modelValue,
       });
 
-      const harnessEnv: Record<string, string> | undefined = skillsValue ? { KDI_SKILLS: skillsValue } : undefined;
+      const harnessEnv: Record<string, string> | undefined = {};
+      if (skillsValue) harnessEnv.KDI_SKILLS = skillsValue;
+      if (modelValue) harnessEnv.KDI_MODEL = modelValue;
+      const effectiveHarnessEnv = Object.keys(harnessEnv).length > 0 ? harnessEnv : undefined;
       const harnessTimeoutMs = task.max_runtime_seconds ? task.max_runtime_seconds * 1000 : undefined;
       const harnessStart = Date.now();
-      const harnessResult = await doSpawnHarness(command, worktreePath, logPath, harnessTimeoutMs, harnessEnv);
+      const harnessResult = await doSpawnHarness(command, worktreePath, logPath, harnessTimeoutMs, effectiveHarnessEnv);
       const harnessDuration = Date.now() - harnessStart;
       recordTaskDuration(profile.agent ?? profile.name, harnessDuration);
 

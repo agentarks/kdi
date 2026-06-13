@@ -145,6 +145,14 @@
 - [x] `kdi show <task_id>` displays tenant when present
 - [x] Feature flag `FF_TENANT_NAMESPACE` registered in `specs/feature-flags.md` and defaults to `false`
 
+## Model Override (KDI-010) — Done
+- [x] `model_override TEXT` column added to tasks (with migration)
+- [x] `kdi create <title> --board <slug> --model <model>`; gated by `FF_MODEL_OVERRIDE`
+- [x] `kdi show <task_id>` displays `Model override:` when flag enabled and value is set
+- [x] Dispatcher substitutes `{{model}}` in harness profile commands when override is set
+- [x] Dispatcher sets `KDI_MODEL=<model>` env var for harness process when override is set
+- [x] Feature flag `FF_MODEL_OVERRIDE` registered in `specs/feature-flags.md` and defaults to `false`
+
 ## Dependencies
 - [ ] Parent/child task blocking
 - [ ] Child waits until parent is `done`

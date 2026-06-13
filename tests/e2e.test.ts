@@ -935,4 +935,52 @@ describe("kdi e2e acceptance", () => {
 
     rmSync(tmp, { recursive: true, force: true });
   });
+
+  it("create --model stores and displays model override when flag enabled", () => {
+    const tmp = makeTempDir("model-override");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_MODEL_OVERRIDE: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const taskId = runKdi(`create "model task" --board myproj --model gpt-5.5`, env);
+
+    const output = runKdi(`show ${taskId}`, env);
+    expect(output).toContain("Model override: gpt-5.5");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("create --model is rejected when flag disabled", () => {
+    const tmp = makeTempDir("model-disabled");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    expect(() => runKdi(`create "bad" --board myproj --model gpt-5.5`, env)).toThrow();
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("show does not display model override when flag disabled", () => {
+    const tmp = makeTempDir("model-show-disabled");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_MODEL_OVERRIDE: "false" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const taskId = runKdi(`create "plain" --board myproj`, env);
+
+    const output = runKdi(`show ${taskId}`, env);
+    expect(output).not.toContain("Model override:");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
 });

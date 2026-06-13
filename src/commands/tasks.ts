@@ -21,7 +21,7 @@ import { getRuns } from "../models/taskRun";
 import { getEvents, tailEvents, getRecentEvents, getEventsAfter } from "../models/taskEvent";
 import { atomicClaim, reclaimTask, heartbeat } from "../models/claim";
 import { getTaskLogPath } from "../observability";
-import { isEnabled, FF_SCHEDULED_STATUS, FF_REVIEW_STATUS, FF_COMPLETE_METADATA, FF_PRIORITY_INTEGER, FF_SKILLS_ARRAY, FF_MAX_RUNTIME, FF_TENANT_NAMESPACE, FF_CREATED_BY } from "../flags";
+import { isEnabled, FF_SCHEDULED_STATUS, FF_REVIEW_STATUS, FF_COMPLETE_METADATA, FF_PRIORITY_INTEGER, FF_SKILLS_ARRAY, FF_MAX_RUNTIME, FF_TENANT_NAMESPACE, FF_CREATED_BY, FF_MODEL_OVERRIDE } from "../flags";
 
 const VALID_STATUSES = ["triage", "todo", "scheduled", "ready", "running", "done", "blocked", "review"] as const;
 type ValidStatus = typeof VALID_STATUSES[number];
@@ -101,8 +101,9 @@ export const createTaskCommand = new Command("create")
   .option("--max-runtime <duration>", "Maximum runtime (e.g. 30m, 1h, 2d, 90s). Feature-flagged.")
   .option("--tenant <name>", "Tenant namespace for the task")
   .option("--skill <skill>", "Add a skill to the task (repeatable)", collectSkill, [])
+  .option("--model <model>", "Model override for the harness")
   .option("--created-by <actor>", "Actor that created the task")
-  .action((title: string, options: { board: string; assignee?: string; body?: string; triage?: boolean; initialStatus?: string; at?: string; priority?: string; idempotencyKey?: string; maxRuntime?: string; tenant?: string; skill: string[]; createdBy?: string }) => {
+  .action((title: string, options: { board: string; assignee?: string; body?: string; triage?: boolean; initialStatus?: string; at?: string; priority?: string; idempotencyKey?: string; maxRuntime?: string; tenant?: string; skill: string[]; createdBy?: string; model?: string }) => {
     try {
       if (!title || title.trim() === "") {
         throw new Error("Title is required.");
@@ -176,6 +177,15 @@ export const createTaskCommand = new Command("create")
         }
       }
 
+      if (options.model !== undefined) {
+        if (!isEnabled(FF_MODEL_OVERRIDE)) {
+          throw new Error("Model override feature is not enabled.");
+        }
+        if (options.model.trim() === "") {
+          throw new Error("Model cannot be empty.");
+        }
+      }
+
       if (options.createdBy !== undefined && !isEnabled(FF_CREATED_BY)) {
         throw new Error("Created-by tracking is not enabled.");
       }
@@ -200,6 +210,7 @@ export const createTaskCommand = new Command("create")
         tenant: options.tenant,
         skills,
         created_by: createdBy,
+        model_override: options.model,
       });
       console.log(task.id);
     } catch (err: any) {
@@ -272,6 +283,7 @@ export const showTaskCommand = new Command("show")
       if (task.max_runtime_seconds) console.log(`Max runtime: ${task.max_runtime_seconds}s`);
       if (task.tenant) console.log(`Tenant: ${task.tenant}`);
       if (task.skills && task.skills.length > 0) console.log(`Skills: ${task.skills.join(", ")}`);
+      if (isEnabled(FF_MODEL_OVERRIDE) && task.model_override) console.log(`Model override: ${task.model_override}`);
       if (isEnabled(FF_CREATED_BY)) console.log(`Created by: ${task.created_by}`);
 
       const comments = getComments(id);

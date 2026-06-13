@@ -154,6 +154,22 @@ describe("task model", () => {
     expect(task.max_runtime_seconds).toBeNull();
   });
 
+  it("createTask stores model_override when provided", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Model task", model_override: "gpt-5.5" });
+    expect(task.model_override).toBe("gpt-5.5");
+
+    const fetched = showTask(task.id);
+    expect(fetched).not.toBeNull();
+    expect(fetched!.model_override).toBe("gpt-5.5");
+  });
+
+  it("createTask defaults model_override to null", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "No model" });
+    expect(task.model_override).toBeNull();
+  });
+
   it("parseDuration accepts raw seconds", () => {
     expect(parseDuration("300")).toBe(300);
     expect(parseDuration("1")).toBe(1);

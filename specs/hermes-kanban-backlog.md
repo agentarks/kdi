@@ -352,7 +352,7 @@
   - `kdi create --skill github --skill code-review`
   - Dispatcher passes skills to harness
 
-- [ ] **KDI-010: Model override**
+- [x] **KDI-010: Model override**
   - Add `model_override TEXT`
   - `kdi create --model gpt-5.5`
   - Dispatcher passes `-m <model>` to harness
