@@ -1,6 +1,6 @@
 import { describe, it, expect } from "bun:test";
 import { execSync, spawn } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { initDb, closeDb } from "../src/db";
@@ -1565,6 +1565,188 @@ describe("kdi e2e acceptance", () => {
 
     const output = runKdi(`show ${taskId}`, enabledEnv);
     expect(output).not.toContain("Workspace:");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it(
+    "dispatcher creates per-task log file when FF_WORKER_LOG_CAPTURE is enabled",
+    async () => {
+      const tmp = makeTempDir("log-capture-enabled");
+      const dbPath = join(tmp, "kdi.db");
+      const repoDir = join(tmp, "repo");
+      mkdirSync(repoDir, { recursive: true });
+      setupGitRepo(repoDir);
+      setupProfiles(tmp, [{ name: "logagent", command: "echo stdout-line && echo stderr-line >&2" }]);
+      const env = { KDI_DB: dbPath, HOME: tmp, FF_ENABLE_KANBAN_DISPATCH: "true", FF_WORKER_LOG_CAPTURE: "true" };
+
+      runKdi(`boards create myproj --workdir ${repoDir}`, env);
+      const taskId = runKdi(`create "log task" --board myproj --assignee logagent`, env);
+
+      const dispatcher = startDispatcher(env);
+      runKdi(`promote ${taskId}`, env);
+
+      const ok = await waitForTaskStatus(taskId, "done", env, 10000);
+      dispatcher.kill("SIGTERM");
+
+      expect(ok).toBe(true);
+
+      const logPath = join(tmp, ".local", "share", "kdi", "logs", "myproj", `${taskId}.log`);
+      expect(existsSync(logPath)).toBe(true);
+      const content = readFileSync(logPath, "utf-8");
+      expect(content).toContain("stdout-line");
+      expect(content).toContain("stderr-line");
+
+      rmSync(tmp, { recursive: true, force: true });
+    },
+    20000
+  );
+
+  it(
+    "dispatcher does not create per-task log file when FF_WORKER_LOG_CAPTURE is disabled",
+    async () => {
+      const tmp = makeTempDir("log-capture-disabled");
+      const dbPath = join(tmp, "kdi.db");
+      const repoDir = join(tmp, "repo");
+      mkdirSync(repoDir, { recursive: true });
+      setupGitRepo(repoDir);
+      setupProfiles(tmp, [{ name: "nologagent", command: "echo done" }]);
+      const env = { KDI_DB: dbPath, HOME: tmp, FF_ENABLE_KANBAN_DISPATCH: "true", FF_WORKER_LOG_CAPTURE: "false" };
+
+      runKdi(`boards create myproj --workdir ${repoDir}`, env);
+      const taskId = runKdi(`create "no log task" --board myproj --assignee nologagent`, env);
+
+      const dispatcher = startDispatcher(env);
+      runKdi(`promote ${taskId}`, env);
+
+      const ok = await waitForTaskStatus(taskId, "done", env, 10000);
+      dispatcher.kill("SIGTERM");
+
+      expect(ok).toBe(true);
+
+      const logPath = join(tmp, ".local", "share", "kdi", "logs", "myproj", `${taskId}.log`);
+      expect(existsSync(logPath)).toBe(false);
+
+      rmSync(tmp, { recursive: true, force: true });
+    },
+    20000
+  );
+
+  it(
+    "kdi log prints full captured log and --tail prints trailing bytes",
+    async () => {
+      const tmp = makeTempDir("log-command");
+      const dbPath = join(tmp, "kdi.db");
+      const repoDir = join(tmp, "repo");
+      mkdirSync(repoDir, { recursive: true });
+      setupGitRepo(repoDir);
+      setupProfiles(tmp, [{ name: "logcmdagent", command: "printf 'start-middle-end'" }]);
+      const env = { KDI_DB: dbPath, HOME: tmp, FF_ENABLE_KANBAN_DISPATCH: "true", FF_WORKER_LOG_CAPTURE: "true" };
+
+      runKdi(`boards create myproj --workdir ${repoDir}`, env);
+      const taskId = runKdi(`create "log cmd task" --board myproj --assignee logcmdagent`, env);
+
+      const dispatcher = startDispatcher(env);
+      runKdi(`promote ${taskId}`, env);
+
+      const ok = await waitForTaskStatus(taskId, "done", env, 10000);
+      dispatcher.kill("SIGTERM");
+
+      expect(ok).toBe(true);
+
+      const fullOutput = runKdi(`log ${taskId}`, env);
+      expect(fullOutput).toContain("start-middle-end");
+
+      const tailOutput = runKdi(`log ${taskId} --tail 10`, env);
+      expect(tailOutput).toBe("middle-end");
+
+      rmSync(tmp, { recursive: true, force: true });
+    },
+    20000
+  );
+
+  it("kdi log prints message when no log exists", () => {
+    const tmp = makeTempDir("log-missing");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_WORKER_LOG_CAPTURE: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const taskId = runKdi(`create "no log yet" --board myproj`, env);
+
+    const output = runKdi(`log ${taskId}`, env);
+    expect(output).toBe("No log found for this task.");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("kdi log --tail rejects non-positive values", () => {
+    const tmp = makeTempDir("log-tail-invalid");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_WORKER_LOG_CAPTURE: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const taskId = runKdi(`create "tail invalid" --board myproj`, env);
+
+    expect(() => runKdi(`log ${taskId} --tail -1`, env)).toThrow(/positive integer/);
+    expect(() => runKdi(`log ${taskId} --tail 0`, env)).toThrow(/positive integer/);
+    expect(() => runKdi(`log ${taskId} --tail abc`, env)).toThrow(/positive integer/);
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("kdi log is rejected when flag is disabled", () => {
+    const tmp = makeTempDir("log-disabled");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_WORKER_LOG_CAPTURE: "false" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const taskId = runKdi(`create "log disabled" --board myproj`, env);
+
+    expect(() => runKdi(`log ${taskId}`, env)).toThrow(/not enabled/);
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("show displays log path when FF_WORKER_LOG_CAPTURE is enabled", () => {
+    const tmp = makeTempDir("show-log-path");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_WORKER_LOG_CAPTURE: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const taskId = runKdi(`create "show log" --board myproj`, env);
+
+    const output = runKdi(`show ${taskId}`, env);
+    expect(output).toContain("Log:");
+    expect(output).toContain(join(".local", "share", "kdi", "logs", "myproj", `${taskId}.log`));
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("show does not display log path when FF_WORKER_LOG_CAPTURE is disabled", () => {
+    const tmp = makeTempDir("show-no-log-path");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_WORKER_LOG_CAPTURE: "false" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const taskId = runKdi(`create "no show log" --board myproj`, env);
+
+    const output = runKdi(`show ${taskId}`, env);
+    expect(output).not.toContain("Log:");
 
     rmSync(tmp, { recursive: true, force: true });
   });

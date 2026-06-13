@@ -1,4 +1,5 @@
 export const FF_ENABLE_KANBAN_DISPATCH = "FF_ENABLE_KANBAN_DISPATCH";
+export const FF_WORKER_LOG_CAPTURE = "FF_WORKER_LOG_CAPTURE";
 export const FF_SCHEDULED_STATUS = "FF_SCHEDULED_STATUS";
 export const FF_REVIEW_STATUS = "FF_REVIEW_STATUS";
 export const FF_COMPLETE_METADATA = "FF_COMPLETE_METADATA";
@@ -56,6 +57,7 @@ export function clearOverrides(): void {
 
 // Register built-in flags
 registerFlag(FF_ENABLE_KANBAN_DISPATCH, false);
+registerFlag(FF_WORKER_LOG_CAPTURE, false);
 registerFlag(FF_SCHEDULED_STATUS, false);
 registerFlag(FF_REVIEW_STATUS, false);
 registerFlag(FF_COMPLETE_METADATA, false);
