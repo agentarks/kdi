@@ -40,6 +40,7 @@ stateDiagram-v2
 | `ff_model_override` | `FF_MODEL_OVERRIDE` | CLI / create + dispatcher | InDev | `false` | KDI-010 | Per-task model override; `create --model`; dispatcher passes `{{model}}` and `KDI_MODEL` to harness. |
 | `ff_max_retries` | `FF_MAX_RETRIES` | CLI / create + dispatcher | InDev | `false` | KDI-011 | Per-task max retries; auto-block after N consecutive spawn/execution failures. |
 | `ff_board_metadata` | `FF_BOARD_METADATA` | CLI / board metadata | InDev | `false` | KDI-012 | Board name, icon, and color; `boards create --name/--icon/--color`, `boards edit`, and metadata display. |
+| `ff_default_workdir` | `FF_DEFAULT_WORKDIR` | CLI / board management + create | InDev | `false` | KDI-015 | Board default task workspace; `boards set-default-workdir`; create inheritance and `--workspace`. |
 
 ## Lifecycle Notes
 
@@ -196,6 +197,21 @@ stateDiagram-v2
   - `boards edit` updates board metadata.
   - `boards show` and `boards list` display metadata when set.
 - **Rollback / deactivation:** Set `FF_BOARD_METADATA=false` to hide/gate the `--name`, `--icon`, `--color`, and `boards edit` options.
+- **Deprecation plan:** N/A
+
+### `ff_default_workdir` — InDev
+
+- **Owner:** kdi core team
+- **BRD:** KDI-015
+- **Status transitions:**
+  - `Planned` → `InDev` when board default workdir storage and create inheritance are implemented.
+- **Schema note:** `default_workdir` is a schema-level TEXT column on `boards`; task `workspace` is persisted so inherited/explicit workspaces can be used by the dispatcher. This flag gates the CLI command, `create --workspace`, and default inheritance.
+- **Activation criteria:**
+  - `boards set-default-workdir <slug> <path>` stores and displays the default workdir.
+  - `boards set-default-workdir <slug>` clears the default workdir.
+  - `create` inherits the board default when `--workspace` is omitted.
+  - `create --workspace <path>` overrides the board default.
+- **Rollback / deactivation:** Set `FF_DEFAULT_WORKDIR=false` to reject the command and prevent create from inheriting board defaults.
 - **Deprecation plan:** N/A
 
 ### `ff_kanban_dispatch` — Planned

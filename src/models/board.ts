@@ -6,6 +6,7 @@ export interface Board {
   id: number;
   slug: string;
   workdir: string;
+  default_workdir: string | null;
   base_ref: string;
   name: string;
   icon: string | null;
@@ -34,7 +35,7 @@ export interface BoardWithTaskCounts extends Board {
   };
 }
 
-const BOARD_COLUMNS = "id, slug, workdir, base_ref, name, icon, color, created_at, archived_at";
+const BOARD_COLUMNS = "id, slug, workdir, default_workdir, base_ref, name, icon, color, created_at, archived_at";
 
 function validateMetadataField(value: string | undefined, field: string): void {
   if (value !== undefined && value.trim() === "") {
@@ -67,6 +68,7 @@ export function createBoard(
       id: Number(result.lastInsertRowid),
       slug,
       workdir,
+      default_workdir: null,
       base_ref: baseRef,
       name,
       icon,
@@ -146,6 +148,30 @@ export function getBoardById(id: number): Board | null {
     `SELECT ${BOARD_COLUMNS} FROM boards WHERE id = ?`
   ).get(id) as Board | undefined;
   return board ?? null;
+}
+
+export function setDefaultWorkdir(slug: string, workdir: string | null): Board {
+  assertValidBoardSlug(slug);
+
+  const normalizedWorkdir = workdir === null ? null : workdir.trim();
+  if (normalizedWorkdir !== null && normalizedWorkdir === "") {
+    throw new Error("Default workdir cannot be empty. Omit the path to clear it.");
+  }
+
+  const db = getDb();
+  const result = db.run(
+    "UPDATE boards SET default_workdir = ? WHERE slug = ? AND archived_at IS NULL",
+    [normalizedWorkdir, slug]
+  );
+  if (result.changes === 0) {
+    throw new Error(`Board "${slug}" not found or is archived.`);
+  }
+
+  const updated = showBoard(slug, false);
+  if (!updated) {
+    throw new Error(`Board "${slug}" not found.`);
+  }
+  return updated;
 }
 
 export function updateBoardMetadata(slug: string, metadata: BoardMetadata): Board {

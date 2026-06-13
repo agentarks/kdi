@@ -58,6 +58,16 @@
 - [x] Unit tests for `resolveBoard()`, `writeCurrentBoard()`, `readCurrentBoard()`
 - [x] E2e tests for `boards switch`, resolution chain priority, and flag gating
 
+## Default Workdir (KDI-015) — Done
+- [x] `default_workdir` column added to `boards` table (schema + migration)
+- [x] `workspace` column added to `tasks` so explicit/inherited task workspace paths persist
+- [x] Feature flag `ff_default_workdir` / `FF_DEFAULT_WORKDIR` registered in `src/flags.ts` and `specs/feature-flags.md`, defaults to `false`
+- [x] `kdi boards set-default-workdir <slug> <path>` stores and displays a board default workdir when the flag is enabled
+- [x] `kdi boards set-default-workdir <slug>` clears the board default workdir when the flag is enabled
+- [x] `kdi create <title> --board <slug>` inherits the board default when `--workspace` is omitted and the flag is enabled
+- [x] `kdi create <title> --board <slug> --workspace <path>` overrides the board default when the flag is enabled
+- [x] When `FF_DEFAULT_WORKDIR=false`, the command/`--workspace` option are rejected and default inheritance is skipped
+
 ## Task Lifecycle
 - [x] `kdi create <title> --board <slug> --assignee <profile>` — create task
 - [x] `kdi create <title> --board <slug> --triage` — create task in triage

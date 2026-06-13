@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, writeFileSync, readFileSync, rmSync, mkdtempSync
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { initDb, closeDb, getDb, getBoardDataDir } from "../src/db";
-import { createBoard, listBoards, showBoard, archiveBoard, updateBoardMetadata, removeBoard, renameBoard } from "../src/models/board";
+import { createBoard, listBoards, showBoard, archiveBoard, updateBoardMetadata, removeBoard, renameBoard, setDefaultWorkdir } from "../src/models/board";
 import { readCurrentBoard, writeCurrentBoard } from "../src/resolveBoard";
 import { cleanupDb } from "./cleanupDb";
 import { clearOverrides, setFlag, FF_BOARD_RM_DELETE, FF_BOARD_RENAME } from "../src/flags";
@@ -46,11 +46,39 @@ describe("board model", () => {
     expect(() => getBoardDataDir("../")).toThrow(/Invalid board slug/);
   });
 
-  it("createBoard defaults name to slug when omitted", () => {
+  it("createBoard defaults name to slug and defaultWorkdir to null when omitted", () => {
     const board = createBoard("alpha", "/tmp/alpha");
     expect(board.name).toBe("alpha");
     expect(board.icon).toBeNull();
     expect(board.color).toBeNull();
+    expect(board.default_workdir).toBeNull();
+  });
+
+  it("setDefaultWorkdir stores a board defaultWorkdir", () => {
+    createBoard("alpha", "/tmp/alpha");
+
+    const updated = setDefaultWorkdir("alpha", "/tmp/project");
+
+    expect(updated.default_workdir).toBe("/tmp/project");
+    expect(showBoard("alpha")?.default_workdir).toBe("/tmp/project");
+  });
+
+  it("setDefaultWorkdir clears a board defaultWorkdir", () => {
+    createBoard("alpha", "/tmp/alpha");
+    setDefaultWorkdir("alpha", "/tmp/project");
+
+    const updated = setDefaultWorkdir("alpha", null);
+
+    expect(updated.default_workdir).toBeNull();
+    expect(showBoard("alpha")?.default_workdir).toBeNull();
+  });
+
+  it("setDefaultWorkdir rejects invalid slugs for defaultWorkdir", () => {
+    expect(() => setDefaultWorkdir("../../bad", "/tmp/project")).toThrow(/Invalid board slug/);
+  });
+
+  it("setDefaultWorkdir rejects non-existent boards for defaultWorkdir", () => {
+    expect(() => setDefaultWorkdir("missing", "/tmp/project")).toThrow(/not found/);
   });
 
   it("createBoard stores name, icon, and color when provided", () => {
@@ -250,7 +278,7 @@ describe("board model", () => {
     expect(() => archiveBoard("nonexistent")).toThrow();
   });
 
-  it("migrates existing boards table to include name, icon, and color columns", () => {
+  it("migrates existing boards table to include name, icon, color, and defaultWorkdir columns", () => {
     cleanupDb(MIGRATION_DB);
     // Create a raw database with the pre-metadata boards schema.
     const raw = new Database(MIGRATION_DB);
@@ -272,12 +300,14 @@ describe("board model", () => {
     expect(columns.map((c) => c.name)).toContain("name");
     expect(columns.map((c) => c.name)).toContain("icon");
     expect(columns.map((c) => c.name)).toContain("color");
+    expect(columns.map((c) => c.name)).toContain("default_workdir");
 
     const migrated = showBoard("legacy");
     expect(migrated).not.toBeNull();
     expect(migrated!.name).toBe("legacy");
     expect(migrated!.icon).toBeNull();
     expect(migrated!.color).toBeNull();
+    expect(migrated!.default_workdir).toBeNull();
 
     closeDb();
     cleanupDb(MIGRATION_DB);

@@ -21,7 +21,7 @@ import { getRuns } from "../models/taskRun";
 import { getEvents, tailEvents, getRecentEvents, getEventsAfter } from "../models/taskEvent";
 import { atomicClaim, reclaimTask, heartbeat } from "../models/claim";
 import { getTaskLogPath } from "../observability";
-import { isEnabled, FF_SCHEDULED_STATUS, FF_REVIEW_STATUS, FF_COMPLETE_METADATA, FF_PRIORITY_INTEGER, FF_SKILLS_ARRAY, FF_MAX_RUNTIME, FF_MAX_RETRIES, FF_TENANT_NAMESPACE, FF_CREATED_BY, FF_MODEL_OVERRIDE } from "../flags";
+import { isEnabled, FF_SCHEDULED_STATUS, FF_REVIEW_STATUS, FF_COMPLETE_METADATA, FF_PRIORITY_INTEGER, FF_SKILLS_ARRAY, FF_MAX_RUNTIME, FF_MAX_RETRIES, FF_TENANT_NAMESPACE, FF_CREATED_BY, FF_MODEL_OVERRIDE, FF_DEFAULT_WORKDIR } from "../flags";
 import { resolveBoard } from "../resolveBoard";
 
 const VALID_STATUSES = ["triage", "todo", "scheduled", "ready", "running", "done", "blocked", "review"] as const;
@@ -31,12 +31,16 @@ function isValidStatus(status: string): status is ValidStatus {
   return (VALID_STATUSES as readonly string[]).includes(status);
 }
 
-function getBoardIdBySlug(slug: string): number {
+function getBoardBySlug(slug: string): NonNullable<ReturnType<typeof showBoard>> {
   const board = showBoard(slug, false);
   if (!board) {
     throw new Error(`Board "${slug}" not found.`);
   }
-  return board.id;
+  return board;
+}
+
+function getBoardIdBySlug(slug: string): number {
+  return getBoardBySlug(slug).id;
 }
 
 function parseTaskId(raw: string): number {
@@ -105,7 +109,8 @@ export const createTaskCommand = new Command("create")
   .option("--skill <skill>", "Add a skill to the task (repeatable)", collectSkill, [])
   .option("--model <model>", "Model override for the harness")
   .option("--created-by <actor>", "Actor that created the task")
-  .action((title: string, options: { board?: string; assignee?: string; body?: string; triage?: boolean; initialStatus?: string; at?: string; priority?: string; idempotencyKey?: string; maxRuntime?: string; maxRetries?: string; tenant?: string; skill: string[]; createdBy?: string; model?: string }) => {
+  .option("--workspace <path>", "Workspace path for this task. Feature-flagged.")
+  .action((title: string, options: { board?: string; assignee?: string; body?: string; triage?: boolean; initialStatus?: string; at?: string; priority?: string; idempotencyKey?: string; maxRuntime?: string; maxRetries?: string; tenant?: string; skill: string[]; createdBy?: string; model?: string; workspace?: string }) => {
     try {
       if (!title || title.trim() === "") {
         throw new Error("Title is required.");
@@ -213,9 +218,25 @@ export const createTaskCommand = new Command("create")
       }
 
       const boardSlug = resolveBoard(options.board);
-      const boardId = getBoardIdBySlug(boardSlug);
+      const board = getBoardBySlug(boardSlug);
+
+      let workspace: string | undefined;
+      if (options.workspace !== undefined) {
+        if (!isEnabled(FF_DEFAULT_WORKDIR)) {
+          throw new Error("Default workdir feature is not enabled.");
+        }
+        workspace = options.workspace.trim();
+        if (workspace === "") {
+          throw new Error("Workspace cannot be empty.");
+        }
+      }
+
+      if (workspace === undefined && isEnabled(FF_DEFAULT_WORKDIR) && board.default_workdir) {
+        workspace = board.default_workdir;
+      }
+
       const task = createTask({
-        board_id: boardId,
+        board_id: board.id,
         title,
         assignee: options.assignee,
         body: options.body,
@@ -230,6 +251,7 @@ export const createTaskCommand = new Command("create")
         skills,
         created_by: createdBy,
         model_override: options.model,
+        workspace,
       });
       console.log(task.id);
     } catch (err: any) {
@@ -293,6 +315,7 @@ export const showTaskCommand = new Command("show")
       console.log(`Status: ${task.status}`);
       console.log(`Priority: ${task.priority}`);
       if (task.assignee) console.log(`Assignee: ${task.assignee}`);
+      if (isEnabled(FF_DEFAULT_WORKDIR) && task.workspace) console.log(`Workspace: ${task.workspace}`);
       if (task.body) console.log(`Body: ${task.body}`);
       if (task.result) console.log(`Result: ${task.result}`);
       if (task.summary) console.log(`Summary: ${task.summary}`);

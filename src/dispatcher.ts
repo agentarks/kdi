@@ -276,7 +276,7 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
     // Record initial heartbeat for worker liveness
     heartbeat(task.id);
 
-    const workdir = getBoardWorkdir(task.board_id);
+    const workdir = task.workspace ?? getBoardWorkdir(task.board_id);
     if (!workdir) {
       handleFailure(task, "", "Board not found or archived", runId);
       spawned++;
