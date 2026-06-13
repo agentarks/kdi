@@ -138,6 +138,18 @@
 - [x] Dispatcher passes cap as harness timeout; SIGTERM then SIGKILL on expiry
 - [x] Timed-out runs recorded with `outcome=timed_out` and task blocked
 
+## Max retries / circuit breaker (KDI-011) — In Progress
+- [x] Feature flag `ff_max_retries` / `FF_MAX_RETRIES` registered in `src/flags.ts` and `specs/feature-flags.md`
+- [x] Schema adds `max_retries` and `consecutive_failures` columns with migrations
+- [x] Task model, `CreateTaskInput`, `TASK_COLUMNS`, and hydration updated
+- [x] `kdi create --max-retries <n>` implemented and gated by `FF_MAX_RETRIES`
+- [x] `kdi show` displays `max_retries` and `consecutive_failures` when flag enabled
+- [x] Dispatcher implements circuit breaker: requeue until `max_retries` then block
+- [x] Successful harness run resets `consecutive_failures` to 0
+- [x] `EX_TEMPFAIL` does not increment `consecutive_failures`
+- [x] Tests added and passing for new behavior
+- [x] `bun run lint`, `bun run test`, and `bun run build` all pass
+
 ## Tenant Namespace (KDI-006) — Done
 - [x] `tenant TEXT` column added to tasks (with migration and `idx_tasks_tenant` index)
 - [x] `kdi create <title> --board <slug> --tenant <name>`; gated by `FF_TENANT_NAMESPACE`

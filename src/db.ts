@@ -47,6 +47,8 @@ CREATE TABLE IF NOT EXISTS tasks (
   claim_expires INTEGER,
   last_heartbeat_at INTEGER,
   max_runtime_seconds INTEGER,
+  max_retries INTEGER,
+  consecutive_failures INTEGER NOT NULL DEFAULT 0,
   idempotency_key TEXT
 );
 
@@ -249,6 +251,16 @@ export function initDb(path?: string): Database {
     }
     dbInstance.exec("CREATE INDEX IF NOT EXISTS idx_tasks_created_by ON tasks(board_id, created_by)");
 
+    // Migrate: add max_retries and consecutive_failures if missing
+    const hasMaxRetries = tableInfo.some((col) => col.name === "max_retries");
+    if (!hasMaxRetries) {
+      dbInstance.exec("ALTER TABLE tasks ADD COLUMN max_retries INTEGER");
+    }
+    const hasConsecutiveFailures = tableInfo.some((col) => col.name === "consecutive_failures");
+    if (!hasConsecutiveFailures) {
+      dbInstance.exec("ALTER TABLE tasks ADD COLUMN consecutive_failures INTEGER NOT NULL DEFAULT 0");
+    }
+
     // Migrate: add status column to task_runs if missing (for existing DBs)
     const runsTableInfo = dbInstance.query("PRAGMA table_info(task_runs)").all() as any[];
     const hasRunStatus = runsTableInfo.some((col) => col.name === "status");
@@ -314,14 +326,16 @@ export function initDb(path?: string): Database {
             claim_expires INTEGER,
             last_heartbeat_at INTEGER,
             max_runtime_seconds INTEGER,
+            max_retries INTEGER,
+            consecutive_failures INTEGER NOT NULL DEFAULT 0,
             idempotency_key TEXT
           );
           INSERT INTO tasks_new
-            (id, board_id, title, body, assignee, status, priority, tenant, workspace_kind, branch, result, summary, block_reason, schedule_reason, review_reason, scheduled_at, created_by, skills, created_at, updated_at, started_at, archived_at, current_run_id, claim_lock, claim_expires, last_heartbeat_at, max_runtime_seconds, idempotency_key)
+            (id, board_id, title, body, assignee, status, priority, tenant, workspace_kind, branch, result, summary, block_reason, schedule_reason, review_reason, scheduled_at, created_by, skills, created_at, updated_at, started_at, archived_at, current_run_id, claim_lock, claim_expires, last_heartbeat_at, max_runtime_seconds, max_retries, consecutive_failures, idempotency_key)
           SELECT
             id, board_id, title, body, assignee, status,
             CASE priority WHEN 'low' THEN 1 WHEN 'medium' THEN 2 WHEN 'high' THEN 3 ELSE COALESCE(priority, 0) END,
-            tenant, workspace_kind, branch, result, summary, block_reason, schedule_reason, review_reason, scheduled_at, COALESCE(created_by, 'unknown'), skills, created_at, updated_at, started_at, archived_at, current_run_id, claim_lock, claim_expires, last_heartbeat_at, max_runtime_seconds, idempotency_key
+            tenant, workspace_kind, branch, result, summary, block_reason, schedule_reason, review_reason, scheduled_at, COALESCE(created_by, 'unknown'), skills, created_at, updated_at, started_at, archived_at, current_run_id, claim_lock, claim_expires, last_heartbeat_at, max_runtime_seconds, max_retries, COALESCE(consecutive_failures, 0), idempotency_key
           FROM tasks;
           DROP TABLE tasks;
           ALTER TABLE tasks_new RENAME TO tasks;

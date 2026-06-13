@@ -935,4 +935,81 @@ describe("kdi e2e acceptance", () => {
 
     rmSync(tmp, { recursive: true, force: true });
   });
+
+  it("create --max-retries stores value when flag enabled", () => {
+    const tmp = makeTempDir("max-retries");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_MAX_RETRIES: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const taskId = runKdi(`create "retry task" --board myproj --max-retries 3`, env);
+
+    const output = runKdi(`show ${taskId}`, env);
+    expect(output).toContain("Max retries: 3");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("create --max-retries is rejected when flag disabled", () => {
+    const tmp = makeTempDir("max-retries-disabled");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    expect(() => runKdi(`create "retry task" --board myproj --max-retries 3`, env)).toThrow();
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("create --max-retries rejects invalid values", () => {
+    const tmp = makeTempDir("max-retries-invalid");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_MAX_RETRIES: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    expect(() => runKdi(`create "bad" --board myproj --max-retries -1`, env)).toThrow();
+    expect(() => runKdi(`create "bad" --board myproj --max-retries abc`, env)).toThrow();
+    expect(() => runKdi(`create "bad" --board myproj --max-retries 1.5`, env)).toThrow();
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it(
+    "dispatcher circuit breaker requeues then blocks after max-retries",
+    async () => {
+      const tmp = makeTempDir("max-retries-circuit");
+      const dbPath = join(tmp, "kdi.db");
+      const repoDir = join(tmp, "repo");
+      mkdirSync(repoDir, { recursive: true });
+      setupGitRepo(repoDir);
+      setupProfiles(tmp, [{ name: "failagent", command: "exit 1" }]);
+      const env = { KDI_DB: dbPath, HOME: tmp, FF_ENABLE_KANBAN_DISPATCH: "true", FF_MAX_RETRIES: "true" };
+
+      runKdi(`boards create myproj --workdir ${repoDir}`, env);
+      const taskId = runKdi(`create "circuit task" --board myproj --assignee failagent --max-retries 3`, env);
+
+      const dispatcher = startDispatcher(env);
+      runKdi(`promote ${taskId}`, env);
+
+      const ok = await waitForTaskStatus(taskId, "blocked", env, 15000);
+      dispatcher.kill("SIGTERM");
+
+      expect(ok).toBe(true);
+      const output = runKdi(`show ${taskId}`, env);
+      expect(output).toContain("Circuit breaker");
+      expect(output).toContain("Consecutive failures: 3");
+
+      rmSync(tmp, { recursive: true, force: true });
+    },
+    25000
+  );
 });
