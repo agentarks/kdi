@@ -91,20 +91,20 @@
 - [ ] Unit/dispatcher integration tests cover grace-period protection, post-grace crash detection, and flag-disabled fallback
 - [ ] `bun run lint`, `bun run test`, `bun run build` pass
 
-## Rate-Limit Exit Code Handling (KDI-016c) — Spec Ready
+## Rate-Limit Exit Code Handling (KDI-016c) — Done
 - [x] BRD drafted at `specs/brd-kdi-016c-rate-limit-exit-code.md`
 - [x] Feature flag `ff_rate_limit_exit_code` / `FF_RATE_LIMIT_EXIT_CODE` registered in `specs/feature-flags.md`, defaults to `false`
-- [ ] `FF_RATE_LIMIT_EXIT_CODE` constant added to `src/flags.ts`
-- [ ] `tasks.rate_limited_until INTEGER` column and `idx_tasks_rate_limited_until` index added via migration in `src/db.ts`
-- [ ] `Task` model, `TASK_COLUMNS`, and `hydrateTask` updated to include `rate_limited_until`
-- [ ] Dispatcher treats harness exit code 75 as transient rate limit when flag enabled
-- [ ] Rate-limited tasks return to `ready` without incrementing `consecutive_failures`
-- [ ] Dispatcher ready-task query and `atomicClaim` skip tasks whose `rate_limited_until` is in the future
-- [ ] Cooldown default 60s, overridable via `KDI_RATE_LIMIT_COOLDOWN_SECONDS` and `kdi dispatch --rate-limit-cooldown <duration>`
-- [ ] `kdi show <id>` displays `Rate limited until:` when flag enabled and cooldown is set
-- [ ] `rate_limited` event recorded with exit code, cooldown timestamp, and reason
-- [ ] Unit/dispatcher integration tests cover EX_TEMPFAIL requeue, cooldown suppression, override, flag-disabled fallback, and `kdi show` display
-- [ ] `bun run lint`, `bun run test`, `bun run build` pass
+- [x] `FF_RATE_LIMIT_EXIT_CODE` constant added to `src/flags.ts`
+- [x] `tasks.rate_limited_until INTEGER` column and `idx_tasks_rate_limited_until` index added via migration in `src/db.ts`
+- [x] `Task` model, `TASK_COLUMNS`, and `hydrateTask` updated to include `rate_limited_until`
+- [x] Dispatcher treats harness exit code 75 as transient rate limit when flag enabled
+- [x] Rate-limited tasks return to `ready` without incrementing `consecutive_failures`
+- [x] Dispatcher ready-task query and `atomicClaim` skip tasks whose `rate_limited_until` is in the future
+- [x] Cooldown default 60s, overridable via `KDI_RATE_LIMIT_COOLDOWN_SECONDS` and `kdi dispatch --rate-limit-cooldown <duration>`
+- [x] `kdi show <id>` displays `Rate limited until:` when flag enabled and cooldown is set
+- [x] `rate_limited` event recorded with exit code, cooldown timestamp, and reason
+- [x] Unit/dispatcher integration tests cover EX_TEMPFAIL requeue, cooldown suppression, override, flag-disabled fallback, and `kdi show` display
+- [x] `bun run lint`, `bun run test`, `bun run build` pass
 
 ## Assign / Reassign (KDI-017) — Spec Ready
 - [x] BRD drafted at `specs/brd-kdi-017-assign-reassign.md`
