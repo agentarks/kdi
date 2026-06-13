@@ -26,7 +26,8 @@ export function atomicClaim(
   // Read task-level max runtime before claiming so we can copy it to the run
   const taskRow = db.query(
     `SELECT max_runtime_seconds FROM tasks WHERE id = ? AND status = 'ready' AND archived_at IS NULL
-     AND (claim_lock IS NULL OR claim_expires < unixepoch())`
+     AND (claim_lock IS NULL OR claim_expires < unixepoch())
+     AND (rate_limited_until IS NULL OR rate_limited_until <= unixepoch())`
   ).get(taskId) as { max_runtime_seconds: number | null } | undefined;
 
   if (!taskRow) {
@@ -34,9 +35,10 @@ export function atomicClaim(
   }
 
   const result = db.run(
-    `UPDATE tasks SET claim_lock = ?, claim_expires = ?, status = 'running', started_at = unixepoch(), updated_at = unixepoch()
+    `UPDATE tasks SET claim_lock = ?, claim_expires = ?, status = 'running', started_at = unixepoch(), updated_at = unixepoch(), rate_limited_until = NULL
      WHERE id = ? AND status = 'ready' AND archived_at IS NULL
-     AND (claim_lock IS NULL OR claim_expires < unixepoch())`,
+     AND (claim_lock IS NULL OR claim_expires < unixepoch())
+     AND (rate_limited_until IS NULL OR rate_limited_until <= unixepoch())`,
     [profile, expiresAt, taskId]
   );
 
@@ -74,7 +76,7 @@ export function reclaimTask(taskId: number, reason?: string): boolean {
   const runId = task.current_run_id;
 
   const result = db.run(
-    `UPDATE tasks SET claim_lock = NULL, claim_expires = NULL, status = 'ready', started_at = NULL, updated_at = unixepoch()
+    `UPDATE tasks SET claim_lock = NULL, claim_expires = NULL, status = 'ready', started_at = NULL, updated_at = unixepoch(), rate_limited_until = NULL
      WHERE id = ? AND status = 'running' AND claim_lock IS NOT NULL`,
     [taskId]
   );

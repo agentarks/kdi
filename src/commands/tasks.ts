@@ -21,7 +21,7 @@ import { getRuns } from "../models/taskRun";
 import { getEvents, tailEvents, getRecentEvents, getEventsAfter } from "../models/taskEvent";
 import { atomicClaim, reclaimTask, heartbeat } from "../models/claim";
 import { getTaskLogPath } from "../observability";
-import { isEnabled, FF_SCHEDULED_STATUS, FF_REVIEW_STATUS, FF_COMPLETE_METADATA, FF_PRIORITY_INTEGER, FF_SKILLS_ARRAY, FF_MAX_RUNTIME, FF_MAX_RETRIES, FF_TENANT_NAMESPACE, FF_CREATED_BY, FF_MODEL_OVERRIDE, FF_DEFAULT_WORKDIR, FF_HEARTBEAT } from "../flags";
+import { isEnabled, FF_SCHEDULED_STATUS, FF_REVIEW_STATUS, FF_COMPLETE_METADATA, FF_PRIORITY_INTEGER, FF_SKILLS_ARRAY, FF_MAX_RUNTIME, FF_MAX_RETRIES, FF_TENANT_NAMESPACE, FF_CREATED_BY, FF_MODEL_OVERRIDE, FF_DEFAULT_WORKDIR, FF_HEARTBEAT, FF_RATE_LIMIT_EXIT_CODE } from "../flags";
 import { resolveBoard } from "../resolveBoard";
 
 const VALID_STATUSES = ["triage", "todo", "scheduled", "ready", "running", "done", "blocked", "review"] as const;
@@ -326,6 +326,7 @@ export const showTaskCommand = new Command("show")
       if (task.max_runtime_seconds) console.log(`Max runtime: ${task.max_runtime_seconds}s`);
       if (isEnabled(FF_MAX_RETRIES) && task.max_retries !== null && task.max_retries !== undefined) console.log(`Max retries: ${task.max_retries}`);
       if (isEnabled(FF_MAX_RETRIES) && task.consecutive_failures > 0) console.log(`Consecutive failures: ${task.consecutive_failures}`);
+      if (isEnabled(FF_RATE_LIMIT_EXIT_CODE) && task.rate_limited_until) console.log(`Rate limited until: ${new Date(task.rate_limited_until * 1000).toISOString()}`);
       if (task.tenant) console.log(`Tenant: ${task.tenant}`);
       if (task.skills && task.skills.length > 0) console.log(`Skills: ${task.skills.join(", ")}`);
       if (isEnabled(FF_MODEL_OVERRIDE) && task.model_override) console.log(`Model override: ${task.model_override}`);

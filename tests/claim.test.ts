@@ -63,6 +63,34 @@ describe("claim model", () => {
     expect(getRuns(task.id)).toHaveLength(0);
   });
 
+  it("atomicClaim fails when task is rate-limited", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Rate limited", assignee: "opencode" });
+    promoteTask(task.id);
+
+    const db = initDb(TEST_DB);
+    db.run("UPDATE tasks SET rate_limited_until = unixepoch() + 3600 WHERE id = ?", [task.id]);
+
+    const result = atomicClaim(task.id, "opencode");
+    expect(result.success).toBe(false);
+    expect(getRuns(task.id)).toHaveLength(0);
+  });
+
+  it("atomicClaim clears rate_limited_until on successful claim", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Clear cooldown", assignee: "opencode" });
+    promoteTask(task.id);
+
+    const db = initDb(TEST_DB);
+    db.run("UPDATE tasks SET rate_limited_until = unixepoch() - 1 WHERE id = ?", [task.id]);
+
+    const result = atomicClaim(task.id, "opencode");
+    expect(result.success).toBe(true);
+
+    const updated = db.query("SELECT rate_limited_until FROM tasks WHERE id = ?").get(task.id) as { rate_limited_until: number | null };
+    expect(updated.rate_limited_until).toBeNull();
+  });
+
   it("heartbeat updates task and active run timestamps", () => {
     const board = createBoard("alpha", "/tmp/alpha");
     const task = createTask({ board_id: board.id, title: "Heartbeat task", assignee: "opencode" });

@@ -91,20 +91,20 @@
 - [ ] Unit/dispatcher integration tests cover grace-period protection, post-grace crash detection, and flag-disabled fallback
 - [ ] `bun run lint`, `bun run test`, `bun run build` pass
 
-## Rate-Limit Exit Code Handling (KDI-016c) — Spec Ready
+## Rate-Limit Exit Code Handling (KDI-016c) — Done
 - [x] BRD drafted at `specs/brd-kdi-016c-rate-limit-exit-code.md`
 - [x] Feature flag `ff_rate_limit_exit_code` / `FF_RATE_LIMIT_EXIT_CODE` registered in `specs/feature-flags.md`, defaults to `false`
-- [ ] `FF_RATE_LIMIT_EXIT_CODE` constant added to `src/flags.ts`
-- [ ] `tasks.rate_limited_until INTEGER` column and `idx_tasks_rate_limited_until` index added via migration in `src/db.ts`
-- [ ] `Task` model, `TASK_COLUMNS`, and `hydrateTask` updated to include `rate_limited_until`
-- [ ] Dispatcher treats harness exit code 75 as transient rate limit when flag enabled
-- [ ] Rate-limited tasks return to `ready` without incrementing `consecutive_failures`
-- [ ] Dispatcher ready-task query and `atomicClaim` skip tasks whose `rate_limited_until` is in the future
-- [ ] Cooldown default 60s, overridable via `KDI_RATE_LIMIT_COOLDOWN_SECONDS` and `kdi dispatch --rate-limit-cooldown <duration>`
-- [ ] `kdi show <id>` displays `Rate limited until:` when flag enabled and cooldown is set
-- [ ] `rate_limited` event recorded with exit code, cooldown timestamp, and reason
-- [ ] Unit/dispatcher integration tests cover EX_TEMPFAIL requeue, cooldown suppression, override, flag-disabled fallback, and `kdi show` display
-- [ ] `bun run lint`, `bun run test`, `bun run build` pass
+- [x] `FF_RATE_LIMIT_EXIT_CODE` constant added to `src/flags.ts`
+- [x] `tasks.rate_limited_until INTEGER` column and `idx_tasks_rate_limited_until` index added via migration in `src/db.ts`
+- [x] `Task` model, `TASK_COLUMNS`, and `hydrateTask` updated to include `rate_limited_until`
+- [x] Dispatcher treats harness exit code 75 as transient rate limit when flag enabled
+- [x] Rate-limited tasks return to `ready` without incrementing `consecutive_failures`
+- [x] Dispatcher ready-task query and `atomicClaim` skip tasks whose `rate_limited_until` is in the future
+- [x] Cooldown default 60s, overridable via `KDI_RATE_LIMIT_COOLDOWN_SECONDS` and `kdi dispatch --rate-limit-cooldown <duration>`
+- [x] `kdi show <id>` displays `Rate limited until:` when flag enabled and cooldown is set
+- [x] `rate_limited` event recorded with exit code, cooldown timestamp, and reason
+- [x] Unit/dispatcher integration tests cover EX_TEMPFAIL requeue, cooldown suppression, override, flag-disabled fallback, and `kdi show` display
+- [x] `bun run lint`, `bun run test`, `bun run build` pass
 
 ## Assign / Reassign (KDI-017) — Spec Ready
 - [x] BRD drafted at `specs/brd-kdi-017-assign-reassign.md`
@@ -129,16 +129,16 @@
 - [ ] Unit/dispatcher integration tests cover log creation, `--tail`, missing log handling, and flag gating
 - [ ] `bun run lint`, `bun run test`, `bun run build` pass
 
-## Board Stats (KDI-019) — Spec Ready
+## Board Stats (KDI-019) — Done
 - [x] BRD drafted at `specs/brd-019-stats.md`
 - [x] Feature flag `ff_stats` / `FF_STATS` registered in `specs/feature-flags.md`, defaults to `false`
-- [ ] `FF_STATS` constant added to `src/flags.ts`
-- [ ] `kdi stats [--board <slug>]` command gated by `FF_STATS`
-- [ ] `kdi stats` prints per-status counts, per-assignee counts, and oldest-ready age
-- [ ] `kdi stats --json` emits stable JSON document
-- [ ] Board resolved via standard chain
-- [ ] Unit/CLI tests cover counts, JSON output, board resolution, and flag gating
-- [ ] `bun run lint`, `bun run test`, `bun run build` pass
+- [x] `FF_STATS` constant added to `src/flags.ts`
+- [x] `kdi stats [--board <slug>]` command gated by `FF_STATS`
+- [x] `kdi stats` prints per-status counts, per-assignee counts, and oldest-ready age
+- [x] `kdi stats --json` emits stable JSON document
+- [x] Board resolved via standard chain
+- [x] Unit/CLI tests cover counts, JSON output, board resolution, and flag gating
+- [x] `bun run lint`, `bun run test`, `bun run build` pass
 
 ## Task Lifecycle
 - [x] `kdi create <title> --board <slug> --assignee <profile>` — create task
