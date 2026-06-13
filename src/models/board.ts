@@ -231,6 +231,22 @@ export interface RenameBoardResult {
   dirRenamed: boolean;
 }
 
+export interface BoardStats {
+  board: string;
+  status_counts: {
+    triage: number;
+    todo: number;
+    scheduled: number;
+    ready: number;
+    running: number;
+    done: number;
+    blocked: number;
+    review: number;
+  };
+  assignee_counts: Record<string, number>;
+  oldest_ready_age_seconds: number | null;
+}
+
 export function renameBoard(oldSlug: string, newSlug: string): RenameBoardResult {
   assertValidBoardSlug(oldSlug, "old board slug");
   assertValidBoardSlug(newSlug, "new board slug");
@@ -275,6 +291,69 @@ export function renameBoard(oldSlug: string, newSlug: string): RenameBoardResult
   }
 
   return { board: updated, dirRenamed };
+}
+
+export function getBoardStats(slug: string): BoardStats {
+  const board = showBoard(slug, false);
+  if (!board) {
+    throw new Error(`Board "${slug}" not found or is archived.`);
+  }
+
+  const db = getDb();
+  const now = Math.floor(Date.now() / 1000);
+
+  const statusCounts: BoardStats["status_counts"] = {
+    triage: 0,
+    todo: 0,
+    scheduled: 0,
+    ready: 0,
+    running: 0,
+    done: 0,
+    blocked: 0,
+    review: 0,
+  };
+
+  const statusRows = db.query(
+    `SELECT status, COUNT(*) AS count
+     FROM tasks
+     WHERE board_id = ? AND archived_at IS NULL
+     GROUP BY status`
+  ).all(board.id) as { status: string; count: number }[];
+
+  for (const row of statusRows) {
+    if (row.status in statusCounts) {
+      statusCounts[row.status as keyof BoardStats["status_counts"]] = Number(row.count);
+    }
+  }
+
+  const assigneeRows = db.query(
+    `SELECT assignee, COUNT(*) AS count
+     FROM tasks
+     WHERE board_id = ? AND archived_at IS NULL
+       AND status IN ('ready', 'running')
+       AND assignee IS NOT NULL
+     GROUP BY assignee`
+  ).all(board.id) as { assignee: string; count: number }[];
+
+  const assigneeCounts: Record<string, number> = {};
+  for (const row of assigneeRows) {
+    assigneeCounts[row.assignee] = Number(row.count);
+  }
+
+  const oldestReady = db.query(
+    `SELECT created_at FROM tasks
+     WHERE board_id = ? AND archived_at IS NULL AND status = 'ready'
+     ORDER BY created_at ASC LIMIT 1`
+  ).get(board.id) as { created_at: number } | undefined;
+
+  const oldestReadyAgeSeconds = oldestReady ? now - oldestReady.created_at : null;
+
+  return {
+    board: board.slug,
+    status_counts: statusCounts,
+    assignee_counts: assigneeCounts,
+    oldest_ready_age_seconds: oldestReadyAgeSeconds,
+  };
 }
 
 export function removeBoard(slug: string, hardDelete: boolean): void {
