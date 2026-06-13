@@ -9,6 +9,7 @@ export const FF_TENANT_NAMESPACE = "FF_TENANT_NAMESPACE";
 export const FF_CREATED_BY = "FF_CREATED_BY";
 export const FF_MODEL_OVERRIDE = "FF_MODEL_OVERRIDE";
 export const FF_MAX_RETRIES = "FF_MAX_RETRIES";
+export const FF_BOARD_METADATA = "FF_BOARD_METADATA";
 
 const flagRegistry = new Map<string, boolean>();
 const flagOverrides = new Map<string, boolean>();
@@ -61,3 +62,4 @@ registerFlag(FF_TENANT_NAMESPACE, false);
 registerFlag(FF_CREATED_BY, false);
 registerFlag(FF_MODEL_OVERRIDE, false);
 registerFlag(FF_MAX_RETRIES, false);
+registerFlag(FF_BOARD_METADATA, false);

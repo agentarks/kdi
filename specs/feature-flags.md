@@ -38,6 +38,7 @@ stateDiagram-v2
 | `ff_max_runtime` | `FF_MAX_RUNTIME` | CLI / create + dispatcher | InDev | `false` | KDI-008 | Per-task max runtime cap; dispatcher SIGTERMs/SIGKILLs worker when exceeded. |
 | `ff_model_override` | `FF_MODEL_OVERRIDE` | CLI / create + dispatcher | InDev | `false` | KDI-010 | Per-task model override; `create --model`; dispatcher passes `{{model}}` and `KDI_MODEL` to harness. |
 | `ff_max_retries` | `FF_MAX_RETRIES` | CLI / create + dispatcher | InDev | `false` | KDI-011 | Per-task max retries; auto-block after N consecutive spawn/execution failures. |
+| `ff_board_metadata` | `FF_BOARD_METADATA` | CLI / board metadata | InDev | `false` | KDI-012 | Board name, icon, and color; `boards create --name/--icon/--color`, `boards edit`, and metadata display. |
 
 ## Lifecycle Notes
 
@@ -168,6 +169,20 @@ stateDiagram-v2
   - Dispatcher requeues failed tasks up to `max_retries` consecutive failures, then blocks them.
   - Successful harness runs reset `consecutive_failures` to 0.
 - **Rollback / deactivation:** Set `FF_MAX_RETRIES=false` to hide/gate the `--max-retries` option.
+- **Deprecation plan:** N/A
+
+### `ff_board_metadata` — InDev
+
+- **Owner:** kdi core team
+- **BRD:** KDI-012
+- **Status transitions:**
+  - `Planned` → `InDev` when `boards` metadata columns and CLI options are implemented.
+- **Schema note:** `name`, `icon`, and `color` are schema-level TEXT columns on `boards` — this flag gates the CLI options and display; the schema migrations always run.
+- **Activation criteria:**
+  - `boards create --name/--icon/--color` stores metadata on the board.
+  - `boards edit` updates board metadata.
+  - `boards show` and `boards list` display metadata when set.
+- **Rollback / deactivation:** Set `FF_BOARD_METADATA=false` to hide/gate the `--name`, `--icon`, `--color`, and `boards edit` options.
 - **Deprecation plan:** N/A
 
 ### `ff_kanban_dispatch` — Planned

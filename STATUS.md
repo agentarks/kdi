@@ -14,6 +14,15 @@
 - [x] `kdi boards show <slug>` — show board details + task counts (triage, todo, ready, running, done, blocked, archived)
 - [x] `kdi boards archive <slug>` — archive board (soft delete)
 
+## Board Metadata (KDI-012) — Done
+- [x] `name`, `icon`, `color` columns added to `boards` table (schema + migration)
+- [x] Feature flag `ff_board_metadata` registered in `src/flags.ts` and `specs/feature-flags.md`, defaults to `false`
+- [x] `kdi boards create <slug> --workdir <path> [--name <name>] [--icon <icon>] [--color <color>]` — stores board metadata when flag enabled
+- [x] `kdi boards edit <slug> [--name <name>] [--icon <icon>] [--color <color>]` — updates board metadata when flag enabled
+- [x] `kdi boards show <slug>` displays Name, Icon, Color when set and flag enabled
+- [x] `kdi boards list` shows metadata compactly when flag enabled
+- [x] Board name defaults to slug when omitted; icon and color default to null
+
 ## Task Lifecycle
 - [x] `kdi create <title> --board <slug> --assignee <profile>` — create task
 - [x] `kdi create <title> --board <slug> --triage` — create task in triage
