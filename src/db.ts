@@ -1,7 +1,8 @@
 import { Database } from "bun:sqlite";
 import { homedir } from "node:os";
 import { mkdirSync, openSync, closeSync, writeFileSync, readFileSync, unlinkSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
+import { assertValidBoardSlug } from "./slugs";
 
 let dbInstance: Database | null = null;
 let currentDbPath: string | null = null;
@@ -10,12 +11,20 @@ export function defaultDbPath(): string {
   return process.env.KDI_DB || process.env.KDI_DB_PATH || `${homedir()}/.local/share/kdi/kdi.db`;
 }
 
+export function getBoardDataDir(slug: string): string {
+  assertValidBoardSlug(slug);
+  return join(dirname(defaultDbPath()), "boards", slug);
+}
+
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS boards (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   slug TEXT NOT NULL UNIQUE,
   workdir TEXT NOT NULL,
   base_ref TEXT NOT NULL DEFAULT 'origin/main',
+  name TEXT,
+  icon TEXT,
+  color TEXT,
   created_at INTEGER NOT NULL DEFAULT (unixepoch()),
   archived_at INTEGER
 );
@@ -47,7 +56,10 @@ CREATE TABLE IF NOT EXISTS tasks (
   claim_expires INTEGER,
   last_heartbeat_at INTEGER,
   max_runtime_seconds INTEGER,
-  idempotency_key TEXT
+  max_retries INTEGER,
+  consecutive_failures INTEGER NOT NULL DEFAULT 0,
+  idempotency_key TEXT,
+  model_override TEXT
 );
 
 CREATE TABLE IF NOT EXISTS comments (
@@ -176,6 +188,22 @@ export function initDb(path?: string): Database {
       dbInstance.exec("ALTER TABLE boards ADD COLUMN base_ref TEXT NOT NULL DEFAULT 'origin/main'");
     }
 
+    // Migrate: add board metadata columns if missing
+    const hasBoardName = boardTableInfo.some((col) => col.name === "name");
+    if (!hasBoardName) {
+      dbInstance.exec("ALTER TABLE boards ADD COLUMN name TEXT");
+      // Backfill existing boards so every board has a display name.
+      dbInstance.exec("UPDATE boards SET name = slug WHERE name IS NULL");
+    }
+    const hasBoardIcon = boardTableInfo.some((col) => col.name === "icon");
+    if (!hasBoardIcon) {
+      dbInstance.exec("ALTER TABLE boards ADD COLUMN icon TEXT");
+    }
+    const hasBoardColor = boardTableInfo.some((col) => col.name === "color");
+    if (!hasBoardColor) {
+      dbInstance.exec("ALTER TABLE boards ADD COLUMN color TEXT");
+    }
+
     // Migrate: add started_at column if missing
     const tableInfo = dbInstance.query("PRAGMA table_info(tasks)").all() as any[];
     const hasStartedAt = tableInfo.some((col) => col.name === "started_at");
@@ -222,6 +250,22 @@ export function initDb(path?: string): Database {
     const hasReviewReason = tableInfo.some((col) => col.name === "review_reason");
     if (!hasReviewReason) {
       dbInstance.exec("ALTER TABLE tasks ADD COLUMN review_reason TEXT");
+    }
+
+    // Migrate: add max_retries and consecutive_failures if missing
+    const hasMaxRetries = tableInfo.some((col) => col.name === "max_retries");
+    if (!hasMaxRetries) {
+      dbInstance.exec("ALTER TABLE tasks ADD COLUMN max_retries INTEGER");
+    }
+    const hasConsecutiveFailures = tableInfo.some((col) => col.name === "consecutive_failures");
+    if (!hasConsecutiveFailures) {
+      dbInstance.exec("ALTER TABLE tasks ADD COLUMN consecutive_failures INTEGER NOT NULL DEFAULT 0");
+    }
+
+    // Migrate: add model_override if missing
+    const hasModelOverride = tableInfo.some((col) => col.name === "model_override");
+    if (!hasModelOverride) {
+      dbInstance.exec("ALTER TABLE tasks ADD COLUMN model_override TEXT");
     }
 
     // Migrate: add skills if missing
@@ -314,14 +358,17 @@ export function initDb(path?: string): Database {
             claim_expires INTEGER,
             last_heartbeat_at INTEGER,
             max_runtime_seconds INTEGER,
-            idempotency_key TEXT
+            max_retries INTEGER,
+            consecutive_failures INTEGER NOT NULL DEFAULT 0,
+            idempotency_key TEXT,
+            model_override TEXT
           );
           INSERT INTO tasks_new
-            (id, board_id, title, body, assignee, status, priority, tenant, workspace_kind, branch, result, summary, block_reason, schedule_reason, review_reason, scheduled_at, created_by, skills, created_at, updated_at, started_at, archived_at, current_run_id, claim_lock, claim_expires, last_heartbeat_at, max_runtime_seconds, idempotency_key)
+            (id, board_id, title, body, assignee, status, priority, tenant, workspace_kind, branch, result, summary, block_reason, schedule_reason, review_reason, scheduled_at, created_by, skills, created_at, updated_at, started_at, archived_at, current_run_id, claim_lock, claim_expires, last_heartbeat_at, max_runtime_seconds, max_retries, consecutive_failures, idempotency_key, model_override)
           SELECT
             id, board_id, title, body, assignee, status,
             CASE priority WHEN 'low' THEN 1 WHEN 'medium' THEN 2 WHEN 'high' THEN 3 ELSE COALESCE(priority, 0) END,
-            tenant, workspace_kind, branch, result, summary, block_reason, schedule_reason, review_reason, scheduled_at, COALESCE(created_by, 'unknown'), skills, created_at, updated_at, started_at, archived_at, current_run_id, claim_lock, claim_expires, last_heartbeat_at, max_runtime_seconds, idempotency_key
+            tenant, workspace_kind, branch, result, summary, block_reason, schedule_reason, review_reason, scheduled_at, COALESCE(created_by, 'unknown'), skills, created_at, updated_at, started_at, archived_at, current_run_id, claim_lock, claim_expires, last_heartbeat_at, max_runtime_seconds, max_retries, COALESCE(consecutive_failures, 0), idempotency_key, model_override
           FROM tasks;
           DROP TABLE tasks;
           ALTER TABLE tasks_new RENAME TO tasks;

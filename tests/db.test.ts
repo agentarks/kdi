@@ -51,6 +51,7 @@ describe("db", () => {
     expect(columnNames).toContain("scheduled_at");
     expect(columnNames).toContain("schedule_reason");
     expect(columnNames).toContain("created_by");
+    expect(columnNames).toContain("model_override");
 
     // Verify indexes exist
     const indexes = db.query("SELECT name FROM sqlite_master WHERE type='index'").all();

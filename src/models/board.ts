@@ -1,12 +1,23 @@
-import { getDb } from "../db";
+import { getDb, getBoardDataDir } from "../db";
+import { rmSync } from "node:fs";
+import { assertValidBoardSlug } from "../slugs";
 
 export interface Board {
   id: number;
   slug: string;
   workdir: string;
   base_ref: string;
+  name: string;
+  icon: string | null;
+  color: string | null;
   created_at: number;
   archived_at: number | null;
+}
+
+export interface BoardMetadata {
+  name?: string;
+  icon?: string;
+  color?: string;
 }
 
 export interface BoardWithTaskCounts extends Board {
@@ -23,18 +34,43 @@ export interface BoardWithTaskCounts extends Board {
   };
 }
 
-export function createBoard(slug: string, workdir: string, baseRef: string = "origin/main"): Board {
+const BOARD_COLUMNS = "id, slug, workdir, base_ref, name, icon, color, created_at, archived_at";
+
+function validateMetadataField(value: string | undefined, field: string): void {
+  if (value !== undefined && value.trim() === "") {
+    throw new Error(`${field} cannot be empty.`);
+  }
+}
+
+export function createBoard(
+  slug: string,
+  workdir: string,
+  baseRef: string = "origin/main",
+  metadata: BoardMetadata = {}
+): Board {
+  assertValidBoardSlug(slug);
+  validateMetadataField(metadata.name, "Name");
+  validateMetadataField(metadata.icon, "Icon");
+  validateMetadataField(metadata.color, "Color");
+
+  const name = metadata.name?.trim() ?? slug;
+  const icon = metadata.icon?.trim() ?? null;
+  const color = metadata.color?.trim() ?? null;
+
   const db = getDb();
   try {
     const result = db.run(
-      "INSERT INTO boards (slug, workdir, base_ref) VALUES (?, ?, ?)",
-      [slug, workdir, baseRef]
+      "INSERT INTO boards (slug, workdir, base_ref, name, icon, color) VALUES (?, ?, ?, ?, ?, ?)",
+      [slug, workdir, baseRef, name, icon, color]
     );
     return {
       id: Number(result.lastInsertRowid),
       slug,
       workdir,
       base_ref: baseRef,
+      name,
+      icon,
+      color,
       created_at: Math.floor(Date.now() / 1000),
       archived_at: null,
     };
@@ -50,7 +86,7 @@ export function listBoards(includeArchived: boolean = false): Board[] {
   const db = getDb();
   const whereClause = includeArchived ? "" : "WHERE archived_at IS NULL";
   return db.query(
-    `SELECT id, slug, workdir, base_ref, created_at, archived_at FROM boards ${whereClause} ORDER BY created_at DESC`
+    `SELECT ${BOARD_COLUMNS} FROM boards ${whereClause} ORDER BY created_at DESC`
   ).all() as Board[];
 }
 
@@ -58,7 +94,7 @@ export function showBoard(slug: string, includeArchived: boolean = false): Board
   const db = getDb();
   const archivedClause = includeArchived ? "" : "AND archived_at IS NULL";
   const board = db.query(
-    `SELECT id, slug, workdir, base_ref, created_at, archived_at FROM boards WHERE slug = ? ${archivedClause}`
+    `SELECT ${BOARD_COLUMNS} FROM boards WHERE slug = ? ${archivedClause}`
   ).get(slug) as Board | undefined;
 
   if (!board) return null;
@@ -107,9 +143,50 @@ export function showBoard(slug: string, includeArchived: boolean = false): Board
 export function getBoardById(id: number): Board | null {
   const db = getDb();
   const board = db.query(
-    `SELECT id, slug, workdir, base_ref, created_at, archived_at FROM boards WHERE id = ?`
+    `SELECT ${BOARD_COLUMNS} FROM boards WHERE id = ?`
   ).get(id) as Board | undefined;
   return board ?? null;
+}
+
+export function updateBoardMetadata(slug: string, metadata: BoardMetadata): Board {
+  validateMetadataField(metadata.name, "Name");
+  validateMetadataField(metadata.icon, "Icon");
+  validateMetadataField(metadata.color, "Color");
+
+  const db = getDb();
+  const sets: string[] = [];
+  const values: (string | null)[] = [];
+
+  if (metadata.name !== undefined) {
+    sets.push("name = ?");
+    values.push(metadata.name.trim());
+  }
+  if (metadata.icon !== undefined) {
+    sets.push("icon = ?");
+    values.push(metadata.icon.trim() || null);
+  }
+  if (metadata.color !== undefined) {
+    sets.push("color = ?");
+    values.push(metadata.color.trim() || null);
+  }
+
+  if (sets.length === 0) {
+    throw new Error("At least one metadata field is required.");
+  }
+
+  const result = db.run(
+    `UPDATE boards SET ${sets.join(", ")} WHERE slug = ? AND archived_at IS NULL`,
+    [...values, slug]
+  );
+  if (result.changes === 0) {
+    throw new Error(`Board "${slug}" not found or is archived.`);
+  }
+
+  const updated = showBoard(slug, false);
+  if (!updated) {
+    throw new Error(`Board "${slug}" not found.`);
+  }
+  return updated;
 }
 
 export function archiveBoard(slug: string): void {
@@ -121,4 +198,35 @@ export function archiveBoard(slug: string): void {
   if (result.changes === 0) {
     throw new Error(`Board "${slug}" not found or already archived`);
   }
+}
+
+export function removeBoard(slug: string, hardDelete: boolean): void {
+  if (!hardDelete) {
+    archiveBoard(slug);
+    return;
+  }
+
+  const db = getDb();
+  const board = db.query(
+    "SELECT id FROM boards WHERE slug = ?"
+  ).get(slug) as { id: number } | undefined;
+  if (!board) {
+    throw new Error(`Board "${slug}" not found`);
+  }
+
+  const remove = db.transaction(() => {
+    // Cascade-delete all task-related data for this board.
+    db.run("DELETE FROM task_events WHERE task_id IN (SELECT id FROM tasks WHERE board_id = ?)", [board.id]);
+    db.run("DELETE FROM task_runs WHERE task_id IN (SELECT id FROM tasks WHERE board_id = ?)", [board.id]);
+    db.run("DELETE FROM comments WHERE task_id IN (SELECT id FROM tasks WHERE board_id = ?)", [board.id]);
+    db.run("DELETE FROM dependencies WHERE parent_id IN (SELECT id FROM tasks WHERE board_id = ?) OR child_id IN (SELECT id FROM tasks WHERE board_id = ?)", [board.id, board.id]);
+    db.run("DELETE FROM tasks WHERE board_id = ?", [board.id]);
+
+    const boardDir = getBoardDataDir(slug);
+    rmSync(boardDir, { recursive: true, force: true });
+
+    db.run("DELETE FROM boards WHERE slug = ?", [slug]);
+  });
+
+  remove();
 }

@@ -1,5 +1,7 @@
 import { Command } from "commander";
-import { createBoard, listBoards, showBoard, archiveBoard } from "../models/board";
+import { createBoard, listBoards, showBoard, archiveBoard, updateBoardMetadata, removeBoard } from "../models/board";
+import { isEnabled, FF_BOARD_METADATA, FF_BOARD_RM_DELETE } from "../flags";
+import { assertValidBoardSlug } from "../slugs";
 
 export const boardsCommand = new Command("boards")
   .description("Manage kanban boards");
@@ -9,9 +11,21 @@ boardsCommand
   .description("Create a new board")
   .requiredOption("--workdir <path>", "Working directory for the board")
   .option("--base-ref <ref>", "Git base ref for worktrees (default: origin/main)", "origin/main")
-  .action((slug: string, options: { workdir: string; baseRef: string }) => {
+  .option("--name <name>", "Display name for the board")
+  .option("--icon <icon>", "Icon for the board")
+  .option("--color <color>", "Color for the board")
+  .action((slug: string, options: { workdir: string; baseRef: string; name?: string; icon?: string; color?: string }) => {
     try {
-      const board = createBoard(slug, options.workdir, options.baseRef);
+      assertValidBoardSlug(slug);
+      const metadataRequested = options.name !== undefined || options.icon !== undefined || options.color !== undefined;
+      if (metadataRequested && !isEnabled(FF_BOARD_METADATA)) {
+        throw new Error("Board metadata feature is not enabled.");
+      }
+
+      const metadata = metadataRequested
+        ? { name: options.name, icon: options.icon, color: options.color }
+        : {};
+      const board = createBoard(slug, options.workdir, options.baseRef, metadata);
       console.log(`Created board "${board.slug}" with workdir ${board.workdir} base-ref ${board.base_ref}`);
     } catch (err: any) {
       console.error(`Error: ${err.message}`);
@@ -33,7 +47,13 @@ boardsCommand
       console.log("Boards:");
       for (const board of boards) {
         const archived = board.archived_at ? " (archived)" : "";
-        console.log(`  ${board.slug}  ${board.workdir}${archived}`);
+        const metadataParts: string[] = [];
+        if (isEnabled(FF_BOARD_METADATA)) {
+          if (board.icon) metadataParts.push(`icon=${board.icon}`);
+          if (board.color) metadataParts.push(`color=${board.color}`);
+        }
+        const metadata = metadataParts.length > 0 ? ` (${metadataParts.join(", ")})` : "";
+        console.log(`  ${board.slug}: ${board.name}${metadata}${archived}`);
       }
     } catch (err: any) {
       console.error(`Error: ${err.message}`);
@@ -53,6 +73,11 @@ boardsCommand
       }
       const archived = board.archived_at ? " (archived)" : "";
       console.log(`Board: ${board.slug}${archived}`);
+      console.log(`Name: ${board.name}`);
+      if (isEnabled(FF_BOARD_METADATA)) {
+        if (board.icon) console.log(`Icon: ${board.icon}`);
+        if (board.color) console.log(`Color: ${board.color}`);
+      }
       console.log(`Workdir: ${board.workdir}`);
       console.log(`Base ref: ${board.base_ref}`);
       console.log(`Created: ${new Date(board.created_at * 1000).toISOString()}`);
@@ -73,12 +98,55 @@ boardsCommand
   });
 
 boardsCommand
+  .command("edit <slug>")
+  .description("Edit board metadata")
+  .option("--name <name>", "Display name for the board")
+  .option("--icon <icon>", "Icon for the board")
+  .option("--color <color>", "Color for the board")
+  .action((slug: string, options: { name?: string; icon?: string; color?: string }) => {
+    try {
+      if (!isEnabled(FF_BOARD_METADATA)) {
+        throw new Error("Board metadata feature is not enabled.");
+      }
+      const metadata = { name: options.name, icon: options.icon, color: options.color };
+      const board = updateBoardMetadata(slug, metadata);
+      console.log(`Updated board "${board.slug}".`);
+    } catch (err: any) {
+      console.error(`Error: ${err.message}`);
+      process.exit(1);
+    }
+  });
+
+boardsCommand
   .command("archive <slug>")
   .description("Archive a board")
   .action((slug: string) => {
     try {
       archiveBoard(slug);
       console.log(`Archived board "${slug}".`);
+    } catch (err: any) {
+      console.error(`Error: ${err.message}`);
+      process.exit(1);
+    }
+  });
+
+boardsCommand
+  .command("rm <slug>")
+  .description("Remove (archive) a board; use --delete for permanent deletion")
+  .option("--delete", "Permanently delete the board and its data")
+  .action((slug: string, options: { delete?: boolean }) => {
+    try {
+      const hardDelete = options.delete ?? false;
+      if (hardDelete && !isEnabled(FF_BOARD_RM_DELETE)) {
+        console.error("Error: Board hard-delete is not enabled. Set FF_BOARD_RM_DELETE=true to use --delete.");
+        process.exit(1);
+      }
+      removeBoard(slug, hardDelete);
+      if (hardDelete) {
+        console.log(`Deleted board "${slug}" permanently.`);
+      } else {
+        console.log(`Archived board "${slug}".`);
+      }
     } catch (err: any) {
       console.error(`Error: ${err.message}`);
       process.exit(1);

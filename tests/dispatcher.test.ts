@@ -352,6 +352,83 @@ describe("dispatcher", () => {
     expect(calls[0][4]!.KDI_SKILLS).toBe("github,code-review");
   });
 
+  it("passes model_override to harness via {{model}} template and KDI_MODEL env", async () => {
+    const home = setupTempHome([
+      { name: "modelagent", command: "echo {{model}}" },
+    ]);
+    const originalPath = process.env.KDI_PROFILES_PATH;
+    process.env.KDI_PROFILES_PATH = join(home, ".config/kdi/profiles.yaml");
+
+    const board = createBoard("test-board", "/tmp/test-board");
+    const task = createTask({
+      board_id: board.id,
+      title: "Model test",
+      assignee: "modelagent",
+      model_override: "gpt-5.5",
+    });
+    promoteTask(task.id);
+
+    const mockHarness = mock(() => Promise.resolve({ stdout: "ok", stderr: "", exitCode: 0 }));
+    const mockCreateWorktree = mock(() => "/tmp/mock-worktree");
+    const mockRemoveWorktree = mock(() => ({ worktreeRemoved: true, branchDeleted: true, found: true }));
+
+    await tick({
+      spawnHarness: mockHarness,
+      createWorktree: mockCreateWorktree,
+      removeWorktree: mockRemoveWorktree,
+    });
+
+    if (originalPath !== undefined) {
+      process.env.KDI_PROFILES_PATH = originalPath;
+    } else {
+      delete process.env.KDI_PROFILES_PATH;
+    }
+    rmSync(home, { recursive: true, force: true });
+
+    const calls = mockHarness.mock.calls as unknown as [string, string, string | undefined, number | undefined, Record<string, string> | undefined][];
+    expect(calls.length).toBeGreaterThan(0);
+    expect(calls[0][0]).toContain("gpt-5.5");
+    expect(calls[0][4]).toBeDefined();
+    expect(calls[0][4]!.KDI_MODEL).toBe("gpt-5.5");
+  });
+
+  it("does not set KDI_MODEL env when model_override is absent", async () => {
+    const home = setupTempHome([
+      { name: "nomodelagent", command: "echo done" },
+    ]);
+    const originalPath = process.env.KDI_PROFILES_PATH;
+    process.env.KDI_PROFILES_PATH = join(home, ".config/kdi/profiles.yaml");
+
+    const board = createBoard("test-board", "/tmp/test-board");
+    const task = createTask({
+      board_id: board.id,
+      title: "No model test",
+      assignee: "nomodelagent",
+    });
+    promoteTask(task.id);
+
+    const mockHarness = mock(() => Promise.resolve({ stdout: "ok", stderr: "", exitCode: 0 }));
+    const mockCreateWorktree = mock(() => "/tmp/mock-worktree");
+    const mockRemoveWorktree = mock(() => ({ worktreeRemoved: true, branchDeleted: true, found: true }));
+
+    await tick({
+      spawnHarness: mockHarness,
+      createWorktree: mockCreateWorktree,
+      removeWorktree: mockRemoveWorktree,
+    });
+
+    if (originalPath !== undefined) {
+      process.env.KDI_PROFILES_PATH = originalPath;
+    } else {
+      delete process.env.KDI_PROFILES_PATH;
+    }
+    rmSync(home, { recursive: true, force: true });
+
+    const calls = mockHarness.mock.calls as unknown as [string, string, string | undefined, number | undefined, Record<string, string> | undefined][];
+    expect(calls.length).toBeGreaterThan(0);
+    expect(calls[0][4]).toBeUndefined();
+  });
+
   it("processes ready tasks in priority descending order", async () => {
     const board = createBoard("prio-board", "/tmp/prio-board");
     const low = createTask({ board_id: board.id, title: "Low", assignee: "opencode", priority: 1 });
@@ -461,5 +538,153 @@ describe("dispatcher", () => {
     });
 
     expect(receivedTimeoutMs).toBe(42000);
+  });
+
+  it("successful harness run resets consecutive_failures to 0", async () => {
+    const board = createBoard("reset-board", "/tmp/reset-board");
+    const task = createTask({
+      board_id: board.id,
+      title: "Reset me",
+      assignee: "opencode",
+      max_retries: 3,
+    });
+    promoteTask(task.id);
+
+    const db = getDb();
+    db.run("UPDATE tasks SET consecutive_failures = 2 WHERE id = ?", [task.id]);
+
+    await tick({
+      spawnHarness: () => Promise.resolve({ stdout: "ok", stderr: "", exitCode: 0 }),
+      createWorktree: () => "/tmp/mock-worktree",
+      removeWorktree: () => ({ worktreeRemoved: true, branchDeleted: true, found: true }),
+    });
+
+    const updated = showTask(task.id);
+    expect(updated!.status).toBe("done");
+    expect(updated!.consecutive_failures).toBe(0);
+  });
+
+  it("EX_TEMPFAIL does not increment consecutive_failures", async () => {
+    const board = createBoard("tempfail-board", "/tmp/tempfail-board");
+    const task = createTask({
+      board_id: board.id,
+      title: "Tempfail me",
+      assignee: "opencode",
+      max_retries: 3,
+    });
+    promoteTask(task.id);
+
+    await tick({
+      spawnHarness: () => Promise.resolve({ stdout: "", stderr: "rate limited", exitCode: 75 }),
+      createWorktree: () => "/tmp/mock-worktree",
+      removeWorktree: () => ({ worktreeRemoved: true, branchDeleted: true, found: true }),
+    });
+
+    const updated = showTask(task.id);
+    expect(updated!.status).toBe("ready");
+    expect(updated!.consecutive_failures).toBe(0);
+  });
+
+  it("requeues task with max_retries on first failures and blocks on final failure", async () => {
+    const board = createBoard("retry-board", "/tmp/retry-board");
+    const task = createTask({
+      board_id: board.id,
+      title: "Retry me",
+      assignee: "opencode",
+      max_retries: 3,
+    });
+    promoteTask(task.id);
+
+    const mockHarness = mock(() => Promise.resolve({ stdout: "", stderr: "boom", exitCode: 1 }));
+    const mockCreateWorktree = mock(() => "/tmp/mock-worktree");
+    const mockRemoveWorktree = mock(() => ({ worktreeRemoved: true, branchDeleted: true, found: true }));
+
+    // First failure: requeue
+    await tick({
+      spawnHarness: mockHarness,
+      createWorktree: mockCreateWorktree,
+      removeWorktree: mockRemoveWorktree,
+    });
+    let updated = showTask(task.id);
+    expect(updated!.status).toBe("ready");
+    expect(updated!.consecutive_failures).toBe(1);
+
+    // Second failure: requeue
+    await tick({
+      spawnHarness: mockHarness,
+      createWorktree: mockCreateWorktree,
+      removeWorktree: mockRemoveWorktree,
+    });
+    updated = showTask(task.id);
+    expect(updated!.status).toBe("ready");
+    expect(updated!.consecutive_failures).toBe(2);
+
+    // Third failure: blocked by circuit breaker
+    await tick({
+      spawnHarness: mockHarness,
+      createWorktree: mockCreateWorktree,
+      removeWorktree: mockRemoveWorktree,
+    });
+    updated = showTask(task.id);
+    expect(updated!.status).toBe("blocked");
+    expect(updated!.consecutive_failures).toBe(3);
+    expect(updated!.block_reason).toContain("Circuit breaker");
+  });
+
+  it("blocks task without max_retries on first failure", async () => {
+    const board = createBoard("no-retry-board", "/tmp/no-retry-board");
+    const task = createTask({
+      board_id: board.id,
+      title: "No retry cap",
+      assignee: "opencode",
+    });
+    promoteTask(task.id);
+
+    await tick({
+      spawnHarness: () => Promise.resolve({ stdout: "", stderr: "boom", exitCode: 1 }),
+      createWorktree: () => "/tmp/mock-worktree",
+      removeWorktree: () => ({ worktreeRemoved: true, branchDeleted: true, found: true }),
+    });
+
+    const updated = showTask(task.id);
+    expect(updated!.status).toBe("blocked");
+    expect(updated!.consecutive_failures).toBe(1);
+  });
+
+  it("successful run after retry resets consecutive_failures", async () => {
+    const board = createBoard("recover-board", "/tmp/recover-board");
+    const task = createTask({
+      board_id: board.id,
+      title: "Recover me",
+      assignee: "opencode",
+      max_retries: 3,
+    });
+    promoteTask(task.id);
+
+    let calls = 0;
+    const mockHarness = mock(() => {
+      calls++;
+      if (calls === 1) {
+        return Promise.resolve({ stdout: "", stderr: "boom", exitCode: 1 });
+      }
+      return Promise.resolve({ stdout: "ok", stderr: "", exitCode: 0 });
+    });
+
+    await tick({
+      spawnHarness: mockHarness,
+      createWorktree: () => "/tmp/mock-worktree",
+      removeWorktree: () => ({ worktreeRemoved: true, branchDeleted: true, found: true }),
+    });
+    expect(showTask(task.id)!.status).toBe("ready");
+    expect(showTask(task.id)!.consecutive_failures).toBe(1);
+
+    await tick({
+      spawnHarness: mockHarness,
+      createWorktree: () => "/tmp/mock-worktree",
+      removeWorktree: () => ({ worktreeRemoved: true, branchDeleted: true, found: true }),
+    });
+    const updated = showTask(task.id);
+    expect(updated!.status).toBe("done");
+    expect(updated!.consecutive_failures).toBe(0);
   });
 });

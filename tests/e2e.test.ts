@@ -1,8 +1,8 @@
 import { describe, it, expect } from "bun:test";
 import { execSync, spawn } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { initDb, closeDb } from "../src/db";
 import { addDependency } from "../src/models/dependency";
 
@@ -73,6 +73,19 @@ function getTaskStatus(taskId: string, env: Record<string, string>): string | nu
 }
 
 describe("kdi e2e acceptance", () => {
+  it("boards create rejects path traversal slugs", () => {
+    const tmp = makeTempDir("board-traversal");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp };
+
+    expect(() => runKdi(`boards create ../../bad --workdir ${repoDir}`, env)).toThrow(/Invalid board slug/);
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
   it("create returns task ID", () => {
     const tmp = makeTempDir("create");
     const dbPath = join(tmp, "kdi.db");
@@ -935,4 +948,256 @@ describe("kdi e2e acceptance", () => {
 
     rmSync(tmp, { recursive: true, force: true });
   });
+
+  it("create --model stores and displays model override when flag enabled", () => {
+    const tmp = makeTempDir("model-override");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_MODEL_OVERRIDE: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const taskId = runKdi(`create "model task" --board myproj --model gpt-5.5`, env);
+
+    const output = runKdi(`show ${taskId}`, env);
+    expect(output).toContain("Model override: gpt-5.5");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("create --model is rejected when flag disabled", () => {
+    const tmp = makeTempDir("model-disabled");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    expect(() => runKdi(`create "bad" --board myproj --model gpt-5.5`, env)).toThrow();
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("show does not display model override when flag disabled", () => {
+    const tmp = makeTempDir("model-show-disabled");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_MODEL_OVERRIDE: "false" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const taskId = runKdi(`create "plain" --board myproj`, env);
+
+    const output = runKdi(`show ${taskId}`, env);
+    expect(output).not.toContain("Model override:");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("create --max-retries stores value when flag enabled", () => {
+    const tmp = makeTempDir("max-retries");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_MAX_RETRIES: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const taskId = runKdi(`create "retry task" --board myproj --max-retries 3`, env);
+
+    const output = runKdi(`show ${taskId}`, env);
+    expect(output).toContain("Max retries: 3");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("create --max-retries is rejected when flag disabled", () => {
+    const tmp = makeTempDir("max-retries-disabled");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    expect(() => runKdi(`create "retry task" --board myproj --max-retries 3`, env)).toThrow();
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("create --max-retries rejects invalid values", () => {
+    const tmp = makeTempDir("max-retries-invalid");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_MAX_RETRIES: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    expect(() => runKdi(`create "bad" --board myproj --max-retries -1`, env)).toThrow();
+    expect(() => runKdi(`create "bad" --board myproj --max-retries abc`, env)).toThrow();
+    expect(() => runKdi(`create "bad" --board myproj --max-retries 1.5`, env)).toThrow();
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it(
+    "dispatcher circuit breaker requeues then blocks after max-retries",
+    async () => {
+      const tmp = makeTempDir("max-retries-circuit");
+      const dbPath = join(tmp, "kdi.db");
+      const repoDir = join(tmp, "repo");
+      mkdirSync(repoDir, { recursive: true });
+      setupGitRepo(repoDir);
+      setupProfiles(tmp, [{ name: "failagent", command: "exit 1" }]);
+      const env = { KDI_DB: dbPath, HOME: tmp, FF_ENABLE_KANBAN_DISPATCH: "true", FF_MAX_RETRIES: "true" };
+
+      runKdi(`boards create myproj --workdir ${repoDir}`, env);
+      const taskId = runKdi(`create "circuit task" --board myproj --assignee failagent --max-retries 3`, env);
+
+      const dispatcher = startDispatcher(env);
+      runKdi(`promote ${taskId}`, env);
+
+      const ok = await waitForTaskStatus(taskId, "blocked", env, 15000);
+      dispatcher.kill("SIGTERM");
+
+      expect(ok).toBe(true);
+      const output = runKdi(`show ${taskId}`, env);
+      expect(output).toContain("Circuit breaker");
+      expect(output).toContain("Consecutive failures: 3");
+
+      rmSync(tmp, { recursive: true, force: true });
+    },
+    25000
+  );
+
+  it("boards create stores metadata when flag enabled", () => {
+    const tmp = makeTempDir("board-metadata");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_BOARD_METADATA: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir} --name "My Project" --icon rocket --color "#123456"`, env);
+    const output = runKdi(`boards show myproj`, env);
+    expect(output).toContain("Name: My Project");
+    expect(output).toContain("Icon: rocket");
+    expect(output).toContain("Color: #123456");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("boards create --name is rejected when flag disabled", () => {
+    const tmp = makeTempDir("board-metadata-disabled");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp };
+
+    expect(() => runKdi(`boards create myproj --workdir ${repoDir} --name "My Project"`, env)).toThrow();
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("boards edit updates metadata when flag enabled", () => {
+    const tmp = makeTempDir("board-metadata-edit");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_BOARD_METADATA: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    runKdi(`boards edit myproj --name "Updated" --icon star`, env);
+    const output = runKdi(`boards show myproj`, env);
+    expect(output).toContain("Name: Updated");
+    expect(output).toContain("Icon: star");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("boards edit is rejected when flag disabled", () => {
+    const tmp = makeTempDir("board-metadata-edit-disabled");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    expect(() => runKdi(`boards edit myproj --name "Updated"`, env)).toThrow();
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("boards rm archives a board by default", () => {
+    const tmp = makeTempDir("boards-rm-soft");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const output = runKdi(`boards rm myproj`, env);
+    expect(output).toContain("Archived board");
+
+    const listOutput = runKdi(`boards list --all`, env);
+    expect(listOutput).toContain("myproj");
+    expect(listOutput).toContain("archived");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("boards rm --delete permanently deletes board when flag enabled", () => {
+    const tmp = makeTempDir("boards-rm-delete");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_BOARD_RM_DELETE: "true" };
+    const boardDir = join(dirname(dbPath), "boards", "myproj");
+    mkdirSync(boardDir, { recursive: true });
+    writeFileSync(join(boardDir, "kanban.db"), "dummy");
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const output = runKdi(`boards rm myproj --delete`, env);
+    expect(output).toContain("Deleted board");
+
+    const listOutput = runKdi(`boards list --all`, env);
+    expect(listOutput).not.toContain("myproj");
+    expect(existsSync(boardDir)).toBe(false);
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("boards rm --delete exits non-zero on non-existent slug", () => {
+    const tmp = makeTempDir("boards-rm-delete-missing");
+    const dbPath = join(tmp, "kdi.db");
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_BOARD_RM_DELETE: "true" };
+
+    expect(() => runKdi(`boards rm missing --delete`, env)).toThrow();
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("boards rm --delete is rejected when flag is disabled", () => {
+    const tmp = makeTempDir("boards-rm-delete-disabled");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_BOARD_RM_DELETE: "false" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    expect(() => runKdi(`boards rm myproj --delete`, env)).toThrow();
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
 });

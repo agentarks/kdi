@@ -185,7 +185,7 @@
 
 | Hermes Feature | KDI Status | Gap |
 |---|---|---|
-| Board metadata (name, desc, icon, color) | Missing entirely | KDI boards only have slug + workdir |
+| Board metadata (name, desc, icon, color) | **Done** (name, icon, color) | `kdi boards create --name --icon --color`; `kdi boards edit` |
 | `triage` status | **Done** (basic) | `kdi create --triage`, `kdi specify` |
 | `scheduled` status | Missing | KDI has no time-waiting state |
 | `review` status | Missing | KDI conflates review with blocked |
@@ -195,7 +195,7 @@
 | `max_runtime_seconds` | Missing | No per-task runtime cap |
 | `skills` array | Missing | No force-loaded skills |
 | `model_override` | Missing | No per-task model override |
-| `max_retries` / circuit breaker | Missing | No failure limit |
+| `max_retries` / circuit breaker | **Done** | `kdi create --max-retries`; dispatcher blocks after retry limit |
 | `goal_mode` / `goal_max_turns` | Missing | No goal loop |
 | `session_id` | Missing | No session tracking |
 | `workflow_template_id` | Missing | No workflow routing |
@@ -225,7 +225,7 @@
 | `init` command | Missing | No idempotent DB creation command |
 | Global `--board` + env resolution | Missing | KDI has no board resolution chain |
 | `boards list --all` | Missing | Cannot list archived boards |
-| `boards rm --delete` | Missing | No hard-delete option |
+| `boards rm --delete` | **Done** | `kdi boards rm --delete` hard-deletes board data when `FF_BOARD_RM_DELETE` is enabled |
 | `boards create --switch` | Missing | No auto-switch after create |
 | `create --idempotency-key` | Missing | No dedup key support |
 | `create --initial-status` | Missing | KDI create always goes to `todo` |
@@ -352,27 +352,28 @@
   - `kdi create --skill github --skill code-review`
   - Dispatcher passes skills to harness
 
-- [ ] **KDI-010: Model override**
+- [x] **KDI-010: Model override**
   - Add `model_override TEXT`
   - `kdi create --model gpt-5.5`
   - Dispatcher passes `-m <model>` to harness
 
-- [ ] **KDI-011: Max retries / circuit breaker**
+- [x] **KDI-011: Max retries / circuit breaker**
   - Add `max_retries INTEGER`
   - Auto-block task after N consecutive spawn/execution failures
   - `kdi create --max-retries 3`
 
 ### Phase 3 — Board Management
-- [ ] **KDI-012: Board metadata**
-  - Add `name`, `description`, `icon`, `color` to boards
+- [x] **KDI-012: Board metadata**
+  - Add `name`, `icon`, `color` to boards
   - `kdi boards create myproj --name "My Project" --icon "🚀" --color "#8b5cf6"`
-  - `kdi boards create --switch` — auto-switch to new board after creation
+  - `kdi boards edit myproj --name "My Project" --icon "🚀" --color "#8b5cf6"`
 
 - [x] **KDI-012b: `kdi boards list --all`**
   - Include archived boards in listing
 
-- [ ] **KDI-012c: `kdi boards rm --delete`**
+- [x] **KDI-012c: `kdi boards rm --delete`**
   - Hard-delete board directory instead of soft-archive to `boards/_archived/`
+  - Gated by `FF_BOARD_RM_DELETE`, default `false`
 
 - [ ] **KDI-013: Board switch / current**
   - `kdi boards switch <slug>` — write to `~/.local/share/kdi/current`
@@ -563,7 +564,7 @@
 | `hermes kanban init` | `kdi init` | Missing | KDI-013b |
 | `--board` flag + env resolution | `--board` + `KDI_BOARD` | Missing | KDI-013 |
 | `boards list --all` | `kdi boards list --all` | **Done** | KDI-012b |
-| `boards rm --delete` | `kdi boards rm --delete` | Missing | KDI-012c |
+| `boards rm --delete` | `kdi boards rm --delete` | **Done** | KDI-012c |
 | `boards create --switch` | `kdi boards create --switch` | Missing | KDI-012 |
 | `create --idempotency-key` | `kdi create --idempotency-key` | **Done** | KDI-001c |
 | `create --initial-status` | `kdi create --initial-status` | **Done** | KDI-001b |
@@ -634,9 +635,9 @@
 15. **KDI-018**: Worker log capture
 
 ### P2 — Board Management
-16. **KDI-012**: Board metadata (name, icon, color)
+16. ~~KDI-012~~: Board metadata (name, icon, color)
 17. ~~KDI-012b~~: `boards list --all`
-18. **KDI-012c**: `boards rm --delete`
+18. ~~KDI-012c~~: `boards rm --delete`
 19. **KDI-013**: Board switch / current + resolution chain
 20. **KDI-013b**: `kdi init` command
 21. **KDI-014**: Rename board
@@ -654,8 +655,8 @@
 29. **KDI-007**: Created-by
 30. **KDI-008**: Max runtime
 31. **KDI-009**: Skills
-32. **KDI-010**: Model override
-33. **KDI-011**: Max retries / circuit breaker
+32. ~~KDI-010~~: Model override
+33. ~~KDI-011~~: Max retries / circuit breaker
 
 ### P5 — Advanced
 34. **KDI-022**: Attachments
@@ -699,7 +700,7 @@ Dispatched 4 parallel `pi` agents via cmux. All 135 tests pass. Work committed t
 - **Worktree Isolation**: Auto branch `wt/<profile>/<task_id>`, configurable `base_ref` per board (default `origin/main`, fallback `HEAD`), cleanup on completion
 
 ### Known Gaps from Agent Work
-- Board metadata (name, icon, color) — not implemented
+- ~~Board metadata (name, icon, color) — not implemented~~ — implemented in KDI-012
 - Board switch / resolution chain (`--board`, `KDI_BOARD`, `~/.local/share/kdi/current`) — not implemented
 - `kdi dispatch` is a tick function, not a long-running daemon
 - `kdi log <task_id>` CLI missing (logs written to disk but no read command)

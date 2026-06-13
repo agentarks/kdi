@@ -1,5 +1,11 @@
 # kdi — Status
 
+## Board Slug Path Traversal Hardening — Done
+- [x] Shared board slug validation requires `^[a-zA-Z0-9_-]+$`
+- [x] `boards create <slug>` and `createBoard()` reject traversal slugs
+- [x] `getBoardDataDir()` validates slugs before constructing board data paths
+- [x] Unit/e2e coverage proves traversal slugs are rejected
+
 ## Created-by Tracking (KDI-007) — Done
 - [x] `created_by` column on tasks with migration default `"unknown"`
 - [x] `kdi create --created-by <actor>` stores creator explicitly
@@ -13,6 +19,23 @@
 - [x] `kdi boards list` — list all boards (excludes archived; use `--all` to include)
 - [x] `kdi boards show <slug>` — show board details + task counts (triage, todo, ready, running, done, blocked, archived)
 - [x] `kdi boards archive <slug>` — archive board (soft delete)
+
+## Board Metadata (KDI-012) — Done
+- [x] `name`, `icon`, `color` columns added to `boards` table (schema + migration)
+- [x] Feature flag `ff_board_metadata` registered in `src/flags.ts` and `specs/feature-flags.md`, defaults to `false`
+- [x] `kdi boards create <slug> --workdir <path> [--name <name>] [--icon <icon>] [--color <color>]` — stores board metadata when flag enabled
+- [x] `kdi boards edit <slug> [--name <name>] [--icon <icon>] [--color <color>]` — updates board metadata when flag enabled
+- [x] `kdi boards show <slug>` displays Name, Icon, Color when set and flag enabled
+- [x] `kdi boards list` shows metadata compactly when flag enabled
+- [x] Board name defaults to slug when omitted; icon and color default to null
+
+## `kdi boards rm --delete` (KDI-012c) — Done
+- [x] `kdi boards rm <slug>` — soft-archive board (sets `archived_at`, keeps row and files)
+- [x] `kdi boards rm <slug> --delete` — permanently delete board row and board data directory
+- [x] `--delete` gated by `FF_BOARD_RM_DELETE` (defaults to `false`)
+- [x] Clear error when `--delete` is used on a non-existent slug
+- [x] Cascade-delete tasks and related rows when hard-deleting a board
+- [x] Feature flag `ff_board_rm_delete` registered in `specs/feature-flags.md`
 
 ## Task Lifecycle
 - [x] `kdi create <title> --board <slug> --assignee <profile>` — create task
@@ -138,12 +161,32 @@
 - [x] Dispatcher passes cap as harness timeout; SIGTERM then SIGKILL on expiry
 - [x] Timed-out runs recorded with `outcome=timed_out` and task blocked
 
+## Max retries / circuit breaker (KDI-011) — Done
+- [x] Feature flag `ff_max_retries` / `FF_MAX_RETRIES` registered in `src/flags.ts` and `specs/feature-flags.md`
+- [x] Schema adds `max_retries` and `consecutive_failures` columns with migrations
+- [x] Task model, `CreateTaskInput`, `TASK_COLUMNS`, and hydration updated
+- [x] `kdi create --max-retries <n>` implemented and gated by `FF_MAX_RETRIES`
+- [x] `kdi show` displays `max_retries` and `consecutive_failures` when flag enabled
+- [x] Dispatcher implements circuit breaker: requeue until `max_retries` then block
+- [x] Successful harness run resets `consecutive_failures` to 0
+- [x] `EX_TEMPFAIL` does not increment `consecutive_failures`
+- [x] Tests added and passing for new behavior
+- [x] `bun run lint`, `bun run test`, and `bun run build` all pass
+
 ## Tenant Namespace (KDI-006) — Done
 - [x] `tenant TEXT` column added to tasks (with migration and `idx_tasks_tenant` index)
 - [x] `kdi create <title> --board <slug> --tenant <name>`; gated by `FF_TENANT_NAMESPACE`
 - [x] `kdi list --board <slug> --tenant <name>` filters by tenant and composes with `--status` / `--assignee`
 - [x] `kdi show <task_id>` displays tenant when present
 - [x] Feature flag `FF_TENANT_NAMESPACE` registered in `specs/feature-flags.md` and defaults to `false`
+
+## Model Override (KDI-010) — Done
+- [x] `model_override TEXT` column added to tasks (with migration)
+- [x] `kdi create <title> --board <slug> --model <model>`; gated by `FF_MODEL_OVERRIDE`
+- [x] `kdi show <task_id>` displays `Model override:` when flag enabled and value is set
+- [x] Dispatcher substitutes `{{model}}` in harness profile commands when override is set
+- [x] Dispatcher sets `KDI_MODEL=<model>` env var for harness process when override is set
+- [x] Feature flag `FF_MODEL_OVERRIDE` registered in `specs/feature-flags.md` and defaults to `false`
 
 ## Dependencies
 - [ ] Parent/child task blocking

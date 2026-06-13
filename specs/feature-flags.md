@@ -28,6 +28,7 @@ stateDiagram-v2
 | Flag | Env Var | Scope | Status | Default | Since | Description |
 |---|---|---|---|---|---|---|
 | `ff_created_by` | `FF_CREATED_BY` | CLI / task metadata | InDev | `false` | KDI-007 | Tracks and displays the actor that created a task. |
+| `ff_board_rm_delete` | `FF_BOARD_RM_DELETE` | CLI / board management | InDev | `false` | KDI-012c | Gates `boards rm --delete` permanent board deletion. |
 | `ff_complete_metadata` | `FF_COMPLETE_METADATA` | CLI / complete | InDev | `false` | KDI-005 | Gates --metadata option only. Base --result / --summary always available. |
 | `ff_kanban_dispatch` | `FF_ENABLE_KANBAN_DISPATCH` | CLI / dispatcher | Planned | `false` | — | Background dispatcher loop that polls ready tasks and spawns harness profiles. |
 | `ff_scheduled_status` | `FF_SCHEDULED_STATUS` | CLI / task lifecycle | InDev | `false` | KDI-002 | Scheduled status, schedule/unblock commands, and scheduled_at field. |
@@ -36,6 +37,9 @@ stateDiagram-v2
 | `ff_tenant_namespace` | `FF_TENANT_NAMESPACE` | CLI / task lifecycle | InDev | `false` | KDI-006 | Tenant namespace on tasks; `create --tenant`; `list --tenant` filters by tenant. |
 | `ff_skills_array` | `FF_SKILLS_ARRAY` | CLI / create, dispatcher | InDev | `false` | KDI-009 | Skills array on tasks; `create --skill`; dispatcher passes skills to harness via `{{skills}}` and `KDI_SKILLS`. |
 | `ff_max_runtime` | `FF_MAX_RUNTIME` | CLI / create + dispatcher | InDev | `false` | KDI-008 | Per-task max runtime cap; dispatcher SIGTERMs/SIGKILLs worker when exceeded. |
+| `ff_model_override` | `FF_MODEL_OVERRIDE` | CLI / create + dispatcher | InDev | `false` | KDI-010 | Per-task model override; `create --model`; dispatcher passes `{{model}}` and `KDI_MODEL` to harness. |
+| `ff_max_retries` | `FF_MAX_RETRIES` | CLI / create + dispatcher | InDev | `false` | KDI-011 | Per-task max retries; auto-block after N consecutive spawn/execution failures. |
+| `ff_board_metadata` | `FF_BOARD_METADATA` | CLI / board metadata | InDev | `false` | KDI-012 | Board name, icon, and color; `boards create --name/--icon/--color`, `boards edit`, and metadata display. |
 
 ## Lifecycle Notes
 
@@ -50,6 +54,18 @@ stateDiagram-v2
   - `list --created-by` filters tasks by creator.
   - `show` displays the creator when the flag is enabled.
 - **Rollback / deactivation:** Set `FF_CREATED_BY=false` to hide creator fields and reject creator options.
+- **Deprecation plan:** N/A
+
+### `ff_board_rm_delete` — InDev
+
+- **Owner:** kdi core team
+- **BRD:** KDI-012c
+- **Status transitions:**
+  - `InDev` → `Active` when permanent board deletion is safe to enable by default.
+- **Activation criteria:**
+  - `boards rm <slug> --delete` removes the board row and recursively deletes the board data directory.
+  - Without the flag, `--delete` is rejected with a clear error.
+- **Rollback / deactivation:** Set `FF_BOARD_RM_DELETE=false` to reject `--delete` and keep soft-archive as the only removal path.
 - **Deprecation plan:** N/A
 
 ### `ff_scheduled_status` — InDev
@@ -138,6 +154,48 @@ stateDiagram-v2
   - Dispatcher passes the cap as the harness timeout.
   - Timed-out runs are recorded with `outcome=timed_out` and the task is blocked.
 - **Rollback / deactivation:** Set `FF_MAX_RUNTIME=false` to hide/gate the `--max-runtime` option.
+- **Deprecation plan:** N/A
+
+### `ff_model_override` — InDev
+
+- **Owner:** kdi core team
+- **BRD:** [BRD-KDI-010](brd-kdi-010-model-override.md)
+- **Status transitions:**
+  - `Planned` → `InDev` when `model_override` column, `create --model`, and dispatcher pass-through are implemented.
+- **Schema note:** `model_override` is a schema-level TEXT column on `tasks` — this flag gates the CLI option and dispatcher behavior; the schema migration always runs.
+- **Activation criteria:**
+  - `create --model <model>` stores `model_override` on the task.
+  - `kdi show` displays the model override when the flag is enabled.
+  - Dispatcher substitutes `{{model}}` in profile commands and sets `KDI_MODEL` env var for the harness process.
+- **Rollback / deactivation:** Set `FF_MODEL_OVERRIDE=false` to hide/gate the `--model` option and dispatcher model pass-through.
+- **Deprecation plan:** N/A
+
+### `ff_max_retries` — InDev
+
+- **Owner:** kdi core team
+- **BRD:** KDI-011
+- **Status transitions:**
+  - `Planned` → `InDev` when `max_retries` and `consecutive_failures` columns, `create --max-retries`, and dispatcher circuit breaker are implemented.
+- **Schema note:** `max_retries` and `consecutive_failures` are schema-level INTEGER columns on `tasks` — this flag gates the CLI option and dispatcher retry behavior; the schema migrations always run.
+- **Activation criteria:**
+  - `create --max-retries <n>` stores `max_retries` on the task.
+  - Dispatcher requeues failed tasks up to `max_retries` consecutive failures, then blocks them.
+  - Successful harness runs reset `consecutive_failures` to 0.
+- **Rollback / deactivation:** Set `FF_MAX_RETRIES=false` to hide/gate the `--max-retries` option.
+- **Deprecation plan:** N/A
+
+### `ff_board_metadata` — InDev
+
+- **Owner:** kdi core team
+- **BRD:** KDI-012
+- **Status transitions:**
+  - `Planned` → `InDev` when `boards` metadata columns and CLI options are implemented.
+- **Schema note:** `name`, `icon`, and `color` are schema-level TEXT columns on `boards` — this flag gates the CLI options and display; the schema migrations always run.
+- **Activation criteria:**
+  - `boards create --name/--icon/--color` stores metadata on the board.
+  - `boards edit` updates board metadata.
+  - `boards show` and `boards list` display metadata when set.
+- **Rollback / deactivation:** Set `FF_BOARD_METADATA=false` to hide/gate the `--name`, `--icon`, `--color`, and `boards edit` options.
 - **Deprecation plan:** N/A
 
 ### `ff_kanban_dispatch` — Planned
