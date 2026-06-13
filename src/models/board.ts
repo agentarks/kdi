@@ -171,7 +171,7 @@ export function updateBoardMetadata(slug: string, metadata: BoardMetadata): Boar
   }
 
   if (sets.length === 0) {
-    throw new Error("At least one of --name, --icon, or --color is required.");
+    throw new Error("At least one metadata field is required.");
   }
 
   const result = db.run(

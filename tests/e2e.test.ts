@@ -1,9 +1,8 @@
 import { describe, it, expect } from "bun:test";
 import { execSync, spawn } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from "node:fs";
-import { dirname } from "node:path";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { initDb, closeDb } from "../src/db";
 import { addDependency } from "../src/models/dependency";
 
