@@ -375,7 +375,7 @@
   - Hard-delete board directory instead of soft-archive to `boards/_archived/`
   - Gated by `FF_BOARD_RM_DELETE`, default `false`
 
-- [ ] **KDI-013: Board switch / current**
+- [x] **KDI-013: Board switch / current**
   - `kdi boards switch <slug>` — write to `~/.local/share/kdi/current`
   - `kdi boards show` — print current board
   - `--board` flag on all commands
@@ -526,7 +526,7 @@
 | `hermes kanban boards create` | `kdi boards create` | **Done** (basic) | KDI-012, KDI-013, KDI-014, KDI-015 |
 | `hermes kanban boards list` | `kdi boards list` | **Done** (basic) | KDI-012 |
 | `hermes kanban boards show` | `kdi boards show` | **Done** (basic) | KDI-013 |
-| `hermes kanban boards switch` | `kdi boards switch` | Missing | KDI-013 |
+| `hermes kanban boards switch` | `kdi boards switch` | **Done** | KDI-013 |
 | `hermes kanban boards rename` | `kdi boards rename` | Missing | KDI-014 |
 | `hermes kanban boards set-default-workdir` | `kdi boards set-default-workdir` | Missing | KDI-015 |
 | `hermes kanban create` | `kdi create` | Partial | KDI-004, KDI-006, KDI-007, KDI-008, KDI-009, KDI-010, KDI-011 |
@@ -638,7 +638,7 @@
 16. ~~KDI-012~~: Board metadata (name, icon, color)
 17. ~~KDI-012b~~: `boards list --all`
 18. ~~KDI-012c~~: `boards rm --delete`
-19. **KDI-013**: Board switch / current + resolution chain
+19. ~~KDI-013~~: Board switch / current + resolution chain
 20. **KDI-013b**: `kdi init` command
 21. **KDI-014**: Rename board
 22. **KDI-015**: Default workdir

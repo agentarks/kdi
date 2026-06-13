@@ -11,6 +11,8 @@ export const FF_MODEL_OVERRIDE = "FF_MODEL_OVERRIDE";
 export const FF_MAX_RETRIES = "FF_MAX_RETRIES";
 export const FF_BOARD_METADATA = "FF_BOARD_METADATA";
 export const FF_BOARD_RM_DELETE = "FF_BOARD_RM_DELETE";
+export const FF_BOARD_RENAME = "FF_BOARD_RENAME";
+export const FF_BOARD_SWITCH = "FF_BOARD_SWITCH";
 
 const flagRegistry = new Map<string, boolean>();
 const flagOverrides = new Map<string, boolean>();
@@ -65,3 +67,5 @@ registerFlag(FF_MODEL_OVERRIDE, false);
 registerFlag(FF_MAX_RETRIES, false);
 registerFlag(FF_BOARD_METADATA, false);
 registerFlag(FF_BOARD_RM_DELETE, false);
+registerFlag(FF_BOARD_RENAME, false);
+registerFlag(FF_BOARD_SWITCH, false);

@@ -1200,4 +1200,185 @@ describe("kdi e2e acceptance", () => {
     rmSync(tmp, { recursive: true, force: true });
   });
 
+
+  it("boards switch writes current board and boards show reads it", () => {
+    const tmp = makeTempDir("boards-switch");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_BOARD_SWITCH: "true" };
+
+    runKdi(`boards create alpha --workdir ${repoDir}`, env);
+    runKdi(`boards create beta --workdir ${repoDir}`, env);
+
+    // Before switching, show without slug should resolve via chain (no current file yet -> "default")
+    expect(() => runKdi(`boards show`, env)).toThrow(/not found/);
+
+    // Switch to alpha
+    const switchOutput1 = runKdi(`boards switch alpha`, env);
+    expect(switchOutput1).toContain("Switched to board");
+
+    // boards show (without args) shows alpha
+    const showOutput1 = runKdi(`boards show`, env);
+    expect(showOutput1).toContain("Board: alpha");
+
+    // Switch to beta
+    runKdi(`boards switch beta`, env);
+    const showOutput2 = runKdi(`boards show`, env);
+    expect(showOutput2).toContain("Board: beta");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("board resolution chain: --board overrides current", () => {
+    const tmp = makeTempDir("boards-chain-explicit");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_BOARD_SWITCH: "true" };
+
+    runKdi(`boards create alpha --workdir ${repoDir}`, env);
+    runKdi(`boards create beta --workdir ${repoDir}`, env);
+
+    // Switch to alpha
+    runKdi(`boards switch alpha`, env);
+
+    // Create with explicit --board beta should go to beta
+    const taskId = runKdi(`create "explicit board task" --board beta`, env);
+    const showOutput = runKdi(`show ${taskId}`, env);
+    expect(showOutput).toContain("Title: explicit board task");
+
+    // show board beta should have the task
+    const boardShow = runKdi(`boards show beta`, env);
+    expect(boardShow).toMatch(/todo:\s+1/);
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("board resolution chain: KDI_BOARD env overrides current file", () => {
+    const tmp = makeTempDir("boards-chain-env");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+
+    runKdi(`boards create alpha --workdir ${repoDir}`, { KDI_DB: dbPath, HOME: tmp, FF_BOARD_SWITCH: "true" });
+    runKdi(`boards create beta --workdir ${repoDir}`, { KDI_DB: dbPath, HOME: tmp, FF_BOARD_SWITCH: "true" });
+
+    // Switch to alpha
+    runKdi(`boards switch alpha`, { KDI_DB: dbPath, HOME: tmp, FF_BOARD_SWITCH: "true" });
+
+    // Create with KDI_BOARD=beta should use beta
+    const taskId = runKdi(
+      `create "env board task"`,
+      { KDI_DB: dbPath, HOME: tmp, KDI_BOARD: "beta" }
+    );
+    const showOutput = runKdi(`show ${taskId}`, { KDI_DB: dbPath, HOME: tmp });
+    expect(showOutput).toContain("Title: env board task");
+
+    // show board beta should have the task
+    const boardShow = runKdi(`boards show beta`, { KDI_DB: dbPath, HOME: tmp });
+    expect(boardShow).toMatch(/todo:\s+1/);
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("board resolution chain falls through to current file when no --board or KDI_BOARD", () => {
+    const tmp = makeTempDir("boards-chain-current");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_BOARD_SWITCH: "true" };
+
+    runKdi(`boards create alpha --workdir ${repoDir}`, env);
+    runKdi(`boards create beta --workdir ${repoDir}`, env);
+
+    // Switch to beta
+    runKdi(`boards switch beta`, env);
+
+    // Create without --board and without KDI_BOARD should use current (beta)
+    const taskId = runKdi(`create "current board task"`, env);
+    const showOutput = runKdi(`show ${taskId}`, env);
+    expect(showOutput).toContain("Title: current board task");
+
+    // show board beta should have the task
+    const boardShow = runKdi(`boards show beta`, env);
+    expect(boardShow).toMatch(/todo:\s+1/);
+
+    // show board alpha should NOT have the task
+    const boardShowAlpha = runKdi(`boards show alpha`, env);
+    expect(boardShowAlpha).toMatch(/todo:\s+0/);
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("boards switch rejects invalid slug", () => {
+    const tmp = makeTempDir("boards-switch-invalid");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_BOARD_SWITCH: "true" };
+
+    runKdi(`boards create valid --workdir ${repoDir}`, env);
+
+    expect(() => runKdi(`boards switch ../evil`, env)).toThrow(/Invalid board slug/);
+    expect(() => runKdi(`boards switch ""`, env)).toThrow();
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("boards switch rejects non-existent board", () => {
+    const tmp = makeTempDir("boards-switch-nonexistent");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_BOARD_SWITCH: "true" };
+
+    expect(() => runKdi(`boards switch missing`, env)).toThrow(/not found/);
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("boards switch is rejected when flag disabled", () => {
+    const tmp = makeTempDir("boards-switch-disabled");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_BOARD_SWITCH: "false" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    expect(() => runKdi(`boards switch myproj`, env)).toThrow(/not enabled/);
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("list command resolves board via chain", () => {
+    const tmp = makeTempDir("list-chain");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    runKdi(`create "task 1" --board myproj`, env);
+    runKdi(`create "task 2" --board myproj`, env);
+
+    // List without --board should use default (doesn't exist) -> error
+    expect(() => runKdi(`list`, env)).toThrow(/not found/);
+
+    // List with --board works
+    const listOutput = runKdi(`list --board myproj`, env);
+    expect(listOutput).toContain("task 1");
+    expect(listOutput).toContain("task 2");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
 });

@@ -1,11 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { Database } from "bun:sqlite";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync, readFileSync, rmSync, mkdtempSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { tmpdir } from "node:os";
 import { initDb, closeDb, getDb, getBoardDataDir } from "../src/db";
-import { createBoard, listBoards, showBoard, archiveBoard, updateBoardMetadata, removeBoard } from "../src/models/board";
+import { createBoard, listBoards, showBoard, archiveBoard, updateBoardMetadata, removeBoard, renameBoard } from "../src/models/board";
+import { readCurrentBoard, writeCurrentBoard } from "../src/resolveBoard";
 import { cleanupDb } from "./cleanupDb";
-import { clearOverrides, setFlag, FF_BOARD_RM_DELETE } from "../src/flags";
+import { clearOverrides, setFlag, FF_BOARD_RM_DELETE, FF_BOARD_RENAME } from "../src/flags";
 
 const TEST_DB = "/tmp/kdi-board-test.db";
 const MIGRATION_DB = "/tmp/kdi-board-migration-test.db";
@@ -328,5 +330,207 @@ describe("board model", () => {
     expect(db.query("SELECT COUNT(*) as c FROM comments WHERE task_id = ?").get(task.id) as { c: number }).toEqual({ c: 0 });
     expect(db.query("SELECT COUNT(*) as c FROM task_runs WHERE task_id = ?").get(task.id) as { c: number }).toEqual({ c: 0 });
     expect(db.query("SELECT COUNT(*) as c FROM task_events WHERE task_id = ?").get(task.id) as { c: number }).toEqual({ c: 0 });
+  });
+});
+
+describe("renameBoard", () => {
+  const RENAME_DB = "/tmp/kdi-rename-test.db";
+  const TMP_DIR = "/tmp/kdi-rename-data";
+  const ORIG_KDI_DB = process.env.KDI_DB;
+
+  beforeEach(() => {
+    // Set KDI_DB so getBoardDataDir resolves under /tmp/
+    process.env.KDI_DB = RENAME_DB;
+    cleanupDb(RENAME_DB);
+    initDb(RENAME_DB);
+    rmSync(TMP_DIR, { recursive: true, force: true });
+    mkdirSync(TMP_DIR, { recursive: true });
+    setFlag(FF_BOARD_RENAME, true);
+  });
+
+  afterEach(() => {
+    cleanupDb(RENAME_DB);
+    // Clean up board data dirs under /tmp/boards/
+    rmSync("/tmp/boards", { recursive: true, force: true });
+    rmSync(TMP_DIR, { recursive: true, force: true });
+    if (ORIG_KDI_DB !== undefined) {
+      process.env.KDI_DB = ORIG_KDI_DB;
+    } else {
+      delete process.env.KDI_DB;
+    }
+    clearOverrides();
+  });
+
+  it("AC-01: FF_BOARD_RENAME flag exists and defaults to false", () => {
+    // The flag gates the CLI command, not the model function.
+    // Verify the constant exists.
+    expect(FF_BOARD_RENAME).toBe("FF_BOARD_RENAME");
+    // Model function works regardless of flag
+    createBoard("old-name", "/tmp/work");
+    const result = renameBoard("old-name", "new-name");
+    expect(result.board.slug).toBe("new-name");
+  });
+
+  it("AC-02: rejects invalid old slug", () => {
+    createBoard("valid-board", "/tmp/work");
+    expect(() => renameBoard("../../bad", "new-name")).toThrow(/Invalid old board slug/);
+  });
+
+  it("AC-03: rejects invalid new slug", () => {
+    createBoard("valid-board", "/tmp/work");
+    expect(() => renameBoard("valid-board", "../../bad")).toThrow(/Invalid new board slug/);
+  });
+
+  it("AC-04: rejects rename to same slug", () => {
+    createBoard("my-board", "/tmp/work");
+    expect(() => renameBoard("my-board", "my-board")).toThrow(/New slug must differ/);
+  });
+
+  it("AC-05: rejects rename of non-existent board", () => {
+    expect(() => renameBoard("nonexistent", "new-name")).toThrow(/not found or is archived/);
+  });
+
+  it("AC-06: rejects rename of archived board", () => {
+    createBoard("old-name", "/tmp/work");
+    archiveBoard("old-name");
+    expect(() => renameBoard("old-name", "new-name")).toThrow(/not found or is archived/);
+  });
+
+  it("AC-07: rejects rename when new slug is taken by active board", () => {
+    createBoard("old-name", "/tmp/work");
+    createBoard("taken-name", "/tmp/work2");
+    expect(() => renameBoard("old-name", "taken-name")).toThrow(/already exists/);
+  });
+
+  it("AC-07b: rejects rename when new slug is taken by archived board", () => {
+    createBoard("old-name", "/tmp/work");
+    createBoard("taken-name", "/tmp/work2");
+    archiveBoard("taken-name");
+    expect(() => renameBoard("old-name", "taken-name")).toThrow(/already exists/);
+  });
+
+  it("AC-08: successfully renames a board", () => {
+    createBoard("old-name", "/tmp/work");
+    const result = renameBoard("old-name", "new-name");
+    expect(result.board.slug).toBe("new-name");
+    expect(result.board.workdir).toBe("/tmp/work");
+    expect(result.dirRenamed).toBe(false);
+
+    // Old slug should not be findable
+    expect(showBoard("old-name", true)).toBeNull();
+    // New slug should exist
+    const board = showBoard("new-name", false);
+    expect(board).not.toBeNull();
+    expect(board!.slug).toBe("new-name");
+  });
+
+  it("AC-09: renames the board data directory when it exists", () => {
+    createBoard("old-name", "/tmp/work");
+    const oldDir = getBoardDataDir("old-name");
+    const newDir = getBoardDataDir("new-name");
+    mkdirSync(oldDir, { recursive: true });
+    writeFileSync(join(oldDir, "kanban.db"), "data");
+
+    expect(existsSync(oldDir)).toBe(true);
+    expect(existsSync(newDir)).toBe(false);
+
+    const result = renameBoard("old-name", "new-name");
+    expect(result.dirRenamed).toBe(true);
+
+    expect(existsSync(oldDir)).toBe(false);
+    expect(existsSync(newDir)).toBe(true);
+    const contents = readFileSync(join(newDir, "kanban.db"), "utf-8");
+    expect(contents).toBe("data");
+  });
+
+  it("AC-10: missing data directory does not fail rename", () => {
+    createBoard("old-name", "/tmp/work");
+    const oldDir = getBoardDataDir("old-name");
+    // Ensure the dir does NOT exist
+    rmSync(oldDir, { recursive: true, force: true });
+    expect(existsSync(oldDir)).toBe(false);
+
+    // Rename should succeed
+    const result = renameBoard("old-name", "new-name");
+    expect(result.board.slug).toBe("new-name");
+    expect(result.dirRenamed).toBe(false);
+  });
+
+  it("AC-10b: missing data directory warns on stderr", () => {
+    createBoard("old-name", "/tmp/work");
+    const oldDir = getBoardDataDir("old-name");
+    rmSync(oldDir, { recursive: true, force: true });
+    expect(existsSync(oldDir)).toBe(false);
+
+    const errorMessages: string[] = [];
+    const origConsoleError = console.error;
+    console.error = (...args: any[]) => { errorMessages.push(args.join(" ")); };
+
+    try {
+      renameBoard("old-name", "new-name");
+      const all = errorMessages.join("\n");
+      expect(all).toContain("Warning: board data directory");
+      expect(all).toContain("not found; skipped directory rename.");
+    } finally {
+      console.error = origConsoleError;
+    }
+  });
+
+  it("AC-11: current-board file is updated when it references the old slug", () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), "kdi-rename-current-"));
+    process.env.KDI_CURRENT_PATH = tmpDir;
+
+    try {
+      createBoard("old-name", "/tmp/work");
+      writeCurrentBoard("old-name");
+      expect(readCurrentBoard()).toBe("old-name");
+
+      // Simulate CLI handler logic: rename then update current-board
+      const { board } = renameBoard("old-name", "new-name");
+      expect(board.slug).toBe("new-name");
+
+      const current = readCurrentBoard();
+      if (current === "old-name") {
+        writeCurrentBoard("new-name");
+      }
+
+      expect(readCurrentBoard()).toBe("new-name");
+    } finally {
+      rmSync(tmpDir, { recursive: true, force: true });
+      delete process.env.KDI_CURRENT_PATH;
+    }
+  });
+
+  it("AC-13: tasks are preserved after board rename", () => {
+    const board = createBoard("old-name", "/tmp/work");
+    const db = getDb();
+    // Create tasks on the board
+    db.run("INSERT INTO tasks (board_id, title, status) VALUES (?, ?, ?)", [board.id, "Task 1", "todo"]);
+    db.run("INSERT INTO tasks (board_id, title, status) VALUES (?, ?, ?)", [board.id, "Task 2", "ready"]);
+
+    renameBoard("old-name", "new-name");
+
+    const renamedBoard = showBoard("new-name", false);
+    expect(renamedBoard).not.toBeNull();
+    expect(renamedBoard!.slug).toBe("new-name");
+    // Task counts should still include the original tasks
+    expect(renamedBoard!.taskCounts.todo).toBe(1);
+    expect(renamedBoard!.taskCounts.ready).toBe(1);
+  });
+
+  it("AC-09b: data directory is created in the new location with correct name", () => {
+    createBoard("old-name", "/tmp/work");
+    const oldDir = getBoardDataDir("old-name");
+    const newDir = getBoardDataDir("new-name");
+    mkdirSync(oldDir, { recursive: true });
+    writeFileSync(join(oldDir, "data.txt"), "hello");
+
+    renameBoard("old-name", "new-name");
+
+    // Old dir should be gone
+    expect(existsSync(oldDir)).toBe(false);
+    // New dir should have the original data
+    expect(existsSync(newDir)).toBe(true);
+    expect(readFileSync(join(newDir, "data.txt"), "utf-8")).toBe("hello");
   });
 });

@@ -1,5 +1,5 @@
 import { getDb, getBoardDataDir } from "../db";
-import { rmSync } from "node:fs";
+import { existsSync, renameSync, rmSync } from "node:fs";
 import { assertValidBoardSlug } from "../slugs";
 
 export interface Board {
@@ -198,6 +198,57 @@ export function archiveBoard(slug: string): void {
   if (result.changes === 0) {
     throw new Error(`Board "${slug}" not found or already archived`);
   }
+}
+
+export interface RenameBoardResult {
+  board: Board;
+  dirRenamed: boolean;
+}
+
+export function renameBoard(oldSlug: string, newSlug: string): RenameBoardResult {
+  assertValidBoardSlug(oldSlug, "old board slug");
+  assertValidBoardSlug(newSlug, "new board slug");
+
+  if (oldSlug === newSlug) {
+    throw new Error("New slug must differ from the current slug.");
+  }
+
+  // Check new slug is not taken by any board (archived or not)
+  const existing = showBoard(newSlug, true);
+  if (existing) {
+    throw new Error(`Board with slug "${newSlug}" already exists.`);
+  }
+
+  // Check old board exists and is not archived
+  const board = showBoard(oldSlug, false);
+  if (!board) {
+    throw new Error(`Board "${oldSlug}" not found or is archived.`);
+  }
+
+  const db = getDb();
+  db.run("UPDATE boards SET slug = ? WHERE slug = ? AND archived_at IS NULL", [newSlug, oldSlug]);
+
+  // Rename board data directory if it exists
+  const oldDir = getBoardDataDir(oldSlug);
+  const newDir = getBoardDataDir(newSlug);
+  let dirRenamed = false;
+  if (existsSync(oldDir)) {
+    try {
+      renameSync(oldDir, newDir);
+      dirRenamed = true;
+    } catch (fsErr: any) {
+      console.error(`Warning: failed to rename board data directory: ${fsErr.message}`);
+    }
+  } else {
+    console.error(`Warning: board data directory "${oldDir}" not found; skipped directory rename.`);
+  }
+
+  const updated = showBoard(newSlug, false);
+  if (!updated) {
+    throw new Error(`Board "${newSlug}" not found after rename.`);
+  }
+
+  return { board: updated, dirRenamed };
 }
 
 export function removeBoard(slug: string, hardDelete: boolean): void {
