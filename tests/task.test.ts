@@ -170,6 +170,32 @@ describe("task model", () => {
     expect(task.model_override).toBeNull();
   });
 
+  it("createTask stores max_retries", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Retry me", max_retries: 3 });
+    expect(task.max_retries).toBe(3);
+
+    const fetched = showTask(task.id);
+    expect(fetched).not.toBeNull();
+    expect(fetched!.max_retries).toBe(3);
+  });
+
+  it("createTask defaults max_retries to null", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "No retry cap" });
+    expect(task.max_retries).toBeNull();
+  });
+
+  it("createTask defaults consecutive_failures to 0", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "No failures" });
+    expect(task.consecutive_failures).toBe(0);
+
+    const fetched = showTask(task.id);
+    expect(fetched).not.toBeNull();
+    expect(fetched!.consecutive_failures).toBe(0);
+  });
+
   it("parseDuration accepts raw seconds", () => {
     expect(parseDuration("300")).toBe(300);
     expect(parseDuration("1")).toBe(1);

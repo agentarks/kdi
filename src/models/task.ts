@@ -6,7 +6,7 @@ export const TASK_COLUMNS =
   "id, board_id, title, body, assignee, status, priority, tenant, " +
   "workspace_kind, branch, result, summary, block_reason, schedule_reason, review_reason, " +
   "created_by, created_at, updated_at, started_at, archived_at, current_run_id, " +
-  "claim_lock, claim_expires, last_heartbeat_at, max_runtime_seconds, idempotency_key, model_override, scheduled_at, skills";
+  "claim_lock, claim_expires, last_heartbeat_at, max_runtime_seconds, max_retries, consecutive_failures, idempotency_key, model_override, scheduled_at, skills";
 
 export interface Task {
   id: number;
@@ -36,6 +36,8 @@ export interface Task {
   claim_expires: number | null;
   last_heartbeat_at: number | null;
   max_runtime_seconds: number | null;
+  max_retries: number | null;
+  consecutive_failures: number;
   idempotency_key: string | null;
   model_override: string | null;
 }
@@ -56,6 +58,7 @@ export interface CreateTaskInput {
   idempotency_key?: string;
   scheduled_at?: number;
   max_runtime_seconds?: number;
+  max_retries?: number;
   skills?: string[];
   created_by?: string;
   model_override?: string;
@@ -150,8 +153,8 @@ export function createTask(input: CreateTaskInput): Task {
 
   const insert = db.transaction(() => {
     const result = db.run(
-      `INSERT INTO tasks (board_id, title, body, assignee, status, priority, tenant, workspace_kind, branch, idempotency_key, scheduled_at, created_by, max_runtime_seconds, skills, model_override)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO tasks (board_id, title, body, assignee, status, priority, tenant, workspace_kind, branch, idempotency_key, scheduled_at, created_by, max_runtime_seconds, max_retries, skills, model_override)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         input.board_id,
         input.title,
@@ -166,6 +169,7 @@ export function createTask(input: CreateTaskInput): Task {
         input.scheduled_at ?? null,
         createdBy,
         input.max_runtime_seconds ?? null,
+        input.max_retries ?? null,
         skillsJson,
         input.model_override ?? null,
       ]
@@ -217,6 +221,8 @@ export function createTask(input: CreateTaskInput): Task {
     claim_expires: null,
     last_heartbeat_at: null,
     max_runtime_seconds: input.max_runtime_seconds ?? null,
+    max_retries: input.max_retries ?? null,
+    consecutive_failures: 0,
     idempotency_key: input.idempotency_key ?? null,
     model_override: input.model_override ?? null,
   };
@@ -289,6 +295,8 @@ function parseSkills(raw: unknown): string[] {
 export function hydrateTask(raw: unknown): Task {
   const task = raw as Task;
   task.skills = parseSkills(task.skills);
+  task.consecutive_failures = Number(task.consecutive_failures ?? 0);
+  task.max_retries = task.max_retries === null || task.max_retries === undefined ? null : Number(task.max_retries);
   return task;
 }
 

@@ -150,7 +150,7 @@ function getBoardSlug(boardId: number): string | null {
 function finishTask(id: number, result: string, runId: number | null): void {
   const db = getDb();
   db.run(
-    `UPDATE tasks SET status = 'done', result = ?, summary = ?, claim_lock = NULL, claim_expires = NULL, updated_at = unixepoch() WHERE id = ?`,
+    `UPDATE tasks SET status = 'done', result = ?, summary = ?, consecutive_failures = 0, claim_lock = NULL, claim_expires = NULL, updated_at = unixepoch() WHERE id = ?`,
     [result, result.slice(0, 200), id]
   );
   if (runId !== null) {
@@ -159,36 +159,57 @@ function finishTask(id: number, result: string, runId: number | null): void {
   addEvent(id, "finished", { outcome: "completed" }, runId ?? undefined);
 }
 
-function failTask(id: number, result: string, reason: string, runId: number | null): void {
-  const db = getDb();
-  db.run(
-    `UPDATE tasks SET status = 'blocked', result = ?, block_reason = ?, claim_lock = NULL, claim_expires = NULL, started_at = NULL, updated_at = unixepoch() WHERE id = ?`,
-    [result, reason, id]
-  );
-  let outcome: Parameters<typeof finishRun>[1] = "blocked";
-  if (reason.includes("spawn")) {
-    outcome = "spawn_failed";
-  } else if (reason.includes("timed out") || reason.includes("timeout")) {
-    outcome = "timed_out";
-  } else if (reason.includes("crashed")) {
-    outcome = "crashed";
-  }
-  if (runId !== null) {
-    finishRun(runId, outcome, null, null, reason);
-  }
-  addEvent(id, "finished", { outcome, reason }, runId ?? undefined);
+function determineOutcome(reason: string): Parameters<typeof finishRun>[1] {
+  if (reason.includes("spawn")) return "spawn_failed";
+  if (reason.includes("timed out") || reason.includes("timeout")) return "timed_out";
+  if (reason.includes("crashed")) return "crashed";
+  return "blocked";
 }
 
-function requeueTask(id: number, reason: string, runId: number | null): void {
+function blockTask(id: number, result: string, blockReason: string, runError: string, runId: number | null, consecutiveFailures: number): void {
   const db = getDb();
   db.run(
-    `UPDATE tasks SET status = 'ready', result = ?, claim_lock = NULL, claim_expires = NULL, started_at = NULL, updated_at = unixepoch() WHERE id = ?`,
-    [reason, id]
+    `UPDATE tasks SET status = 'blocked', result = ?, block_reason = ?, consecutive_failures = ?, claim_lock = NULL, claim_expires = NULL, started_at = NULL, updated_at = unixepoch() WHERE id = ?`,
+    [result, blockReason, consecutiveFailures, id]
+  );
+  const outcome = determineOutcome(runError);
+  if (runId !== null) {
+    finishRun(runId, outcome, null, null, runError);
+  }
+  addEvent(id, "blocked", { reason: blockReason, run_error: runError, consecutive_failures: consecutiveFailures }, runId ?? undefined);
+}
+
+function requeueTask(id: number, reason: string, runId: number | null, consecutiveFailures?: number): void {
+  const db = getDb();
+  const updates = ["status = 'ready'", "result = ?", "claim_lock = NULL", "claim_expires = NULL", "started_at = NULL", "updated_at = unixepoch()"];
+  const params: any[] = [reason];
+  if (consecutiveFailures !== undefined) {
+    updates.push("consecutive_failures = ?");
+    params.push(consecutiveFailures);
+  }
+  params.push(id);
+  db.run(
+    `UPDATE tasks SET ${updates.join(", ")} WHERE id = ?`,
+    params
   );
   if (runId !== null) {
     finishRun(runId, "reclaimed", null, null, reason);
   }
-  addEvent(id, "reclaimed", { reason }, runId ?? undefined);
+  addEvent(id, "reclaimed", { reason, consecutive_failures: consecutiveFailures }, runId ?? undefined);
+}
+
+function handleFailure(task: Task, result: string, reason: string, runId: number | null): void {
+  const consecutiveFailures = task.consecutive_failures + 1;
+  const hasMaxRetries = task.max_retries !== null && task.max_retries !== undefined;
+
+  if (hasMaxRetries && consecutiveFailures >= task.max_retries!) {
+    const blockReason = `Circuit breaker: ${consecutiveFailures} consecutive failures`;
+    blockTask(task.id, result, blockReason, reason, runId, consecutiveFailures);
+  } else if (hasMaxRetries) {
+    requeueTask(task.id, reason, runId, consecutiveFailures);
+  } else {
+    blockTask(task.id, result, reason, reason, runId, consecutiveFailures);
+  }
 }
 
 function reapStaleClaims(): void {
@@ -257,7 +278,7 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
 
     const workdir = getBoardWorkdir(task.board_id);
     if (!workdir) {
-      failTask(task.id, "", "Board not found or archived", runId);
+      handleFailure(task, "", "Board not found or archived", runId);
       spawned++;
       continue;
     }
@@ -268,7 +289,7 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
     try {
       profile = getProfile(task.assignee ?? "opencode");
     } catch {
-      failTask(task.id, "", `Unknown profile: ${task.assignee ?? "opencode"}`, runId);
+      handleFailure(task, "", `Unknown profile: ${task.assignee ?? "opencode"}`, runId);
       spawned++;
       continue;
     }
@@ -279,7 +300,7 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
     try {
       worktreePath = doCreateWorktree(workdir, profile.name, String(task.id), baseRef);
     } catch (err: any) {
-      failTask(task.id, "", `Worktree creation failed: ${err.message}`, runId);
+      handleFailure(task, "", `Worktree creation failed: ${err.message}`, runId);
       spawned++;
       continue;
     }
@@ -324,13 +345,13 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
         requeueTask(task.id, `Rate-limited (EX_TEMPFAIL), requeued to ready: ${stderr || stdout}`, runId);
       } else {
         recordAgentError(profile.agent ?? profile.name);
-        failTask(task.id, stdout, `Harness failed (exit ${exitCode}): ${stderr || "unknown error"}`, runId);
+        handleFailure(task, stdout, `Harness failed (exit ${exitCode}): ${stderr || "unknown error"}`, runId);
       }
 
       spawned++;
     } catch (err: any) {
       recordAgentError(profile.agent ?? profile.name);
-      failTask(task.id, "", `Harness execution failed: ${err.message}`, runId);
+      handleFailure(task, "", `Harness execution failed: ${err.message}`, runId);
       spawned++;
     } finally {
       try {

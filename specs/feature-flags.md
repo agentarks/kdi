@@ -37,6 +37,7 @@ stateDiagram-v2
 | `ff_skills_array` | `FF_SKILLS_ARRAY` | CLI / create, dispatcher | InDev | `false` | KDI-009 | Skills array on tasks; `create --skill`; dispatcher passes skills to harness via `{{skills}}` and `KDI_SKILLS`. |
 | `ff_max_runtime` | `FF_MAX_RUNTIME` | CLI / create + dispatcher | InDev | `false` | KDI-008 | Per-task max runtime cap; dispatcher SIGTERMs/SIGKILLs worker when exceeded. |
 | `ff_model_override` | `FF_MODEL_OVERRIDE` | CLI / create + dispatcher | InDev | `false` | KDI-010 | Per-task model override; `create --model`; dispatcher passes `{{model}}` and `KDI_MODEL` to harness. |
+| `ff_max_retries` | `FF_MAX_RETRIES` | CLI / create + dispatcher | InDev | `false` | KDI-011 | Per-task max retries; auto-block after N consecutive spawn/execution failures. |
 
 ## Lifecycle Notes
 
@@ -153,6 +154,20 @@ stateDiagram-v2
   - `kdi show` displays the model override when the flag is enabled.
   - Dispatcher substitutes `{{model}}` in profile commands and sets `KDI_MODEL` env var for the harness process.
 - **Rollback / deactivation:** Set `FF_MODEL_OVERRIDE=false` to hide/gate the `--model` option and dispatcher model pass-through.
+- **Deprecation plan:** N/A
+
+### `ff_max_retries` — InDev
+
+- **Owner:** kdi core team
+- **BRD:** KDI-011
+- **Status transitions:**
+  - `Planned` → `InDev` when `max_retries` and `consecutive_failures` columns, `create --max-retries`, and dispatcher circuit breaker are implemented.
+- **Schema note:** `max_retries` and `consecutive_failures` are schema-level INTEGER columns on `tasks` — this flag gates the CLI option and dispatcher retry behavior; the schema migrations always run.
+- **Activation criteria:**
+  - `create --max-retries <n>` stores `max_retries` on the task.
+  - Dispatcher requeues failed tasks up to `max_retries` consecutive failures, then blocks them.
+  - Successful harness runs reset `consecutive_failures` to 0.
+- **Rollback / deactivation:** Set `FF_MAX_RETRIES=false` to hide/gate the `--max-retries` option.
 - **Deprecation plan:** N/A
 
 ### `ff_kanban_dispatch` — Planned
