@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { initDb, closeDb, getDb } from "../src/db";
+import { initDb, closeDb, getDb, getBoardDataDir } from "../src/db";
 import { createBoard, listBoards, showBoard, archiveBoard } from "../src/models/board";
 import { cleanupDb } from "./cleanupDb";
 
@@ -28,6 +28,14 @@ describe("board model", () => {
   it("createBoard accepts custom base_ref", () => {
     const board = createBoard("beta", "/tmp/beta", "origin/develop");
     expect(board.base_ref).toBe("origin/develop");
+  });
+
+  it("createBoard rejects path traversal slugs", () => {
+    expect(() => createBoard("../../bad", "/tmp/bad")).toThrow(/Invalid board slug/);
+  });
+
+  it("getBoardDataDir rejects path traversal slugs", () => {
+    expect(() => getBoardDataDir("../")).toThrow(/Invalid board slug/);
   });
 
   it("listBoards excludes archived boards by default", () => {

@@ -1,4 +1,5 @@
 import { getDb } from "../db";
+import { assertValidBoardSlug } from "../slugs";
 
 export interface Board {
   id: number;
@@ -24,6 +25,7 @@ export interface BoardWithTaskCounts extends Board {
 }
 
 export function createBoard(slug: string, workdir: string, baseRef: string = "origin/main"): Board {
+  assertValidBoardSlug(slug);
   const db = getDb();
   try {
     const result = db.run(

@@ -1,9 +1,9 @@
 import { appendFileSync, mkdirSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { assertValidBoardSlug } from "./slugs";
 
 const MAX_LOG_SIZE = 10 * 1024 * 1024; // 10MB
-const SLUG_RE = /^[a-zA-Z0-9_-]+$/;
 
 export interface MetricsSnapshot {
   ticks: number;
@@ -100,16 +100,12 @@ export function getLogPath(boardSlug: string): string {
 }
 
 export function getTaskLogPath(boardSlug: string, taskId: number): string {
-  if (!SLUG_RE.test(boardSlug)) {
-    throw new Error(`Invalid boardSlug: ${boardSlug}`);
-  }
+  assertValidBoardSlug(boardSlug, "boardSlug");
   return join(process.env.HOME || homedir(), ".local", "share", "kdi", "logs", boardSlug, `${taskId}.log`);
 }
 
 export function logToBoard(boardSlug: string, message: string): void {
-  if (!SLUG_RE.test(boardSlug)) {
-    throw new Error(`Invalid boardSlug: ${boardSlug}`);
-  }
+  assertValidBoardSlug(boardSlug, "boardSlug");
   const logPath = getLogPath(boardSlug);
   const logDir = dirname(logPath);
   mkdirSync(logDir, { recursive: true });

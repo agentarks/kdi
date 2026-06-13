@@ -1,5 +1,6 @@
 import { Command } from "commander";
 import { createBoard, listBoards, showBoard, archiveBoard } from "../models/board";
+import { assertValidBoardSlug } from "../slugs";
 
 export const boardsCommand = new Command("boards")
   .description("Manage kanban boards");
@@ -11,6 +12,7 @@ boardsCommand
   .option("--base-ref <ref>", "Git base ref for worktrees (default: origin/main)", "origin/main")
   .action((slug: string, options: { workdir: string; baseRef: string }) => {
     try {
+      assertValidBoardSlug(slug);
       const board = createBoard(slug, options.workdir, options.baseRef);
       console.log(`Created board "${board.slug}" with workdir ${board.workdir} base-ref ${board.base_ref}`);
     } catch (err: any) {
