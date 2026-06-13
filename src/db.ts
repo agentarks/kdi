@@ -1,13 +1,17 @@
 import { Database } from "bun:sqlite";
 import { homedir } from "node:os";
 import { mkdirSync, openSync, closeSync, writeFileSync, readFileSync, unlinkSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 
 let dbInstance: Database | null = null;
 let currentDbPath: string | null = null;
 
 export function defaultDbPath(): string {
   return process.env.KDI_DB || process.env.KDI_DB_PATH || `${homedir()}/.local/share/kdi/kdi.db`;
+}
+
+export function getBoardDataDir(slug: string): string {
+  return join(dirname(defaultDbPath()), "boards", slug);
 }
 
 const SCHEMA = `

@@ -1,7 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
-import { initDb, closeDb, getDb } from "../src/db";
-import { createBoard, listBoards, showBoard, archiveBoard } from "../src/models/board";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { initDb, closeDb, getDb, getBoardDataDir } from "../src/db";
+import { createBoard, listBoards, showBoard, archiveBoard, removeBoard } from "../src/models/board";
 import { cleanupDb } from "./cleanupDb";
+import { clearOverrides, setFlag, FF_BOARD_RM_DELETE } from "../src/flags";
 
 const TEST_DB = "/tmp/kdi-board-test.db";
 
@@ -13,6 +16,7 @@ describe("board model", () => {
 
   afterEach(() => {
     cleanupDb(TEST_DB);
+    clearOverrides();
   });
 
   it("createBoard returns board with id, slug, workdir, base_ref, archived_at=null", () => {
@@ -121,5 +125,54 @@ describe("board model", () => {
 
   it("archiveBoard throws on non-existent slug", () => {
     expect(() => archiveBoard("nonexistent")).toThrow();
+  });
+
+  it("removeBoard soft-archives a board by default", () => {
+    createBoard("alpha", "/tmp/alpha");
+    removeBoard("alpha", false);
+
+    expect(showBoard("alpha")).toBeNull();
+    const archived = listBoards(true);
+    expect(archived.map(b => b.slug)).toContain("alpha");
+  });
+
+  it("removeBoard hard-deletes a board and its data directory", () => {
+    setFlag(FF_BOARD_RM_DELETE, true);
+    createBoard("alpha", "/tmp/alpha");
+    const boardDir = getBoardDataDir("alpha");
+    mkdirSync(boardDir, { recursive: true });
+    writeFileSync(join(boardDir, "kanban.db"), "dummy");
+
+    removeBoard("alpha", true);
+
+    expect(showBoard("alpha")).toBeNull();
+    expect(listBoards(true).map(b => b.slug)).not.toContain("alpha");
+    expect(existsSync(boardDir)).toBe(false);
+  });
+
+  it("removeBoard hard-delete throws on non-existent slug", () => {
+    setFlag(FF_BOARD_RM_DELETE, true);
+    expect(() => removeBoard("nonexistent", true)).toThrow(/not found/);
+  });
+
+  it("removeBoard hard-delete cascades to tasks and related rows", () => {
+    setFlag(FF_BOARD_RM_DELETE, true);
+    const board = createBoard("alpha", "/tmp/alpha");
+    const db = getDb();
+
+    db.run("INSERT INTO tasks (board_id, title, status) VALUES (?, ?, ?)", [board.id, "Task 1", "todo"]);
+    const task = db.query("SELECT id FROM tasks WHERE board_id = ?").get(board.id) as { id: number };
+    db.run("INSERT INTO comments (task_id, text) VALUES (?, ?)", [task.id, "comment"]);
+    db.run("INSERT INTO task_runs (task_id, status, started_at) VALUES (?, ?, ?)", [task.id, "done", Date.now()]);
+    const run = db.query("SELECT id FROM task_runs WHERE task_id = ?").get(task.id) as { id: number };
+    db.run("INSERT INTO task_events (task_id, run_id, kind) VALUES (?, ?, ?)", [task.id, run.id, "created"]);
+
+    removeBoard("alpha", true);
+
+    expect(showBoard("alpha")).toBeNull();
+    expect(db.query("SELECT COUNT(*) as c FROM tasks WHERE board_id = ?").get(board.id) as { c: number }).toEqual({ c: 0 });
+    expect(db.query("SELECT COUNT(*) as c FROM comments WHERE task_id = ?").get(task.id) as { c: number }).toEqual({ c: 0 });
+    expect(db.query("SELECT COUNT(*) as c FROM task_runs WHERE task_id = ?").get(task.id) as { c: number }).toEqual({ c: 0 });
+    expect(db.query("SELECT COUNT(*) as c FROM task_events WHERE task_id = ?").get(task.id) as { c: number }).toEqual({ c: 0 });
   });
 });

@@ -28,6 +28,7 @@ stateDiagram-v2
 | Flag | Env Var | Scope | Status | Default | Since | Description |
 |---|---|---|---|---|---|---|
 | `ff_created_by` | `FF_CREATED_BY` | CLI / task metadata | InDev | `false` | KDI-007 | Tracks and displays the actor that created a task. |
+| `ff_board_rm_delete` | `FF_BOARD_RM_DELETE` | CLI / board management | InDev | `false` | KDI-012c | Gates `boards rm --delete` permanent board deletion. |
 | `ff_complete_metadata` | `FF_COMPLETE_METADATA` | CLI / complete | InDev | `false` | KDI-005 | Gates --metadata option only. Base --result / --summary always available. |
 | `ff_kanban_dispatch` | `FF_ENABLE_KANBAN_DISPATCH` | CLI / dispatcher | Planned | `false` | — | Background dispatcher loop that polls ready tasks and spawns harness profiles. |
 | `ff_scheduled_status` | `FF_SCHEDULED_STATUS` | CLI / task lifecycle | InDev | `false` | KDI-002 | Scheduled status, schedule/unblock commands, and scheduled_at field. |
@@ -50,6 +51,18 @@ stateDiagram-v2
   - `list --created-by` filters tasks by creator.
   - `show` displays the creator when the flag is enabled.
 - **Rollback / deactivation:** Set `FF_CREATED_BY=false` to hide creator fields and reject creator options.
+- **Deprecation plan:** N/A
+
+### `ff_board_rm_delete` — InDev
+
+- **Owner:** kdi core team
+- **BRD:** KDI-012c
+- **Status transitions:**
+  - `InDev` → `Active` when permanent board deletion is safe to enable by default.
+- **Activation criteria:**
+  - `boards rm <slug> --delete` removes the board row and recursively deletes the board data directory.
+  - Without the flag, `--delete` is rejected with a clear error.
+- **Rollback / deactivation:** Set `FF_BOARD_RM_DELETE=false` to reject `--delete` and keep soft-archive as the only removal path.
 - **Deprecation plan:** N/A
 
 ### `ff_scheduled_status` — InDev
