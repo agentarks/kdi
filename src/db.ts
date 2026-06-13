@@ -227,6 +227,22 @@ export function initDb(path?: string): Database {
       dbInstance.exec("ALTER TABLE tasks ADD COLUMN review_reason TEXT");
     }
 
+    // Migrate: add max_retries and consecutive_failures if missing
+    const hasMaxRetries = tableInfo.some((col) => col.name === "max_retries");
+    if (!hasMaxRetries) {
+      dbInstance.exec("ALTER TABLE tasks ADD COLUMN max_retries INTEGER");
+    }
+    const hasConsecutiveFailures = tableInfo.some((col) => col.name === "consecutive_failures");
+    if (!hasConsecutiveFailures) {
+      dbInstance.exec("ALTER TABLE tasks ADD COLUMN consecutive_failures INTEGER NOT NULL DEFAULT 0");
+    }
+
+    // Migrate: add model_override if missing
+    const hasModelOverride = tableInfo.some((col) => col.name === "model_override");
+    if (!hasModelOverride) {
+      dbInstance.exec("ALTER TABLE tasks ADD COLUMN model_override TEXT");
+    }
+
     // Migrate: add skills if missing
     const hasSkills = tableInfo.some((col) => col.name === "skills");
     if (!hasSkills) {
@@ -251,16 +267,6 @@ export function initDb(path?: string): Database {
       dbInstance.exec("ALTER TABLE tasks ADD COLUMN created_by TEXT NOT NULL DEFAULT 'unknown'");
     }
     dbInstance.exec("CREATE INDEX IF NOT EXISTS idx_tasks_created_by ON tasks(board_id, created_by)");
-
-    // Migrate: add max_retries and consecutive_failures if missing
-    const hasMaxRetries = tableInfo.some((col) => col.name === "max_retries");
-    if (!hasMaxRetries) {
-      dbInstance.exec("ALTER TABLE tasks ADD COLUMN max_retries INTEGER");
-    }
-    const hasConsecutiveFailures = tableInfo.some((col) => col.name === "consecutive_failures");
-    if (!hasConsecutiveFailures) {
-      dbInstance.exec("ALTER TABLE tasks ADD COLUMN consecutive_failures INTEGER NOT NULL DEFAULT 0");
-    }
 
     // Migrate: add status column to task_runs if missing (for existing DBs)
     const runsTableInfo = dbInstance.query("PRAGMA table_info(task_runs)").all() as any[];
@@ -349,23 +355,6 @@ export function initDb(path?: string): Database {
         `);
       });
       migrate();
-    }
-
-    // Migrate: add max_retries and consecutive_failures if missing
-    const tableInfoAfterRecreate = dbInstance.query("PRAGMA table_info(tasks)").all() as any[];
-    const hasMaxRetries = tableInfoAfterRecreate.some((col) => col.name === "max_retries");
-    if (!hasMaxRetries) {
-      dbInstance.exec("ALTER TABLE tasks ADD COLUMN max_retries INTEGER");
-    }
-    const hasConsecutiveFailures = tableInfoAfterRecreate.some((col) => col.name === "consecutive_failures");
-    if (!hasConsecutiveFailures) {
-      dbInstance.exec("ALTER TABLE tasks ADD COLUMN consecutive_failures INTEGER NOT NULL DEFAULT 0");
-    }
-
-    // Migrate: add model_override if missing
-    const hasModelOverride = tableInfoAfterRecreate.some((col) => col.name === "model_override");
-    if (!hasModelOverride) {
-      dbInstance.exec("ALTER TABLE tasks ADD COLUMN model_override TEXT");
     }
 
     // Create indexes for columns that are added by migrations, so old databases
