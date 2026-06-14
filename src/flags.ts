@@ -20,6 +20,7 @@ export const FF_CRASH_GRACE_PERIOD = "FF_CRASH_GRACE_PERIOD";
 export const FF_HEARTBEAT = "FF_HEARTBEAT";
 export const FF_RATE_LIMIT_EXIT_CODE = "FF_RATE_LIMIT_EXIT_CODE";
 export const FF_STATS = "FF_STATS";
+export const FF_GC = "FF_GC";
 
 const flagRegistry = new Map<string, boolean>();
 const flagOverrides = new Map<string, boolean>();
@@ -83,3 +84,4 @@ registerFlag(FF_CRASH_GRACE_PERIOD, false);
 registerFlag(FF_HEARTBEAT, false);
 registerFlag(FF_RATE_LIMIT_EXIT_CODE, false);
 registerFlag(FF_STATS, false);
+registerFlag(FF_GC, false);
