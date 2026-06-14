@@ -45,6 +45,7 @@ stateDiagram-v2
 | `ff_board_switch` | `FF_BOARD_SWITCH` | CLI / board management | InDev | `false` | KDI-013 | Board switch command and resolution chain; `boards switch`, `boards show` without slug. |
 | `ff_board_rename` | `FF_BOARD_RENAME` | CLI / board management | InDev | `false` | KDI-014 | Board rename command; `boards rename <old> <new>` renames slug and data directory. |
 | `ff_default_workdir` | `FF_DEFAULT_WORKDIR` | CLI / board management + create | InDev | `false` | KDI-015 | Board default task workspace; `boards set-default-workdir`; create inheritance and `--workspace`. |
+| `ff_assignees_listing` | `FF_ASSIGNEES_LISTING` | CLI / observability | InDev | `false` | KDI-024 | `kdi assignees` lists known profiles plus per-profile task counts for the current board. |
 | `ff_heartbeat` | `FF_HEARTBEAT` | CLI / task lifecycle + dispatcher | InDev | `false` | KDI-016 | Worker heartbeat command and dispatcher stale-heartbeat reclaim. |
 | `ff_crash_grace_period` | `FF_CRASH_GRACE_PERIOD` | CLI / dispatcher | InDev | `false` | KDI-016b | Crash grace period for slow-starting harnesses; delay PID liveness checks for 30s after spawn. |
 | `ff_assign_reassign` | `FF_ASSIGN_REASSIGN` | CLI / task lifecycle | InDev | `false` | KDI-017 | Assign/reassign task assignee; `assign`, `reassign`, and `reassign --reclaim`. |
@@ -350,6 +351,20 @@ stateDiagram-v2
   - `kdi gc` cleans KDI-owned workspaces for archived tasks.
   - Flag gating rejects the command with a clear error when disabled.
 - **Rollback / deactivation:** Set `FF_GC=false` to reject the `gc` command.
+- **Deprecation plan:** N/A
+
+### `ff_assignees_listing` — InDev
+
+- **Owner:** kdi core team
+- **BRD:** KDI-024
+- **Status transitions:**
+  - `Planned` → `InDev` when `kdi assignees` command and assignee-count query are implemented.
+- **Schema note:** No schema changes; reads from the existing `tasks` table and `idx_tasks_assignee` index.
+- **Activation criteria:**
+  - `kdi assignees [--board <slug>]` lists known profiles merged with assignees present on the resolved board.
+  - Each listed profile shows the count of non-archived tasks assigned to it on that board.
+  - `--json` emits a stable JSON document with the board slug and an array of `{ profile, count }` rows.
+- **Rollback / deactivation:** Set `FF_ASSIGNEES_LISTING=false` to reject the `assignees` command.
 - **Deprecation plan:** N/A
 
 ### `ff_kanban_dispatch` — Planned
