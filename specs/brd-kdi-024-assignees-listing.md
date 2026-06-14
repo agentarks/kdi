@@ -96,20 +96,20 @@ Model Behavior
 -------------------------------------------------------------------------------
 Acceptance Criteria
 -------------------------------------------------------------------------------
-- [ ] `FF_ASSIGNEES_LISTING=true kdi assignees --board myproj` lists every
+- [x] `FF_ASSIGNEES_LISTING=true kdi assignees --board myproj` lists every
       known profile and board-only assignee with per-profile task counts.
-- [ ] `FF_ASSIGNEES_LISTING=true kdi assignees` resolves the board via the
+- [x] `FF_ASSIGNEES_LISTING=true kdi assignees` resolves the board via the
       standard chain.
-- [ ] `FF_ASSIGNEES_LISTING=true kdi assignees --json` returns valid JSON
+- [x] `FF_ASSIGNEES_LISTING=true kdi assignees --json` returns valid JSON
       matching the documented shape.
-- [ ] Counts include all non-archived tasks assigned to a profile.
-- [ ] Archived tasks are excluded from counts.
-- [ ] Unassigned tasks do not appear as an assignee row.
-- [ ] `FF_ASSIGNEES_LISTING=false kdi assignees` exits with "Assignees listing
+- [x] Counts include all non-archived tasks assigned to a profile.
+- [x] Archived tasks are excluded from counts.
+- [x] Unassigned tasks do not appear as an assignee row.
+- [x] `FF_ASSIGNEES_LISTING=false kdi assignees` exits with "Assignees listing
       feature is not enabled."
-- [ ] `kdi assignees` for an archived or non-existent board exits with a clear
+- [x] `kdi assignees` for an archived or non-existent board exits with a clear
       error.
-- [ ] Unit and CLI tests cover counts, JSON output, board resolution, archived
+- [x] Unit and CLI tests cover counts, JSON output, board resolution, archived
       exclusion, and flag gating.
 
 -------------------------------------------------------------------------------

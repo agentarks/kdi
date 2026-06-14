@@ -4,7 +4,7 @@ import { resolve, join } from "node:path";
 import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { initDb } from "../../src/db";
-import { createBoard } from "../../src/models/board";
+import { createBoard, showBoard } from "../../src/models/board";
 import { createTask, archiveTask, getAssigneeCounts } from "../../src/models/task";
 import { cleanupDb } from "../cleanupDb";
 import { clearOverrides } from "../../src/flags";
@@ -115,7 +115,9 @@ describe("assignees CLI", () => {
   it("excludes archived tasks from counts", () => {
     runKdi("boards create myproj --workdir /tmp/myproj");
     runKdi('create "kept" --board myproj --assignee alpha');
-    const toArchive = createTask({ board_id: 1, title: "old", assignee: "alpha" });
+    const board = showBoard("myproj", false);
+    expect(board).toBeDefined();
+    const toArchive = createTask({ board_id: board!.id, title: "old", assignee: "alpha" });
     archiveTask(toArchive.id);
 
     const output = runKdi("assignees --board myproj");
