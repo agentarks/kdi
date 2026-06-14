@@ -30,6 +30,8 @@ import {
 import { dispatchCommand } from "./commands/dispatch";
 import { initCommand } from "./commands/init";
 import { statsCommand } from "./commands/stats";
+import { gcCommand } from "./commands/gc";
+import { assigneesCommand } from "./commands/assignees";
 import { ensureProfiles } from "./profiles";
 const program = new Command();
 
@@ -75,8 +77,10 @@ program.addCommand(heartbeatTaskCommand);
 program.addCommand(logTaskCommand);
 program.addCommand(completeTaskCommand);
 program.addCommand(scheduleTaskCommand);
+program.addCommand(assigneesCommand);
 program.addCommand(initCommand);
 program.addCommand(dispatchCommand);
 program.addCommand(statsCommand);
+program.addCommand(gcCommand);
 
 program.parse();

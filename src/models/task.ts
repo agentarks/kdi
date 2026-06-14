@@ -286,6 +286,22 @@ export function listTasks(filter: ListTasksFilter): Task[] {
   return tasks.map(hydrateTask);
 }
 
+export function getAssigneeCounts(boardId: number): Record<string, number> {
+  const db = getDb();
+  const rows = db.query(
+    `SELECT assignee, COUNT(*) as count
+     FROM tasks
+     WHERE board_id = ? AND assignee IS NOT NULL AND archived_at IS NULL
+     GROUP BY assignee`
+  ).all(boardId) as { assignee: string; count: number }[];
+
+  const counts: Record<string, number> = {};
+  for (const row of rows) {
+    counts[row.assignee] = row.count;
+  }
+  return counts;
+}
+
 export function showTask(id: number): Task | null {
   const db = getDb();
   const task = db.query(

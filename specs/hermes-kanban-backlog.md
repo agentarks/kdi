@@ -435,7 +435,7 @@
   - 8 automated rules: `hallucinated_cards`, `triage_aux_unavailable`, `prose_phantom_refs`, `repeated_failures`, `repeated_crashes`, `stuck_in_blocked`, `block_unblock_cycling`, `stranded_in_ready`
   - Diagnostic actions: `reclaim`, `reassign`, `unblock`, `cli_hint`, `open_docs`, `comment`
 
-- [ ] **KDI-021: GC**
+- [x] **KDI-021: GC**
   - `kdi gc --event-retention-days 30 --log-retention-days 30`
   - Clean archived workspaces, old events, old logs
 
@@ -450,7 +450,7 @@
   - Bounded caps on all fields to prevent prompt overflow
   - Surfaces attachment absolute paths for file-tool access
 
-- [ ] **KDI-024: Assignees listing**
+- [x] **KDI-024: Assignees listing**
   - `kdi assignees` — list known profiles + per-profile task counts
   - Union of `~/.config/kdi/profiles/` and current board assignees
 
@@ -557,7 +557,7 @@
 | `hermes kanban context` | `kdi context` | Missing | KDI-023 |
 | `hermes kanban specify` | `kdi specify` | **Done** | KDI-001 (basic) |
 | `hermes kanban decompose` | `kdi decompose` | Missing | KDI-028 |
-| `hermes kanban gc` | `kdi gc` | Missing | KDI-021 |
+| `hermes kanban gc` | `kdi gc` | **Done** | KDI-021 |
 | `hermes kanban diagnostics` | `kdi diagnostics` | Missing | KDI-020 |
 | `hermes kanban notify-subscribe` | `kdi notify-subscribe` | Missing | KDI-025 |
 | `hermes kanban notify-unsubscribe` | `kdi notify-unsubscribe` | Missing | KDI-025 |
