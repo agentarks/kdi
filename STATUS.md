@@ -132,13 +132,23 @@
 
 ## Board Stats (KDI-019) — Done
 - [x] BRD drafted at `specs/brd-019-stats.md`
-- [x] Feature flag `ff_stats` / `FF_STATS` registered in `specs/feature-flags.md`, defaults to `false`
+- [x] Feature flag `ff_stats` / `FF_STATS` registered in `specs/feature-flags.md` and `src/flags.ts`, defaults to `false`
 - [x] `FF_STATS` constant added to `src/flags.ts`
 - [x] `kdi stats [--board <slug>]` command gated by `FF_STATS`
 - [x] `kdi stats` prints per-status counts, per-assignee counts, and oldest-ready age
 - [x] `kdi stats --json` emits stable JSON document
 - [x] Board resolved via standard chain
 - [x] Unit/CLI tests cover counts, JSON output, board resolution, and flag gating
+- [x] `bun run lint`, `bun run test`, `bun run build` pass
+
+## Task Attachments (KDI-022) — Done
+- [x] BRD drafted at `specs/brd-kdi-022-task-attachments.md`
+- [x] Feature flag `ff_task_attachments` / `FF_TASK_ATTACHMENTS` registered in `specs/feature-flags.md` and `src/flags.ts`, defaults to `false`
+- [x] `task_attachments` table + index added via schema + migration in `src/db.ts`
+- [x] `kdi attach <task_id> <file>` command copies file to board storage and records metadata
+- [x] `kdi show <id>` displays attachments when flag enabled
+- [x] Board hard-delete cascade-deletes attachment rows and on-disk `attachments/` directory
+- [x] Unit/CLI tests cover storage, flag gating, duplicate-name rejection, and hard-delete cascade
 - [x] `bun run lint`, `bun run test`, `bun run build` pass
 
 ## Task Lifecycle

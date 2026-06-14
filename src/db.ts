@@ -107,12 +107,24 @@ CREATE TABLE IF NOT EXISTS task_events (
   created_at INTEGER NOT NULL DEFAULT (unixepoch())
 );
 
+CREATE TABLE IF NOT EXISTS task_attachments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  task_id INTEGER NOT NULL REFERENCES tasks(id),
+  filename TEXT NOT NULL,
+  stored_path TEXT NOT NULL,
+  content_type TEXT,
+  size INTEGER NOT NULL,
+  uploaded_by TEXT,
+  created_at INTEGER NOT NULL DEFAULT (unixepoch())
+);
+
 CREATE INDEX IF NOT EXISTS idx_tasks_board_status ON tasks(board_id, status);
 CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks(assignee);
 CREATE INDEX IF NOT EXISTS idx_tasks_priority ON tasks(priority);
 CREATE INDEX IF NOT EXISTS idx_runs_task ON task_runs(task_id, started_at);
 CREATE INDEX IF NOT EXISTS idx_events_task ON task_events(task_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_events_run ON task_events(run_id, id);
+CREATE INDEX IF NOT EXISTS idx_task_attachments_task ON task_attachments(task_id);
 `;
 
 function initLockPath(dbPath: string): string {
@@ -333,6 +345,26 @@ export function initDb(path?: string): Database {
     const hasRunSpawnedAt = runsTableInfo.some((col) => col.name === "spawned_at");
     if (!hasRunSpawnedAt) {
       dbInstance.exec("ALTER TABLE task_runs ADD COLUMN spawned_at INTEGER");
+    }
+
+    // Migrate: add task_attachments table if missing
+    const hasTaskAttachments = dbInstance.query(
+      "SELECT 1 FROM sqlite_master WHERE type='table' AND name='task_attachments'"
+    ).get() as { 1: number } | undefined;
+    if (!hasTaskAttachments) {
+      dbInstance.exec(`
+        CREATE TABLE task_attachments (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          task_id INTEGER NOT NULL REFERENCES tasks(id),
+          filename TEXT NOT NULL,
+          stored_path TEXT NOT NULL,
+          content_type TEXT,
+          size INTEGER NOT NULL,
+          uploaded_by TEXT,
+          created_at INTEGER NOT NULL DEFAULT (unixepoch())
+        )
+      `);
+      dbInstance.exec("CREATE INDEX idx_task_attachments_task ON task_attachments(task_id)");
     }
 
     // Migrate: optimize idempotency index to composite

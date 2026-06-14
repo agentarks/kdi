@@ -440,7 +440,7 @@
   - Clean archived workspaces, old events, old logs
 
 ### Phase 6 — Advanced Features
-- [ ] **KDI-022: Task attachments**
+- [x] **KDI-022: Task attachments**
   - `task_attachments` table + on-disk storage
   - `kdi attach <task_id> <file>`
 
@@ -602,7 +602,7 @@
 | `hermes kanban swarm` | `kdi swarm` | Missing | KDI-041 |
 | Task runs table | **Done** | **Done** | KDI-000 |
 | Task events table | **Done** | **Done** | KDI-000b |
-| Task attachments | Missing | Missing | KDI-022 |
+| Task attachments | **Done** | **Done** | KDI-022 |
 | CAS claim + TTL | **Done** | **Done** | KDI-000c |
 | Stale claim reclamation | **Done** | **Done** | KDI-000c |
 | Worker log capture | Missing | Missing | KDI-018 |

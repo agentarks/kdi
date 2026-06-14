@@ -20,11 +20,12 @@ import {
   reassignTask,
 } from "../models/task";
 import { addComment, getComments } from "../models/comment";
+import { createAttachment, listAttachments } from "../models/taskAttachment";
 import { getRuns } from "../models/taskRun";
 import { getEvents, tailEvents, getRecentEvents, getEventsAfter } from "../models/taskEvent";
 import { atomicClaim, reclaimTask, heartbeat } from "../models/claim";
 import { getTaskLogPath } from "../observability";
-import { isEnabled, FF_SCHEDULED_STATUS, FF_REVIEW_STATUS, FF_COMPLETE_METADATA, FF_PRIORITY_INTEGER, FF_SKILLS_ARRAY, FF_MAX_RUNTIME, FF_MAX_RETRIES, FF_TENANT_NAMESPACE, FF_CREATED_BY, FF_MODEL_OVERRIDE, FF_DEFAULT_WORKDIR, FF_WORKER_LOG_CAPTURE, FF_ASSIGN_REASSIGN, FF_CRASH_GRACE_PERIOD, FF_HEARTBEAT, FF_RATE_LIMIT_EXIT_CODE } from "../flags";
+import { isEnabled, FF_SCHEDULED_STATUS, FF_REVIEW_STATUS, FF_COMPLETE_METADATA, FF_PRIORITY_INTEGER, FF_SKILLS_ARRAY, FF_MAX_RUNTIME, FF_MAX_RETRIES, FF_TENANT_NAMESPACE, FF_CREATED_BY, FF_MODEL_OVERRIDE, FF_DEFAULT_WORKDIR, FF_WORKER_LOG_CAPTURE, FF_ASSIGN_REASSIGN, FF_CRASH_GRACE_PERIOD, FF_HEARTBEAT, FF_RATE_LIMIT_EXIT_CODE, FF_TASK_ATTACHMENTS } from "../flags";
 import { resolveBoard } from "../resolveBoard";
 
 const VALID_STATUSES = ["triage", "todo", "scheduled", "ready", "running", "done", "blocked", "review"] as const;
@@ -351,6 +352,16 @@ export const showTaskCommand = new Command("show")
           console.log(`  [${new Date(comment.created_at * 1000).toISOString()}] ${comment.text}`);
         }
       }
+
+      if (isEnabled(FF_TASK_ATTACHMENTS)) {
+        const attachments = listAttachments(id);
+        if (attachments.length > 0) {
+          console.log("Attachments:");
+          for (const attachment of attachments) {
+            console.log(`  - ${attachment.filename} (${attachment.size} bytes) ${attachment.stored_path}`);
+          }
+        }
+      }
     } catch (err: any) {
       console.error(`Error: ${err.message}`);
       process.exit(1);
@@ -387,6 +398,24 @@ export const commentTaskCommand = new Command("comment")
       }
       const comment = addComment(id, text);
       console.log(`Added comment ${comment.id} to task ${id}.`);
+    } catch (err: any) {
+      console.error(`Error: ${err.message}`);
+      process.exit(1);
+    }
+  });
+
+export const attachTaskCommand = new Command("attach")
+  .description("Attach a file to a task")
+  .argument("<task_id>", "Task ID")
+  .argument("<file>", "Path to the file to attach")
+  .action((taskId: string, file: string) => {
+    try {
+      if (!isEnabled(FF_TASK_ATTACHMENTS)) {
+        throw new Error("Task attachments feature is not enabled.");
+      }
+      const id = parseTaskId(taskId);
+      const attachment = createAttachment(id, file);
+      console.log(`Attached ${attachment.filename} to task ${id} (${attachment.size} bytes).`);
     } catch (err: any) {
       console.error(`Error: ${err.message}`);
       process.exit(1);
