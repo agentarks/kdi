@@ -188,14 +188,20 @@
 - [x] Unit/CLI tests cover storage, flag gating, duplicate-name rejection, and hard-delete cascade
 - [x] `bun run lint`, `bun run test`, `bun run build` pass
 
-## Context Builder (KDI-023) — Planned
+## Context Builder (KDI-023) — Done
 - [x] BRD drafted at `specs/brd-kdi-023-context-builder.md`
 - [x] Feature flag `ff_context_builder` / `FF_CONTEXT_BUILDER` registered in `specs/feature-flags.md`, defaults to `false`
-- [ ] `FF_CONTEXT_BUILDER` constant added to `src/flags.ts`
-- [ ] `kdi context <task_id>` command prints bounded worker context (title, body, parents, attempts, role history, comments, attachments)
-- [ ] `kdi context <task_id> --json` emits stable JSON document
-- [ ] Field-level caps prevent prompt overflow
-- [ ] Attachment absolute paths resolved for file-tool access
+- [x] `FF_CONTEXT_BUILDER` constant added to `src/flags.ts`
+- [x] `kdi context <task_id> [--board <slug>] [--json]` command gated by `FF_CONTEXT_BUILDER`
+- [x] Context builder composes 7 sections: header, body, parent results, prior attempts, role history, comments, attachments
+- [x] All free-text/count fields capped per BRD to prevent prompt overflow
+- [x] Parent results only include done parents; ordered by insertion order
+- [x] Role history derives actors and notes from task events
+- [x] Comments fallback to `"user"` when `author` column is absent
+- [x] Attachment paths resolved to absolute; tolerated when `task_attachments` table missing
+- [x] Board resolved via standard chain
+- [x] Unit/CLI tests cover happy path, truncation, caps, missing task, flag gating, JSON output
+- [x] `bun run lint`, `bun run test`, `bun run build` pass
 
 ## Task Lifecycle
 - [x] `kdi create <title> --board <slug> --assignee <profile>` — create task
