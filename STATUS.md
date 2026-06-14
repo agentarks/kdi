@@ -141,9 +141,23 @@
 - [x] Unit/CLI tests cover counts, JSON output, board resolution, and flag gating
 - [x] `bun run lint`, `bun run test`, `bun run build` pass
 
+## Diagnostics (KDI-020) — Done
+- [x] BRD drafted at `specs/brd-kdi-020-diagnostics.md`
+- [x] Feature flag `ff_diagnostics` / `FF_DIAGNOSTICS` registered in `specs/feature-flags.md`, defaults to `false`
+- [x] `FF_DIAGNOSTICS` constant added to `src/flags.ts`
+- [x] `kdi diagnostics [--board <slug>]` command gated by `FF_DIAGNOSTICS`
+- [x] `kdi diagnostics --severity {warning|error|critical}` filters by minimum severity
+- [x] `kdi diagnostics --task <task_id>` restricts findings to a single task
+- [x] `kdi diagnostics --json` emits stable JSON array
+- [x] 8 diagnostic rules implemented: `stranded_in_ready`, `stuck_in_blocked`, `repeated_failures`, `repeated_crashes`, `block_unblock_cycling`, `hallucinated_cards`, `prose_phantom_refs`, `triage_aux_unavailable`
+- [x] Each finding includes rule, severity, task_id, message, and suggested actions
+- [x] Board resolved via standard chain
+- [x] Unit/CLI tests cover each rule, severity filtering, per-task mode, JSON output, and flag gating
+- [x] `bun run lint`, `bun run test`, `bun run build` pass
+
 ## Garbage Collection (KDI-021) — Done
 - [x] BRD drafted at `specs/brd-kdi-021-gc.md`
-- [x] Feature flag `ff_gc` / `FF_GC` registered in `src/flags.ts` and `specs/feature-flags.md`, defaults to `false`
+- [x] Feature flag `ff_gc` / `FF_GC` registered in `specs/feature-flags.md` and `src/flags.ts`, defaults to `false`
 - [x] `FF_GC` constant added to `src/flags.ts`
 - [x] `kdi gc [--board <slug>] [--event-retention-days <n>] [--log-retention-days <n>]` command gated by `FF_GC`
 - [x] `kdi gc` deletes task events older than `--event-retention-days`
@@ -172,7 +186,6 @@
 - [x] `kdi show <id>` displays attachments when flag enabled
 - [x] Board hard-delete cascade-deletes attachment rows and on-disk `attachments/` directory
 - [x] Unit/CLI tests cover storage, flag gating, duplicate-name rejection, and hard-delete cascade
-- [x] `bun run lint`, `bun run test`, `bun run build` pass
 - [x] `bun run lint`, `bun run test`, `bun run build` pass
 
 ## Task Lifecycle

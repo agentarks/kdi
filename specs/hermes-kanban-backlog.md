@@ -256,7 +256,7 @@
 | Crash grace (30s) | Missing | No PID liveness grace |
 | Dispatcher presence warning | Missing | No warning when dispatcher absent |
 | `task_runs.status` column | Missing | Only `outcome` considered |
-| Diagnostic rule engine (8 rules) | Missing | No automated health rules |
+| Diagnostic rule engine (8 rules) | **Done** | 8 automated health rules implemented |
 | `build_worker_context` caps/attachments | Missing | No bounded context builder |
 
 ---
@@ -428,7 +428,7 @@
   - `kdi stats` — per-status + per-assignee counts + oldest-ready age
   - `kdi stats --json`
 
-- [ ] **KDI-020: Diagnostics**
+- [x] **KDI-020: Diagnostics**
   - `kdi diagnostics` — board-wide health checks
   - `kdi diagnostics --severity error`
   - `kdi diagnostics --task <task_id>`
@@ -558,7 +558,7 @@
 | `hermes kanban specify` | `kdi specify` | **Done** | KDI-001 (basic) |
 | `hermes kanban decompose` | `kdi decompose` | Missing | KDI-028 |
 | `hermes kanban gc` | `kdi gc` | **Done** | KDI-021 |
-| `hermes kanban diagnostics` | `kdi diagnostics` | Missing | KDI-020 |
+| `hermes kanban diagnostics` | `kdi diagnostics` | **Done** | KDI-020 |
 | `hermes kanban notify-subscribe` | `kdi notify-subscribe` | Missing | KDI-025 |
 | `hermes kanban notify-unsubscribe` | `kdi notify-unsubscribe` | Missing | KDI-025 |
 | `hermes kanban init` | `kdi init` | **Done** | KDI-013b |
@@ -598,7 +598,7 @@
 | Crash grace 30s | Missing | Missing | KDI-016b |
 | Dispatcher presence warning | Missing | Missing | KDI-037 |
 | `task_runs.status` column | Exists | Exists | KDI-000e |
-| Diagnostic rule engine | Missing | Missing | KDI-020 |
+| Diagnostic rule engine | **Done** | **Done** | KDI-020 |
 | `hermes kanban swarm` | `kdi swarm` | Missing | KDI-041 |
 | Task runs table | **Done** | **Done** | KDI-000 |
 | Task events table | **Done** | **Done** | KDI-000b |
