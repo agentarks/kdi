@@ -23,6 +23,7 @@ export const FF_STATS = "FF_STATS";
 export const FF_GC = "FF_GC";
 export const FF_ASSIGNEES_LISTING = "FF_ASSIGNEES_LISTING";
 export const FF_TASK_ATTACHMENTS = "FF_TASK_ATTACHMENTS";
+export const FF_DIAGNOSTICS = "FF_DIAGNOSTICS";
 
 const flagRegistry = new Map<string, boolean>();
 const flagOverrides = new Map<string, boolean>();
@@ -89,3 +90,4 @@ registerFlag(FF_STATS, false);
 registerFlag(FF_GC, false);
 registerFlag(FF_ASSIGNEES_LISTING, false);
 registerFlag(FF_TASK_ATTACHMENTS, false);
+registerFlag(FF_DIAGNOSTICS, false);

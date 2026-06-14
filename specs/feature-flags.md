@@ -53,6 +53,7 @@ stateDiagram-v2
 | `ff_stats` | `FF_STATS` | CLI / observability | InDev | `false` | KDI-019 | Board stats command; per-status counts, per-assignee counts, oldest-ready age, and `--json` output. |
 | `ff_gc` | `FF_GC` | CLI / maintenance | InDev | `false` | KDI-021 | Garbage collection command; prunes old events, old logs, and KDI-owned archived-task workspaces. |
 | `ff_task_attachments` | `FF_TASK_ATTACHMENTS` | CLI / task metadata | InDev | `false` | KDI-022 | Task file attachments; `kdi attach <task_id> <file>` and attachment display in `kdi show`. |
+| `ff_diagnostics` | `FF_DIAGNOSTICS` | CLI / observability | InDev | `false` | KDI-020 | Board diagnostics command; health-check rules, severity filtering, per-task mode, and `--json` output. |
 
 ## Lifecycle Notes
 
@@ -380,6 +381,21 @@ stateDiagram-v2
   - `kdi show <id>` lists attachments when the flag is enabled.
   - Board hard-delete removes attachment rows and files.
 - **Rollback / deactivation:** Set `FF_TASK_ATTACHMENTS=false` to reject `kdi attach` and hide attachment display.
+- **Deprecation plan:** N/A
+
+### `ff_diagnostics` — InDev
+
+- **Owner:** kdi core team
+- **BRD:** [BRD-KDI-020](brd-kdi-020-diagnostics.md)
+- **Status transitions:**
+  - `Planned` → `InDev` when `kdi diagnostics` command and rule engine are implemented.
+  - `InDev` → `Active` when diagnostic rules are stable and safe to enable by default.
+- **Activation criteria:**
+  - `kdi diagnostics` runs board-wide health checks and prints findings.
+  - `kdi diagnostics --severity {warning|error|critical}` filters by minimum severity.
+  - `kdi diagnostics --task <task_id>` restricts findings to a single task.
+  - `kdi diagnostics --json` emits a stable JSON array of findings.
+- **Rollback / deactivation:** Set `FF_DIAGNOSTICS=false` to reject the `diagnostics` command.
 - **Deprecation plan:** N/A
 
 ### `ff_kanban_dispatch` — Planned
