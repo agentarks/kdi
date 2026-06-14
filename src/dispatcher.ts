@@ -2,14 +2,14 @@ import { spawn } from "node:child_process";
 import { createWriteStream, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { getDb } from "./db";
-import { TASK_COLUMNS, type Task, promoteScheduledTasks, hydrateTask } from "./models/task";
+import { TASK_COLUMNS, type Task, promoteScheduledTasks, hydrateTask, showTask } from "./models/task";
 import { finishRun, updateRun } from "./models/taskRun";
 import { addEvent } from "./models/taskEvent";
 import { atomicClaim, heartbeat } from "./models/claim";
 import { isBlockedByDependencies } from "./models/dependency";
 import { getProfile, substituteCommand } from "./profiles";
 import { createWorktree, removeWorktree, type RemoveWorktreeResult } from "./worktree";
-import { isEnabled, FF_ENABLE_KANBAN_DISPATCH } from "./flags";
+import { isEnabled, FF_ENABLE_KANBAN_DISPATCH, FF_CRASH_GRACE_PERIOD, FF_HEARTBEAT, FF_RATE_LIMIT_EXIT_CODE } from "./flags";
 import {
   recordTick,
   recordClaim,
@@ -19,6 +19,8 @@ import {
   logToBoard,
   getTaskLogPath,
 } from "./observability";
+
+export const CRASH_GRACE_PERIOD_SECONDS = 30;
 
 export interface HarnessResult {
   stdout: string;
@@ -32,6 +34,7 @@ export interface TickOptions {
   createWorktree?: (repoDir: string, profile: string, taskId: string, baseRef: string) => string;
   removeWorktree?: (repoDir: string, profile: string, taskId: string, worktreePath?: string) => RemoveWorktreeResult;
   maxSpawnsPerTick?: number;
+  rateLimitCooldownSeconds?: number;
 }
 
 export interface TickResult {
@@ -110,7 +113,9 @@ export async function spawnHarness(command: string, cwd: string, logPath?: strin
 function listReadyTasks(): Task[] {
   const db = getDb();
   const rows = db.query(
-    `SELECT ${TASK_COLUMNS} FROM tasks WHERE status = 'ready' AND archived_at IS NULL ORDER BY priority DESC, created_at ASC`
+    `SELECT ${TASK_COLUMNS} FROM tasks WHERE status = 'ready' AND archived_at IS NULL
+     AND (rate_limited_until IS NULL OR rate_limited_until <= unixepoch())
+     ORDER BY priority DESC, created_at ASC`
   ).all() as Task[];
   return rows.map(hydrateTask);
 }
@@ -169,7 +174,7 @@ function determineOutcome(reason: string): Parameters<typeof finishRun>[1] {
 function blockTask(id: number, result: string, blockReason: string, runError: string, runId: number | null, consecutiveFailures: number): void {
   const db = getDb();
   db.run(
-    `UPDATE tasks SET status = 'blocked', result = ?, block_reason = ?, consecutive_failures = ?, claim_lock = NULL, claim_expires = NULL, started_at = NULL, updated_at = unixepoch() WHERE id = ?`,
+    `UPDATE tasks SET status = 'blocked', result = ?, block_reason = ?, consecutive_failures = ?, claim_lock = NULL, claim_expires = NULL, started_at = NULL, rate_limited_until = NULL, updated_at = unixepoch() WHERE id = ?`,
     [result, blockReason, consecutiveFailures, id]
   );
   const outcome = determineOutcome(runError);
@@ -181,7 +186,7 @@ function blockTask(id: number, result: string, blockReason: string, runError: st
 
 function requeueTask(id: number, reason: string, runId: number | null, consecutiveFailures?: number): void {
   const db = getDb();
-  const updates = ["status = 'ready'", "result = ?", "claim_lock = NULL", "claim_expires = NULL", "started_at = NULL", "updated_at = unixepoch()"];
+  const updates = ["status = 'ready'", "result = ?", "claim_lock = NULL", "claim_expires = NULL", "started_at = NULL", "rate_limited_until = NULL", "updated_at = unixepoch()"];
   const params: any[] = [reason];
   if (consecutiveFailures !== undefined) {
     updates.push("consecutive_failures = ?");
@@ -198,6 +203,24 @@ function requeueTask(id: number, reason: string, runId: number | null, consecuti
   addEvent(id, "reclaimed", { reason, consecutive_failures: consecutiveFailures }, runId ?? undefined);
 }
 
+function handleRateLimit(task: Task, runId: number | null, cooldownSeconds: number, reason: string): void {
+  const db = getDb();
+  const now = Math.floor(Date.now() / 1000);
+  const cooldownUntil = now + cooldownSeconds;
+  const errorMessage = `Rate-limited (EX_TEMPFAIL); requeued until ${new Date(cooldownUntil * 1000).toISOString()}`;
+
+  db.run(
+    `UPDATE tasks SET status = 'ready', claim_lock = NULL, claim_expires = NULL, started_at = NULL, current_run_id = NULL, rate_limited_until = ?, updated_at = unixepoch() WHERE id = ?`,
+    [cooldownUntil, task.id]
+  );
+
+  if (runId !== null) {
+    finishRun(runId, "reclaimed", null, null, errorMessage);
+  }
+
+  addEvent(task.id, "rate_limited", { exit_code: 75, cooldown_until: cooldownUntil, reason }, runId ?? undefined);
+}
+
 function handleFailure(task: Task, result: string, reason: string, runId: number | null): void {
   const consecutiveFailures = task.consecutive_failures + 1;
   const hasMaxRetries = task.max_retries !== null && task.max_retries !== undefined;
@@ -212,27 +235,123 @@ function handleFailure(task: Task, result: string, reason: string, runId: number
   }
 }
 
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function handleCrash(task: Task, reason: string, runId: number | null): void {
+  const db = getDb();
+  const consecutiveFailures = task.consecutive_failures + 1;
+  const hasMaxRetries = task.max_retries !== null && task.max_retries !== undefined;
+
+  if (runId !== null) {
+    finishRun(runId, "crashed", null, null, reason);
+  }
+
+  if (hasMaxRetries && consecutiveFailures >= task.max_retries!) {
+    db.run(
+      `UPDATE tasks SET status = 'blocked', result = ?, block_reason = ?, consecutive_failures = ?, claim_lock = NULL, claim_expires = NULL, started_at = NULL, updated_at = unixepoch() WHERE id = ?`,
+      ["", `Circuit breaker: ${consecutiveFailures} consecutive failures`, consecutiveFailures, task.id]
+    );
+    addEvent(task.id, "blocked", { reason: `Circuit breaker: ${consecutiveFailures} consecutive failures`, run_error: reason, consecutive_failures: consecutiveFailures }, runId ?? undefined);
+  } else if (hasMaxRetries) {
+    db.run(
+      `UPDATE tasks SET status = 'ready', result = ?, claim_lock = NULL, claim_expires = NULL, started_at = NULL, consecutive_failures = ?, updated_at = unixepoch() WHERE id = ?`,
+      [reason, consecutiveFailures, task.id]
+    );
+    addEvent(task.id, "reclaimed", { reason, consecutive_failures: consecutiveFailures }, runId ?? undefined);
+  } else {
+    db.run(
+      `UPDATE tasks SET status = 'blocked', result = ?, block_reason = ?, consecutive_failures = ?, claim_lock = NULL, claim_expires = NULL, started_at = NULL, updated_at = unixepoch() WHERE id = ?`,
+      ["", reason, consecutiveFailures, task.id]
+    );
+    addEvent(task.id, "blocked", { reason, consecutive_failures: consecutiveFailures }, runId ?? undefined);
+  }
+}
+
+function checkCrashedRuns(): void {
+  const db = getDb();
+  const now = Math.floor(Date.now() / 1000);
+
+  const runs = db.query(
+    `SELECT id, task_id, worker_pid, spawned_at FROM task_runs WHERE status = 'running' AND worker_pid IS NOT NULL`
+  ).all() as { id: number; task_id: number; worker_pid: number; spawned_at: number | null }[];
+
+  for (const run of runs) {
+    const task = showTask(run.task_id);
+    if (!task || task.status !== "running") {
+      continue;
+    }
+
+    if (isEnabled(FF_CRASH_GRACE_PERIOD) && run.spawned_at !== null && (now - run.spawned_at) < CRASH_GRACE_PERIOD_SECONDS) {
+      continue;
+    }
+
+    if (!isProcessAlive(run.worker_pid)) {
+      handleCrash(task, `Worker process died after grace period (PID ${run.worker_pid})`, run.id);
+    }
+  }
+}
+
 function reapStaleClaims(): void {
   const db = getDb();
   const now = Math.floor(Date.now() / 1000);
+  const heartbeatEnabled = isEnabled(FF_HEARTBEAT);
   const oneHourAgo = now - 3600;
 
-  // Find stale claims and their active runs
-  const staleTasks = db.query(
-    `SELECT id, current_run_id FROM tasks WHERE status = 'running' AND (claim_expires < ? OR (last_heartbeat_at IS NOT NULL AND last_heartbeat_at < ?))`
-  ).all(now, oneHourAgo) as { id: number; current_run_id: number | null }[];
-
-  for (const stale of staleTasks) {
-    if (stale.current_run_id) {
-      finishRun(stale.current_run_id, "reclaimed", null, null, "Reclaimed by dispatcher: stale claim");
-    }
-    addEvent(stale.id, "reclaimed", { reason: "stale claim detected by dispatcher" });
+  // Build stale condition: always reap by claim_expires; only reap by heartbeat age when enabled
+  const staleConditions = ["claim_expires < ?"];
+  const params: (number | string)[] = [now];
+  if (heartbeatEnabled) {
+    staleConditions.push("(last_heartbeat_at IS NOT NULL AND last_heartbeat_at < ?)");
+    params.push(oneHourAgo);
   }
 
-  db.run(
-    `UPDATE tasks SET status = 'ready', started_at = NULL, claim_lock = NULL, claim_expires = NULL, updated_at = unixepoch() WHERE status = 'running' AND (claim_expires < ? OR (last_heartbeat_at IS NOT NULL AND last_heartbeat_at < ?))`,
-    [now, oneHourAgo]
-  );
+  // Find stale claims and their active runs, preserving enough state to choose the reclaim reason
+  const staleTasks = db.query(
+    `SELECT id, current_run_id, claim_expires, last_heartbeat_at FROM tasks WHERE status = 'running' AND (${staleConditions.join(" OR ")})`
+  ).all(...params) as { id: number; current_run_id: number | null; claim_expires: number | null; last_heartbeat_at: number | null }[];
+
+  for (const stale of staleTasks) {
+    const heartbeatStale = heartbeatEnabled && stale.last_heartbeat_at !== null && stale.last_heartbeat_at < oneHourAgo;
+    const claimExpired = stale.claim_expires !== null && stale.claim_expires < now;
+
+    let reason: string;
+    if (heartbeatStale) {
+      reason = "stale heartbeat detected by dispatcher";
+    } else if (claimExpired) {
+      reason = "stale claim detected by dispatcher";
+    } else {
+      reason = "stale claim detected by dispatcher";
+    }
+
+    if (stale.current_run_id) {
+      finishRun(stale.current_run_id, "reclaimed", null, null, reason);
+    }
+    addEvent(stale.id, "reclaimed", { reason });
+
+    db.run(
+      `UPDATE tasks SET status = 'ready', started_at = NULL, claim_lock = NULL, claim_expires = NULL, current_run_id = NULL, rate_limited_until = NULL, updated_at = unixepoch() WHERE id = ? AND status = 'running'`,
+      [stale.id]
+    );
+  }
+}
+
+function getRateLimitCooldownSeconds(options: TickOptions): number {
+  if (options.rateLimitCooldownSeconds !== undefined) {
+    return options.rateLimitCooldownSeconds;
+  }
+  const env = process.env.KDI_RATE_LIMIT_COOLDOWN_SECONDS;
+  if (env) {
+    const parsed = parseInt(env, 10);
+    if (!isNaN(parsed) && parsed > 0) return parsed;
+  }
+  return 60;
 }
 
 export async function tick(options: TickOptions = {}): Promise<TickResult> {
@@ -240,6 +359,7 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
   const doCreateWorktree = options.createWorktree ?? createWorktree;
   const doRemoveWorktree = options.removeWorktree ?? removeWorktree;
   const maxSpawns = options.maxSpawnsPerTick ?? Infinity;
+  const rateLimitCooldownSeconds = getRateLimitCooldownSeconds(options);
 
   recordTick();
 
@@ -249,6 +369,7 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
 
   reapStaleClaims();
   promoteScheduledTasks(Math.floor(Date.now() / 1000));
+  checkCrashedRuns();
 
   const tasks = listReadyTasks();
   let processed = 0;
@@ -273,8 +394,10 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
     }
     const runId = claimResult.runId;
 
-    // Record initial heartbeat for worker liveness
-    heartbeat(task.id);
+    // Seed initial heartbeat so a freshly claimed task is not instantly considered stale
+    if (isEnabled(FF_HEARTBEAT)) {
+      heartbeat(task.id);
+    }
 
     const workdir = task.workspace ?? getBoardWorkdir(task.board_id);
     if (!workdir) {
@@ -340,9 +463,8 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
       if (exitCode === 0) {
         finishTask(task.id, stdout, runId);
         processed++;
-      } else if (exitCode === 75) {
-        // EX_TEMPFAIL — requeue to ready without counting as failure
-        requeueTask(task.id, `Rate-limited (EX_TEMPFAIL), requeued to ready: ${stderr || stdout}`, runId);
+      } else if (exitCode === 75 && isEnabled(FF_RATE_LIMIT_EXIT_CODE)) {
+        handleRateLimit(task, runId, rateLimitCooldownSeconds, stderr || stdout);
       } else {
         recordAgentError(profile.agent ?? profile.name);
         handleFailure(task, stdout, `Harness failed (exit ${exitCode}): ${stderr || "unknown error"}`, runId);

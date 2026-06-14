@@ -104,6 +104,33 @@ describe("taskRun model", () => {
     expect(finished!.ended_at).toBeNumber();
   });
 
+  it("createRun stores spawned_at when provided", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Spawned run" });
+
+    const run = createRun({
+      task_id: task.id,
+      status: "running",
+      started_at: 1000,
+      spawned_at: 2000,
+    });
+
+    expect(run.spawned_at).toBe(2000);
+
+    const fetched = getRun(run.id);
+    expect(fetched!.spawned_at).toBe(2000);
+  });
+
+  it("updateRun can set spawned_at", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Update spawned" });
+    const run = createRun({ task_id: task.id, status: "running", started_at: 1000 });
+
+    const updated = updateRun(run.id, { spawned_at: 3000 });
+    expect(updated.spawned_at).toBe(3000);
+    expect(getRun(run.id)!.spawned_at).toBe(3000);
+  });
+
   it("finishRun maps outcomes to correct statuses", () => {
     const board = createBoard("alpha", "/tmp/alpha");
     const task = createTask({ board_id: board.id, title: "Mapping" });

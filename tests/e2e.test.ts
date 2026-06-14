@@ -3,8 +3,9 @@ import { execSync, spawn } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { initDb, closeDb } from "../src/db";
+import { initDb, closeDb, getDb } from "../src/db";
 import { addDependency } from "../src/models/dependency";
+import { getEvents } from "../src/models/taskEvent";
 
 const PROJECT_ROOT = resolve(import.meta.dir, "..");
 
@@ -1074,6 +1075,120 @@ describe("kdi e2e acceptance", () => {
     25000
   );
 
+  it("kdi dispatch --rate-limit-cooldown is rejected when flag is disabled", () => {
+    const tmp = makeTempDir("rate-limit-cooldown-disabled");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    expect(() => runKdi(`dispatch --rate-limit-cooldown 30s`, env)).toThrow(/Rate-limit exit code handling is not enabled/);
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it(
+    "kdi dispatch --rate-limit-cooldown sets cooldown duration when flag enabled",
+    async () => {
+      const tmp = makeTempDir("rate-limit-cooldown-enabled");
+      const dbPath = join(tmp, "kdi.db");
+      const repoDir = join(tmp, "repo");
+      mkdirSync(repoDir, { recursive: true });
+      setupGitRepo(repoDir);
+      setupProfiles(tmp, [{ name: "rateagent", command: "exit 75" }]);
+      const env = {
+        KDI_DB: dbPath,
+        HOME: tmp,
+        FF_ENABLE_KANBAN_DISPATCH: "true",
+        FF_RATE_LIMIT_EXIT_CODE: "true",
+      };
+
+      runKdi(`boards create myproj --workdir ${repoDir}`, env);
+      const taskId = runKdi(`create "rate task" --board myproj --assignee rateagent`, env);
+
+      const dispatcher = spawn("bun", ["run", "src/index.ts", "dispatch", "--interval", "500", "--rate-limit-cooldown", "2m"], {
+        cwd: PROJECT_ROOT,
+        env: { ...process.env, ...env },
+        stdio: "ignore",
+      });
+
+      runKdi(`promote ${taskId}`, env);
+
+      const ok = await waitForTaskStatus(taskId, "ready", env, 10000);
+      expect(ok).toBe(true);
+
+      // Wait for the dispatcher to process the EX_TEMPFAIL and set the cooldown.
+      let output = "";
+      let cooldownLine = false;
+      const start = Date.now();
+      while (Date.now() - start < 10000) {
+        output = runKdi(`show ${taskId}`, env);
+        if (output.includes("Rate limited until:")) {
+          cooldownLine = true;
+          break;
+        }
+        await new Promise((r) => setTimeout(r, 500));
+      }
+      dispatcher.kill("SIGTERM");
+
+      expect(cooldownLine).toBe(true);
+
+      const match = output.match(/Rate limited until: ([^\n]+)/);
+      expect(match).not.toBeNull();
+      const cooldown = new Date(match![1]).getTime();
+      const now = Date.now();
+      expect(cooldown).toBeGreaterThanOrEqual(now + 110000);
+      expect(cooldown).toBeLessThanOrEqual(now + 130000);
+
+      rmSync(tmp, { recursive: true, force: true });
+    },
+    25000
+  );
+
+  it("show displays rate limited until when flag enabled and cooldown is set", () => {
+    const tmp = makeTempDir("rate-limit-show-enabled");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_RATE_LIMIT_EXIT_CODE: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const taskId = runKdi(`create "rate show task" --board myproj`, env);
+
+    initDb(dbPath);
+    getDb().run("UPDATE tasks SET rate_limited_until = unixepoch() + 60 WHERE id = ?", [parseInt(taskId, 10)]);
+    closeDb();
+
+    const output = runKdi(`show ${taskId}`, env);
+    expect(output).toContain("Rate limited until:");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("show hides rate limited until when flag is disabled", () => {
+    const tmp = makeTempDir("rate-limit-show-disabled");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_RATE_LIMIT_EXIT_CODE: "false" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const taskId = runKdi(`create "rate hide task" --board myproj`, env);
+
+    initDb(dbPath);
+    getDb().run("UPDATE tasks SET rate_limited_until = unixepoch() + 60 WHERE id = ?", [parseInt(taskId, 10)]);
+    closeDb();
+
+    const output = runKdi(`show ${taskId}`, env);
+    expect(output).not.toContain("Rate limited until:");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
   it("boards create stores metadata when flag enabled", () => {
     const tmp = makeTempDir("board-metadata");
     const dbPath = join(tmp, "kdi.db");
@@ -1749,6 +1864,68 @@ describe("kdi e2e acceptance", () => {
 
     const output = runKdi(`reclaim ${taskId}`, env);
     expect(output).toContain(`Reclaimed task ${taskId}.`);
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("heartbeat is rejected when flag is disabled", () => {
+    const tmp = makeTempDir("heartbeat-disabled");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_HEARTBEAT: "false" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const taskId = runKdi(`create "heartbeat disabled" --board myproj --initial-status running`, env);
+
+    expect(() => runKdi(`heartbeat ${taskId}`, env)).toThrow(/Heartbeat feature is not enabled/);
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("heartbeat updates timestamps and records note event when flag enabled", () => {
+    const tmp = makeTempDir("heartbeat-enabled");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_HEARTBEAT: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const taskId = runKdi(`create "heartbeat enabled" --board myproj --initial-status running`, env);
+
+    const output = runKdi(`heartbeat ${taskId} --note "step 1 done"`, env);
+    expect(output).toContain(`Heartbeat recorded for task ${taskId}`);
+
+    const showOutput = runKdi(`show ${taskId}`, env);
+    expect(showOutput).toContain("Last heartbeat:");
+
+    initDb(dbPath);
+    const events = getEvents(parseInt(taskId, 10));
+    closeDb();
+    const heartbeatEvents = events.filter((e) => e.kind === "heartbeat");
+    expect(heartbeatEvents).toHaveLength(1);
+    expect(heartbeatEvents[0].payload).toContain('"note":"step 1 done"');
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("show hides last heartbeat when flag is disabled", () => {
+    const tmp = makeTempDir("heartbeat-show-hidden");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const enabledEnv = { KDI_DB: dbPath, HOME: tmp, FF_HEARTBEAT: "true" };
+    const disabledEnv = { KDI_DB: dbPath, HOME: tmp, FF_HEARTBEAT: "false" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, enabledEnv);
+    const taskId = runKdi(`create "heartbeat hidden" --board myproj --initial-status running`, enabledEnv);
+    runKdi(`heartbeat ${taskId}`, enabledEnv);
+
+    const disabledOutput = runKdi(`show ${taskId}`, disabledEnv);
+    expect(disabledOutput).not.toContain("Last heartbeat:");
 
     rmSync(tmp, { recursive: true, force: true });
   });

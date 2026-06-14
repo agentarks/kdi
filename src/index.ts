@@ -28,6 +28,7 @@ import {
 } from "./commands/tasks";
 import { dispatchCommand } from "./commands/dispatch";
 import { initCommand } from "./commands/init";
+import { statsCommand } from "./commands/stats";
 import { ensureProfiles } from "./profiles";
 const program = new Command();
 
@@ -74,5 +75,6 @@ program.addCommand(completeTaskCommand);
 program.addCommand(scheduleTaskCommand);
 program.addCommand(initCommand);
 program.addCommand(dispatchCommand);
+program.addCommand(statsCommand);
 
 program.parse();
