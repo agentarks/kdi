@@ -2,7 +2,7 @@ import { getDb } from "../db";
 
 export const TASK_RUN_COLUMNS =
   "id, task_id, profile, step_key, status, claim_lock, claim_expires, " +
-  "worker_pid, max_runtime_seconds, last_heartbeat_at, started_at, ended_at, " +
+  "worker_pid, max_runtime_seconds, last_heartbeat_at, started_at, spawned_at, ended_at, " +
   "outcome, summary, metadata, error";
 
 export interface TaskRun {
@@ -17,6 +17,7 @@ export interface TaskRun {
   max_runtime_seconds: number | null;
   last_heartbeat_at: number | null;
   started_at: number;
+  spawned_at: number | null;
   ended_at: number | null;
   outcome: "completed" | "blocked" | "crashed" | "timed_out" | "spawn_failed" | "gave_up" | "reclaimed" | null;
   summary: string | null;
@@ -34,6 +35,7 @@ export interface CreateRunInput {
   claim_expires?: number | null;
   worker_pid?: number | null;
   max_runtime_seconds?: number | null;
+  spawned_at?: number | null;
 }
 
 export interface UpdateRunInput {
@@ -43,19 +45,21 @@ export interface UpdateRunInput {
   worker_pid?: number | null;
   max_runtime_seconds?: number | null;
   last_heartbeat_at?: number | null;
+  spawned_at?: number | null;
   step_key?: string | null;
 }
 
 export function createRun(input: CreateRunInput): TaskRun {
   const db = getDb();
   const result = db.run(
-    `INSERT INTO task_runs (task_id, profile, status, started_at, step_key, claim_lock, claim_expires, worker_pid, max_runtime_seconds)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO task_runs (task_id, profile, status, started_at, spawned_at, step_key, claim_lock, claim_expires, worker_pid, max_runtime_seconds)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       input.task_id,
       input.profile ?? null,
       input.status,
       input.started_at,
+      input.spawned_at ?? null,
       input.step_key ?? null,
       input.claim_lock ?? null,
       input.claim_expires ?? null,
@@ -84,6 +88,7 @@ export function createRun(input: CreateRunInput): TaskRun {
     max_runtime_seconds: input.max_runtime_seconds ?? null,
     last_heartbeat_at: null,
     started_at: input.started_at,
+    spawned_at: input.spawned_at ?? null,
     ended_at: null,
     outcome: null,
     summary: null,
@@ -140,6 +145,10 @@ export function updateRun(id: number, updates: UpdateRunInput): TaskRun {
   if (updates.last_heartbeat_at !== undefined) {
     fields.push("last_heartbeat_at = ?");
     values.push(updates.last_heartbeat_at);
+  }
+  if (updates.spawned_at !== undefined) {
+    fields.push("spawned_at = ?");
+    values.push(updates.spawned_at);
   }
   if (updates.step_key !== undefined) {
     fields.push("step_key = ?");

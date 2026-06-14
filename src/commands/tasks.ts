@@ -15,13 +15,16 @@ import {
   reviewTask,
   scheduleTask,
   parseDuration,
+  assignTask,
+  unassignTask,
+  reassignTask,
 } from "../models/task";
 import { addComment, getComments } from "../models/comment";
 import { getRuns } from "../models/taskRun";
 import { getEvents, tailEvents, getRecentEvents, getEventsAfter } from "../models/taskEvent";
 import { atomicClaim, reclaimTask, heartbeat } from "../models/claim";
 import { getTaskLogPath } from "../observability";
-import { isEnabled, FF_SCHEDULED_STATUS, FF_REVIEW_STATUS, FF_COMPLETE_METADATA, FF_PRIORITY_INTEGER, FF_SKILLS_ARRAY, FF_MAX_RUNTIME, FF_MAX_RETRIES, FF_TENANT_NAMESPACE, FF_CREATED_BY, FF_MODEL_OVERRIDE, FF_DEFAULT_WORKDIR, FF_WORKER_LOG_CAPTURE } from "../flags";
+import { isEnabled, FF_SCHEDULED_STATUS, FF_REVIEW_STATUS, FF_COMPLETE_METADATA, FF_PRIORITY_INTEGER, FF_SKILLS_ARRAY, FF_MAX_RUNTIME, FF_MAX_RETRIES, FF_TENANT_NAMESPACE, FF_CREATED_BY, FF_MODEL_OVERRIDE, FF_DEFAULT_WORKDIR, FF_WORKER_LOG_CAPTURE, FF_ASSIGN_REASSIGN, FF_CRASH_GRACE_PERIOD, FF_HEARTBEAT, FF_RATE_LIMIT_EXIT_CODE } from "../flags";
 import { resolveBoard } from "../resolveBoard";
 
 const VALID_STATUSES = ["triage", "todo", "scheduled", "ready", "running", "done", "blocked", "review"] as const;
@@ -326,6 +329,7 @@ export const showTaskCommand = new Command("show")
       if (task.max_runtime_seconds) console.log(`Max runtime: ${task.max_runtime_seconds}s`);
       if (isEnabled(FF_MAX_RETRIES) && task.max_retries !== null && task.max_retries !== undefined) console.log(`Max retries: ${task.max_retries}`);
       if (isEnabled(FF_MAX_RETRIES) && task.consecutive_failures > 0) console.log(`Consecutive failures: ${task.consecutive_failures}`);
+      if (isEnabled(FF_RATE_LIMIT_EXIT_CODE) && task.rate_limited_until) console.log(`Rate limited until: ${new Date(task.rate_limited_until * 1000).toISOString()}`);
       if (task.tenant) console.log(`Tenant: ${task.tenant}`);
       if (task.skills && task.skills.length > 0) console.log(`Skills: ${task.skills.join(", ")}`);
       if (isEnabled(FF_MODEL_OVERRIDE) && task.model_override) console.log(`Model override: ${task.model_override}`);
@@ -335,6 +339,9 @@ export const showTaskCommand = new Command("show")
         if (board) {
           console.log(`Log: ${getTaskLogPath(board.slug, task.id)}`);
         }
+      }
+      if (isEnabled(FF_HEARTBEAT) && task.status === "running" && task.last_heartbeat_at) {
+        console.log(`Last heartbeat: ${new Date(task.last_heartbeat_at * 1000).toISOString()}`);
       }
 
       const comments = getComments(id);
@@ -394,6 +401,62 @@ export const promoteTaskCommand = new Command("promote")
       const id = parseTaskId(taskId);
       const task = promoteTask(id);
       console.log(`Promoted task ${task.id} to ready.`);
+    } catch (err: any) {
+      console.error(`Error: ${err.message}`);
+      process.exit(1);
+    }
+  });
+
+export const assignTaskCommand = new Command("assign")
+  .description("Assign a task to a profile, or 'none' to unassign")
+  .argument("<task_id>", "Task ID")
+  .argument("<profile>", "Profile name or 'none'")
+  .action((taskId: string, profile: string) => {
+    try {
+      if (!isEnabled(FF_ASSIGN_REASSIGN)) {
+        throw new Error("Assign/reassign feature is not enabled.");
+      }
+      const id = parseTaskId(taskId);
+      const trimmed = profile.trim();
+      if (trimmed === "") {
+        throw new Error("Profile cannot be empty.");
+      }
+      if (trimmed.toLowerCase() === "none") {
+        const task = unassignTask(id);
+        console.log(`Unassigned task ${task.id}.`);
+      } else {
+        const task = assignTask(id, trimmed);
+        console.log(`Assigned task ${task.id} to ${trimmed}.`);
+      }
+    } catch (err: any) {
+      console.error(`Error: ${err.message}`);
+      process.exit(1);
+    }
+  });
+
+export const reassignTaskCommand = new Command("reassign")
+  .description("Reassign a task to another profile")
+  .argument("<task_id>", "Task ID")
+  .argument("<profile>", "Profile name or 'none'")
+  .option("--reclaim", "Reclaim active claim on a running task before reassigning")
+  .option("--reason <text>", "Reason for reclaim")
+  .action((taskId: string, profile: string, options: { reclaim?: boolean; reason?: string }) => {
+    try {
+      if (!isEnabled(FF_ASSIGN_REASSIGN)) {
+        throw new Error("Assign/reassign feature is not enabled.");
+      }
+      const id = parseTaskId(taskId);
+      const trimmed = profile.trim();
+      if (trimmed === "") {
+        throw new Error("Profile cannot be empty.");
+      }
+      const targetProfile = trimmed.toLowerCase() === "none" ? null : trimmed;
+      const task = reassignTask(id, targetProfile, { reclaim: options.reclaim, reason: options.reason });
+      if (targetProfile === null) {
+        console.log(`Unassigned task ${task.id}.`);
+      } else {
+        console.log(`Reassigned task ${task.id} to ${targetProfile}.`);
+      }
     } catch (err: any) {
       console.error(`Error: ${err.message}`);
       process.exit(1);
@@ -698,6 +761,9 @@ export const reclaimTaskCommand = new Command("reclaim")
   .option("--reason <text>", "Reason for reclaim")
   .action((taskId: string, options: { reason?: string }) => {
     try {
+      if (options.reason !== undefined && !isEnabled(FF_ASSIGN_REASSIGN)) {
+        throw new Error("The --reason option requires the assign/reassign feature.");
+      }
       const id = parseTaskId(taskId);
       const ok = reclaimTask(id, options.reason);
       if (!ok) {
@@ -711,17 +777,38 @@ export const reclaimTaskCommand = new Command("reclaim")
     }
   });
 
+const MAX_HEARTBEAT_NOTE_BYTES = 4096;
+
 export const heartbeatTaskCommand = new Command("heartbeat")
   .description("Emit a heartbeat for a running task")
   .argument("<task_id>", "Task ID")
   .option("--note <text>", "Optional note")
   .action((taskId: string, options: { note?: string }) => {
     try {
+      if (!isEnabled(FF_HEARTBEAT)) {
+        throw new Error("Heartbeat feature is not enabled.");
+      }
+
       const id = parseTaskId(taskId);
-      const ok = heartbeat(id, options.note);
+      const task = showTask(id);
+      if (!task) {
+        throw new Error(`Task ${id} not found.`);
+      }
+      if (task.status === "archived") {
+        throw new Error(`Task ${id} is archived.`);
+      }
+      if (task.status !== "running") {
+        throw new Error(`Task ${id} is not running.`);
+      }
+
+      let note = options.note;
+      if (note !== undefined && note.length > MAX_HEARTBEAT_NOTE_BYTES) {
+        note = note.slice(0, MAX_HEARTBEAT_NOTE_BYTES);
+      }
+
+      const ok = heartbeat(id, note);
       if (!ok) {
-        console.error(`Task ${id} is not running.`);
-        process.exit(1);
+        throw new Error(`Task ${id} is not running.`);
       }
       console.log(`Heartbeat recorded for task ${id}.`);
     } catch (err: any) {
@@ -795,6 +882,9 @@ export const listRunsCommand = new Command("runs")
         if (run.outcome) line += ` outcome=${run.outcome}`;
         if (run.profile) line += ` profile=${run.profile}`;
         line += ` started=${started}`;
+        if (isEnabled(FF_CRASH_GRACE_PERIOD) && run.spawned_at) {
+          line += ` spawned=${new Date(run.spawned_at * 1000).toISOString()}`;
+        }
         if (ended) line += ` ended=${ended}`;
         if (run.summary) line += ` summary="${run.summary}"`;
         if (run.metadata) line += ` metadata="${run.metadata}"`;

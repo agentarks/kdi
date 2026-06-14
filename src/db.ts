@@ -61,7 +61,8 @@ CREATE TABLE IF NOT EXISTS tasks (
   max_retries INTEGER,
   consecutive_failures INTEGER NOT NULL DEFAULT 0,
   idempotency_key TEXT,
-  model_override TEXT
+  model_override TEXT,
+  rate_limited_until INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS comments (
@@ -89,6 +90,7 @@ CREATE TABLE IF NOT EXISTS task_runs (
   max_runtime_seconds INTEGER,
   last_heartbeat_at INTEGER,
   started_at INTEGER NOT NULL,
+  spawned_at INTEGER,
   ended_at INTEGER,
   outcome TEXT CHECK (outcome IN ('completed', 'blocked', 'crashed', 'timed_out', 'spawn_failed', 'gave_up', 'reclaimed')),
   summary TEXT,
@@ -300,6 +302,13 @@ export function initDb(path?: string): Database {
       dbInstance.exec("ALTER TABLE tasks ADD COLUMN tenant TEXT");
     }
 
+    // Migrate: add rate_limited_until if missing
+    const hasRateLimitedUntil = tableInfo.some((col) => col.name === "rate_limited_until");
+    if (!hasRateLimitedUntil) {
+      dbInstance.exec("ALTER TABLE tasks ADD COLUMN rate_limited_until INTEGER");
+    }
+    dbInstance.exec("CREATE INDEX IF NOT EXISTS idx_tasks_rate_limited_until ON tasks(status, rate_limited_until)");
+
     // Migrate: add created_by if missing
     const hasCreatedBy = tableInfo.some((col) => col.name === "created_by");
     if (!hasCreatedBy) {
@@ -318,6 +327,12 @@ export function initDb(path?: string): Database {
     const hasRunMaxRuntime = runsTableInfo.some((col) => col.name === "max_runtime_seconds");
     if (!hasRunMaxRuntime) {
       dbInstance.exec("ALTER TABLE task_runs ADD COLUMN max_runtime_seconds INTEGER");
+    }
+
+    // Migrate: add spawned_at to task_runs if missing
+    const hasRunSpawnedAt = runsTableInfo.some((col) => col.name === "spawned_at");
+    if (!hasRunSpawnedAt) {
+      dbInstance.exec("ALTER TABLE task_runs ADD COLUMN spawned_at INTEGER");
     }
 
     // Migrate: optimize idempotency index to composite
@@ -376,14 +391,15 @@ export function initDb(path?: string): Database {
             max_retries INTEGER,
             consecutive_failures INTEGER NOT NULL DEFAULT 0,
             idempotency_key TEXT,
-            model_override TEXT
+            model_override TEXT,
+            rate_limited_until INTEGER
           );
           INSERT INTO tasks_new
-            (id, board_id, title, body, assignee, status, priority, tenant, workspace_kind, workspace, branch, result, summary, block_reason, schedule_reason, review_reason, scheduled_at, created_by, skills, created_at, updated_at, started_at, archived_at, current_run_id, claim_lock, claim_expires, last_heartbeat_at, max_runtime_seconds, max_retries, consecutive_failures, idempotency_key, model_override)
+            (id, board_id, title, body, assignee, status, priority, tenant, workspace_kind, workspace, branch, result, summary, block_reason, schedule_reason, review_reason, scheduled_at, created_by, skills, created_at, updated_at, started_at, archived_at, current_run_id, claim_lock, claim_expires, last_heartbeat_at, max_runtime_seconds, max_retries, consecutive_failures, idempotency_key, model_override, rate_limited_until)
           SELECT
             id, board_id, title, body, assignee, status,
             CASE priority WHEN 'low' THEN 1 WHEN 'medium' THEN 2 WHEN 'high' THEN 3 ELSE COALESCE(priority, 0) END,
-            tenant, workspace_kind, workspace, branch, result, summary, block_reason, schedule_reason, review_reason, scheduled_at, COALESCE(created_by, 'unknown'), skills, created_at, updated_at, started_at, archived_at, current_run_id, claim_lock, claim_expires, last_heartbeat_at, max_runtime_seconds, max_retries, COALESCE(consecutive_failures, 0), idempotency_key, model_override
+            tenant, workspace_kind, workspace, branch, result, summary, block_reason, schedule_reason, review_reason, scheduled_at, COALESCE(created_by, 'unknown'), skills, created_at, updated_at, started_at, archived_at, current_run_id, claim_lock, claim_expires, last_heartbeat_at, max_runtime_seconds, max_retries, COALESCE(consecutive_failures, 0), idempotency_key, model_override, rate_limited_until
           FROM tasks;
           DROP TABLE tasks;
           ALTER TABLE tasks_new RENAME TO tasks;

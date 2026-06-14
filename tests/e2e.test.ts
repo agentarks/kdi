@@ -3,8 +3,9 @@ import { execSync, spawn } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { initDb, closeDb } from "../src/db";
+import { initDb, closeDb, getDb } from "../src/db";
 import { addDependency } from "../src/models/dependency";
+import { getEvents } from "../src/models/taskEvent";
 
 const PROJECT_ROOT = resolve(import.meta.dir, "..");
 
@@ -1074,6 +1075,120 @@ describe("kdi e2e acceptance", () => {
     25000
   );
 
+  it("kdi dispatch --rate-limit-cooldown is rejected when flag is disabled", () => {
+    const tmp = makeTempDir("rate-limit-cooldown-disabled");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    expect(() => runKdi(`dispatch --rate-limit-cooldown 30s`, env)).toThrow(/Rate-limit exit code handling is not enabled/);
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it(
+    "kdi dispatch --rate-limit-cooldown sets cooldown duration when flag enabled",
+    async () => {
+      const tmp = makeTempDir("rate-limit-cooldown-enabled");
+      const dbPath = join(tmp, "kdi.db");
+      const repoDir = join(tmp, "repo");
+      mkdirSync(repoDir, { recursive: true });
+      setupGitRepo(repoDir);
+      setupProfiles(tmp, [{ name: "rateagent", command: "exit 75" }]);
+      const env = {
+        KDI_DB: dbPath,
+        HOME: tmp,
+        FF_ENABLE_KANBAN_DISPATCH: "true",
+        FF_RATE_LIMIT_EXIT_CODE: "true",
+      };
+
+      runKdi(`boards create myproj --workdir ${repoDir}`, env);
+      const taskId = runKdi(`create "rate task" --board myproj --assignee rateagent`, env);
+
+      const dispatcher = spawn("bun", ["run", "src/index.ts", "dispatch", "--interval", "500", "--rate-limit-cooldown", "2m"], {
+        cwd: PROJECT_ROOT,
+        env: { ...process.env, ...env },
+        stdio: "ignore",
+      });
+
+      runKdi(`promote ${taskId}`, env);
+
+      const ok = await waitForTaskStatus(taskId, "ready", env, 10000);
+      expect(ok).toBe(true);
+
+      // Wait for the dispatcher to process the EX_TEMPFAIL and set the cooldown.
+      let output = "";
+      let cooldownLine = false;
+      const start = Date.now();
+      while (Date.now() - start < 10000) {
+        output = runKdi(`show ${taskId}`, env);
+        if (output.includes("Rate limited until:")) {
+          cooldownLine = true;
+          break;
+        }
+        await new Promise((r) => setTimeout(r, 500));
+      }
+      dispatcher.kill("SIGTERM");
+
+      expect(cooldownLine).toBe(true);
+
+      const match = output.match(/Rate limited until: ([^\n]+)/);
+      expect(match).not.toBeNull();
+      const cooldown = new Date(match![1]).getTime();
+      const now = Date.now();
+      expect(cooldown).toBeGreaterThanOrEqual(now + 110000);
+      expect(cooldown).toBeLessThanOrEqual(now + 130000);
+
+      rmSync(tmp, { recursive: true, force: true });
+    },
+    25000
+  );
+
+  it("show displays rate limited until when flag enabled and cooldown is set", () => {
+    const tmp = makeTempDir("rate-limit-show-enabled");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_RATE_LIMIT_EXIT_CODE: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const taskId = runKdi(`create "rate show task" --board myproj`, env);
+
+    initDb(dbPath);
+    getDb().run("UPDATE tasks SET rate_limited_until = unixepoch() + 60 WHERE id = ?", [parseInt(taskId, 10)]);
+    closeDb();
+
+    const output = runKdi(`show ${taskId}`, env);
+    expect(output).toContain("Rate limited until:");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("show hides rate limited until when flag is disabled", () => {
+    const tmp = makeTempDir("rate-limit-show-disabled");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_RATE_LIMIT_EXIT_CODE: "false" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const taskId = runKdi(`create "rate hide task" --board myproj`, env);
+
+    initDb(dbPath);
+    getDb().run("UPDATE tasks SET rate_limited_until = unixepoch() + 60 WHERE id = ?", [parseInt(taskId, 10)]);
+    closeDb();
+
+    const output = runKdi(`show ${taskId}`, env);
+    expect(output).not.toContain("Rate limited until:");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
   it("boards create stores metadata when flag enabled", () => {
     const tmp = makeTempDir("board-metadata");
     const dbPath = join(tmp, "kdi.db");
@@ -1747,6 +1862,252 @@ describe("kdi e2e acceptance", () => {
 
     const output = runKdi(`show ${taskId}`, env);
     expect(output).not.toContain("Log:");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("assign sets assignee and show displays it", () => {
+    const tmp = makeTempDir("assign");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_ASSIGN_REASSIGN: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const taskId = runKdi(`create "assign me" --board myproj`, env);
+
+    const output = runKdi(`assign ${taskId} opencode`, env);
+    expect(output).toContain(`Assigned task ${taskId} to opencode.`);
+
+    const showOutput = runKdi(`show ${taskId}`, env);
+    expect(showOutput).toContain("Assignee: opencode");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("assign none clears assignee", () => {
+    const tmp = makeTempDir("assign-none");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_ASSIGN_REASSIGN: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const taskId = runKdi(`create "unassign me" --board myproj --assignee opencode`, env);
+
+    const output = runKdi(`assign ${taskId} none`, env);
+    expect(output).toContain(`Unassigned task ${taskId}.`);
+
+    const showOutput = runKdi(`show ${taskId}`, env);
+    expect(showOutput).not.toContain("Assignee:");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("assign rejects empty profile", () => {
+    const tmp = makeTempDir("assign-empty");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_ASSIGN_REASSIGN: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const taskId = runKdi(`create "empty profile" --board myproj`, env);
+
+    expect(() => runKdi(`assign ${taskId} "  "`, env)).toThrow(/empty/);
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("reassign with --reclaim releases claim and changes assignee", () => {
+    const tmp = makeTempDir("reassign-reclaim");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_ASSIGN_REASSIGN: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const taskId = runKdi(`create "reassign me" --board myproj --assignee opencode`, env);
+    runKdi(`promote ${taskId}`, env);
+    runKdi(`claim ${taskId}`, { ...env, KDI_PROFILE: "opencode" });
+
+    const output = runKdi(`reassign ${taskId} codex --reclaim`, env);
+    expect(output).toContain(`Reassigned task ${taskId} to codex.`);
+
+    const showOutput = runKdi(`show ${taskId}`, env);
+    expect(showOutput).toContain("Assignee: codex");
+    expect(showOutput).toContain("Status: ready");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("reassign with --reclaim --reason records reason", () => {
+    const tmp = makeTempDir("reassign-reason");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_ASSIGN_REASSIGN: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const taskId = runKdi(`create "reason task" --board myproj --assignee opencode`, env);
+    runKdi(`promote ${taskId}`, env);
+    runKdi(`claim ${taskId}`, { ...env, KDI_PROFILE: "opencode" });
+
+    runKdi(`reassign ${taskId} codex --reclaim --reason "slow worker"`, env);
+
+    const runsOutput = runKdi(`runs ${taskId}`, env);
+    expect(runsOutput).toContain("reclaimed");
+    expect(runsOutput).toContain("slow worker");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("reassign none --reclaim clears assignee and leaves task ready", () => {
+    const tmp = makeTempDir("reassign-none");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_ASSIGN_REASSIGN: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const taskId = runKdi(`create "clear me" --board myproj --assignee opencode`, env);
+    runKdi(`promote ${taskId}`, env);
+    runKdi(`claim ${taskId}`, { ...env, KDI_PROFILE: "opencode" });
+
+    const output = runKdi(`reassign ${taskId} none --reclaim --reason "abort"`, env);
+    expect(output).toContain(`Unassigned task ${taskId}.`);
+
+    const showOutput = runKdi(`show ${taskId}`, env);
+    expect(showOutput).not.toContain("Assignee:");
+    expect(showOutput).toContain("Status: ready");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("reclaim --reason records reason when flag enabled", () => {
+    const tmp = makeTempDir("reclaim-reason");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_ASSIGN_REASSIGN: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const taskId = runKdi(`create "reclaim me" --board myproj --assignee opencode`, env);
+    runKdi(`promote ${taskId}`, env);
+    runKdi(`claim ${taskId}`, { ...env, KDI_PROFILE: "opencode" });
+
+    runKdi(`reclaim ${taskId} --reason "manual"`, env);
+
+    const runsOutput = runKdi(`runs ${taskId}`, env);
+    expect(runsOutput).toContain("reclaimed");
+    expect(runsOutput).toContain("manual");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("assign and reassign are gated by feature flag", () => {
+    const tmp = makeTempDir("assign-gated");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_ASSIGN_REASSIGN: "false" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const taskId = runKdi(`create "gated" --board myproj`, env);
+
+    expect(() => runKdi(`assign ${taskId} opencode`, env)).toThrow(/not enabled/);
+    expect(() => runKdi(`reassign ${taskId} codex`, env)).toThrow(/not enabled/);
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("reclaim --reason is gated by feature flag but base reclaim works", () => {
+    const tmp = makeTempDir("reclaim-gated");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_ASSIGN_REASSIGN: "false" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const taskId = runKdi(`create "reclaim base" --board myproj --assignee opencode`, env);
+    runKdi(`promote ${taskId}`, env);
+    runKdi(`claim ${taskId}`, { ...env, KDI_PROFILE: "opencode" });
+
+    expect(() => runKdi(`reclaim ${taskId} --reason "manual"`, env)).toThrow(/requires the assign\/reassign feature/);
+
+    const output = runKdi(`reclaim ${taskId}`, env);
+    expect(output).toContain(`Reclaimed task ${taskId}.`);
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("heartbeat is rejected when flag is disabled", () => {
+    const tmp = makeTempDir("heartbeat-disabled");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_HEARTBEAT: "false" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const taskId = runKdi(`create "heartbeat disabled" --board myproj --initial-status running`, env);
+
+    expect(() => runKdi(`heartbeat ${taskId}`, env)).toThrow(/Heartbeat feature is not enabled/);
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("heartbeat updates timestamps and records note event when flag enabled", () => {
+    const tmp = makeTempDir("heartbeat-enabled");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_HEARTBEAT: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const taskId = runKdi(`create "heartbeat enabled" --board myproj --initial-status running`, env);
+
+    const output = runKdi(`heartbeat ${taskId} --note "step 1 done"`, env);
+    expect(output).toContain(`Heartbeat recorded for task ${taskId}`);
+
+    const showOutput = runKdi(`show ${taskId}`, env);
+    expect(showOutput).toContain("Last heartbeat:");
+
+    initDb(dbPath);
+    const events = getEvents(parseInt(taskId, 10));
+    closeDb();
+    const heartbeatEvents = events.filter((e) => e.kind === "heartbeat");
+    expect(heartbeatEvents).toHaveLength(1);
+    expect(heartbeatEvents[0].payload).toContain('"note":"step 1 done"');
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("show hides last heartbeat when flag is disabled", () => {
+    const tmp = makeTempDir("heartbeat-show-hidden");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const enabledEnv = { KDI_DB: dbPath, HOME: tmp, FF_HEARTBEAT: "true" };
+    const disabledEnv = { KDI_DB: dbPath, HOME: tmp, FF_HEARTBEAT: "false" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, enabledEnv);
+    const taskId = runKdi(`create "heartbeat hidden" --board myproj --initial-status running`, enabledEnv);
+    runKdi(`heartbeat ${taskId}`, enabledEnv);
+
+    const disabledOutput = runKdi(`show ${taskId}`, disabledEnv);
+    expect(disabledOutput).not.toContain("Last heartbeat:");
 
     rmSync(tmp, { recursive: true, force: true });
   });

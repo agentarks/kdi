@@ -52,6 +52,7 @@ describe("db", () => {
     expect(columnNames).toContain("schedule_reason");
     expect(columnNames).toContain("created_by");
     expect(columnNames).toContain("model_override");
+    expect(columnNames).toContain("rate_limited_until");
 
     // Verify indexes exist
     const indexes = db.query("SELECT name FROM sqlite_master WHERE type='index'").all();
@@ -60,6 +61,7 @@ describe("db", () => {
     expect(indexNames).toContain("idx_tasks_assignee");
     expect(indexNames).toContain("idx_tasks_scheduled_at");
     expect(indexNames).toContain("idx_tasks_created_by");
+    expect(indexNames).toContain("idx_tasks_rate_limited_until");
     expect(indexNames).toContain("idx_events_task");
     expect(indexNames).toContain("idx_events_run");
     expect(indexNames).toContain("idx_runs_task");
@@ -280,6 +282,80 @@ describe("db", () => {
     const db = initDb(TEST_DB);
     const columns = db.query("PRAGMA table_info(task_runs)").all() as any[];
     expect(columns.map((c) => c.name)).toContain("max_runtime_seconds");
+
+    closeDb();
+  });
+
+  it("migrates a pre-rate_limit database by adding tasks.rate_limited_until and index", () => {
+    cleanupDb(TEST_DB);
+    const raw = new Database(TEST_DB);
+    raw.exec(`
+      CREATE TABLE boards (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        slug TEXT NOT NULL UNIQUE,
+        workdir TEXT NOT NULL,
+        base_ref TEXT NOT NULL DEFAULT 'origin/main',
+        created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+        archived_at INTEGER
+      );
+      CREATE TABLE tasks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        board_id INTEGER NOT NULL REFERENCES boards(id),
+        title TEXT NOT NULL,
+        body TEXT,
+        assignee TEXT,
+        status TEXT NOT NULL DEFAULT 'todo' CHECK (status IN ('triage', 'todo', 'scheduled', 'ready', 'running', 'done', 'blocked', 'review', 'archived')),
+        priority INTEGER DEFAULT 0,
+        workspace_kind TEXT DEFAULT 'worktree' CHECK (workspace_kind IN ('dir', 'worktree', 'scratch')),
+        branch TEXT,
+        result TEXT,
+        summary TEXT,
+        block_reason TEXT,
+        schedule_reason TEXT,
+        review_reason TEXT,
+        scheduled_at INTEGER,
+        created_by TEXT NOT NULL DEFAULT 'unknown',
+        skills TEXT,
+        created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+        updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
+        started_at INTEGER,
+        archived_at INTEGER,
+        current_run_id INTEGER,
+        claim_lock TEXT,
+        claim_expires INTEGER,
+        last_heartbeat_at INTEGER,
+        max_runtime_seconds INTEGER,
+        idempotency_key TEXT,
+        model_override TEXT
+      );
+      CREATE INDEX idx_tasks_priority ON tasks(priority);
+      CREATE TABLE task_runs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        task_id INTEGER NOT NULL,
+        profile TEXT,
+        step_key TEXT,
+        status TEXT NOT NULL CHECK (status IN ('running', 'done', 'blocked', 'crashed', 'timed_out', 'failed', 'released')),
+        claim_lock TEXT,
+        claim_expires INTEGER,
+        worker_pid INTEGER,
+        max_runtime_seconds INTEGER,
+        last_heartbeat_at INTEGER,
+        started_at INTEGER NOT NULL,
+        ended_at INTEGER,
+        outcome TEXT CHECK (outcome IN ('completed', 'blocked', 'crashed', 'timed_out', 'spawn_failed', 'gave_up', 'reclaimed')),
+        summary TEXT,
+        metadata TEXT,
+        error TEXT
+      );
+    `);
+    raw.close();
+
+    const db = initDb(TEST_DB);
+    const columns = db.query("PRAGMA table_info(tasks)").all() as any[];
+    expect(columns.map((c) => c.name)).toContain("rate_limited_until");
+
+    const indexes = db.query("SELECT name FROM sqlite_master WHERE type='index'").all() as any[];
+    expect(indexes.map((i) => i.name)).toContain("idx_tasks_rate_limited_until");
 
     closeDb();
   });

@@ -23,9 +23,12 @@ import {
   logTaskCommand,
   completeTaskCommand,
   scheduleTaskCommand,
+  assignTaskCommand,
+  reassignTaskCommand,
 } from "./commands/tasks";
 import { dispatchCommand } from "./commands/dispatch";
 import { initCommand } from "./commands/init";
+import { statsCommand } from "./commands/stats";
 import { ensureProfiles } from "./profiles";
 const program = new Command();
 
@@ -62,6 +65,8 @@ program.addCommand(specifyTaskCommand);
 program.addCommand(listRunsCommand);
 program.addCommand(tailTaskCommand);
 program.addCommand(watchCommand);
+program.addCommand(assignTaskCommand);
+program.addCommand(reassignTaskCommand);
 program.addCommand(claimTaskCommand);
 program.addCommand(reclaimTaskCommand);
 program.addCommand(heartbeatTaskCommand);
@@ -70,5 +75,6 @@ program.addCommand(completeTaskCommand);
 program.addCommand(scheduleTaskCommand);
 program.addCommand(initCommand);
 program.addCommand(dispatchCommand);
+program.addCommand(statsCommand);
 
 program.parse();
