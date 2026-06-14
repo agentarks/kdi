@@ -54,6 +54,7 @@ stateDiagram-v2
 | `ff_gc` | `FF_GC` | CLI / maintenance | InDev | `false` | KDI-021 | Garbage collection command; prunes old events, old logs, and KDI-owned archived-task workspaces. |
 | `ff_task_attachments` | `FF_TASK_ATTACHMENTS` | CLI / task metadata | InDev | `false` | KDI-022 | Task file attachments; `kdi attach <task_id> <file>` and attachment display in `kdi show`. |
 | `ff_diagnostics` | `FF_DIAGNOSTICS` | CLI / observability | InDev | `false` | KDI-020 | Board diagnostics command; health-check rules, severity filtering, per-task mode, and `--json` output. |
+| `ff_notify_subs` | `FF_NOTIFY_SUBS` | CLI / notifier watcher | Planned | `false` | KDI-025 | Notification subscriptions; `notify-subscribe/list/unsubscribe` commands; notifier watcher in dispatcher tick.
 
 ## Lifecycle Notes
 
@@ -397,6 +398,21 @@ stateDiagram-v2
   - `kdi diagnostics --json` emits a stable JSON array of findings.
 - **Rollback / deactivation:** Set `FF_DIAGNOSTICS=false` to reject the `diagnostics` command.
 - **Deprecation plan:** N/A
+
+### `ff_notify_subs` — Planned
+
+- **Owner:** kdi core team
+- **BRD:** [BRD-KDI-025](brd-kdi-025-notification-subscriptions.md)
+- **Status transitions:**
+  - `Planned` → `InDev` when subscription table, CLI commands, notifier profiles file, and notifier watcher are implemented.
+  - `InDev` → `Active` when notification delivery is safe to enable by default.
+- **Schema note:** `kanban_notify_subs` is a schema-level table — this flag gates the CLI commands and watcher loop; the schema migration always runs.
+- **Activation criteria:**
+  - `notify-subscribe/list/unsubscribe` commands create, query, and remove subscriptions.
+  - Notifier profiles load from `~/.config/kdi/notifiers.yaml`.
+  - Notifier watcher delivers events to subscribed transports.
+  - `log` built-in notifier profile always available.
+- **Rollback / deactivation:** Set `FF_NOTIFY_SUBS=false` to reject notify commands and disable the notifier watcher.
 
 ### `ff_kanban_dispatch` — Planned
 
