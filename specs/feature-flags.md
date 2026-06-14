@@ -55,7 +55,8 @@ stateDiagram-v2
 | `ff_task_attachments` | `FF_TASK_ATTACHMENTS` | CLI / task metadata | InDev | `false` | KDI-022 | Task file attachments; `kdi attach <task_id> <file>` and attachment display in `kdi show`. |
 | `ff_diagnostics` | `FF_DIAGNOSTICS` | CLI / observability | InDev | `false` | KDI-020 | Board diagnostics command; health-check rules, severity filtering, per-task mode, and `--json` output. |
 | `ff_context_builder` | `FF_CONTEXT_BUILDER` | CLI / task context | InDev | `false` | KDI-023 | `kdi context` bounded worker context builder. |
-| `ff_notify_subs` | `FF_NOTIFY_SUBS` | CLI / notifier watcher | InDev | `false` | KDI-025 | Notification subscriptions; `notify-subscribe/list/unsubscribe` commands; notifier watcher in dispatcher tick.
+| `ff_notify_subs` | `FF_NOTIFY_SUBS` | CLI / notifier watcher | InDev | `false` | KDI-025 | Notification subscriptions; `notify-subscribe/list/unsubscribe` commands; notifier watcher in dispatcher tick. |
+| `ff_show_run_filtering` | `FF_SHOW_RUN_FILTERING` | CLI / task observability | InDev | `false` | KDI-031 | Run history section in `kdi show` with optional `--state-type`/`--state-name` filtering.
 
 ## Lifecycle Notes
 
@@ -426,6 +427,21 @@ stateDiagram-v2
   - Notifier watcher in dispatcher tick loop delivers events to active subscriptions when flag enabled.
   - `log` built-in notifier profile always available.
 - **Rollback / deactivation:** Set `FF_NOTIFY_SUBS=false` to reject notify commands and disable the notifier watcher.
+- **Deprecation plan:** N/A
+
+### `ff_show_run_filtering` — InDev
+
+- **Owner:** kdi core team
+- **BRD:** [BRD-KDI-031](brd-kdi-031-show-run-filtering.md)
+- **Status transitions:**
+  - `Planned` → `InDev` when the run section and `--state-type`/`--state-name` filter are implemented in `kdi show`.
+  - `InDev` → `Active` when the filtered run display is stable and safe to enable by default.
+- **Schema note:** No schema changes; reads from the existing `task_runs` table.
+- **Activation criteria:**
+  - `kdi show <task_id>` displays a concise run history section when the flag is enabled.
+  - `kdi show <task_id> --state-type {status,outcome} --state-name VALUE` filters the displayed runs.
+  - Both filter options are required together; invalid combinations produce clear errors.
+- **Rollback / deactivation:** Set `FF_SHOW_RUN_FILTERING=false` to hide the run section and reject the filter options.
 - **Deprecation plan:** N/A
 
 ### `ff_kanban_dispatch` — Planned

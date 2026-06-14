@@ -217,6 +217,17 @@
 - [x] Unit/CLI tests for all CLI commands and notifier watcher
 - [x] `bun run lint`, `bun run test`, `bun run build` pass
 
+## Show Run Filtering (KDI-031) — In Progress
+- [x] BRD drafted at `specs/brd-kdi-031-show-run-filtering.md`
+- [x] Feature flag `ff_show_run_filtering` / `FF_SHOW_RUN_FILTERING` registered in `specs/feature-flags.md` and `src/flags.ts`, defaults to `false`
+- [ ] `kdi show <task_id>` displays a concise run history section when flag enabled
+- [ ] `kdi show <task_id> --state-type {status|outcome} --state-name VALUE` filters displayed runs
+- [ ] Filter options rejected unless both are provided together
+- [ ] Invalid `--state-type` rejected with clear error
+- [ ] Empty run list and empty filter results handled gracefully
+- [ ] Unit/CLI tests cover flag gating, filtering, validation, and empty states
+- [ ] `bun run lint`, `bun run test`, `bun run build` pass
+
 ## Task Lifecycle
 - [x] `kdi create <title> --board <slug> --assignee <profile>` — create task
 - [x] `kdi create <title> --board <slug> --triage` — create task in triage
