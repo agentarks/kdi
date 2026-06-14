@@ -3,12 +3,16 @@ import { isEnabled, FF_CONTEXT_BUILDER } from "../flags";
 import { resolveBoard } from "../resolveBoard";
 import { buildTaskContext, type TaskContext } from "../models/context";
 
-export const contextCommand = new Command("context")
-  .description("Build worker context for a task")
-  .argument("<task_id>", "Task ID")
-  .option("--board <slug>", "Board slug (resolved via chain)")
-  .option("--json", "Output as JSON")
-  .action((taskIdArg: string, options: { board?: string; json?: boolean }) => {
+export function createContextCommand(): Command {
+  return new Command("context")
+    .description("Build worker context for a task")
+    .argument("<task_id>", "Task ID")
+    .option("--board <slug>", "Board slug (resolved via chain)")
+    .option("--json", "Output as JSON")
+    .action(contextAction);
+}
+
+function contextAction(taskIdArg: string, options: { board?: string; json?: boolean }) {
     try {
       if (!isEnabled(FF_CONTEXT_BUILDER)) {
         console.error("Context builder is not enabled.");
@@ -34,7 +38,9 @@ export const contextCommand = new Command("context")
       console.error(err.message || String(err));
       process.exit(1);
     }
-  });
+}
+
+export const contextCommand = createContextCommand();
 
 function formatTimestamp(ts: number | null): string {
   if (ts === null) return "(none)";
