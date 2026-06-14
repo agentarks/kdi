@@ -1,6 +1,7 @@
 import { getDb } from "../db";
 import { addEvent } from "./taskEvent";
 import { createRun, finishRun } from "./taskRun";
+import { reclaimTask } from "./claim";
 
 export const TASK_COLUMNS =
   "id, board_id, title, body, assignee, status, priority, tenant, " +
@@ -71,6 +72,11 @@ export interface CompleteTaskInput {
   result?: string;
   summary?: string;
   metadata?: string;
+}
+
+export interface ReassignOptions {
+  reclaim?: boolean;
+  reason?: string;
 }
 
 export interface ListTasksFilter {
@@ -544,6 +550,66 @@ export function specifyTask(id: number): Task {
   }
   addEvent(updated.id, "specified");
   return updated;
+}
+
+export function assignTask(id: number, profile: string): Task {
+  const db = getDb();
+  const result = db.run(
+    `UPDATE tasks SET assignee = ?, updated_at = unixepoch() WHERE id = ? AND archived_at IS NULL`,
+    [profile, id]
+  );
+
+  if (result.changes === 0) {
+    throw new Error(`Task ${id} not found or already archived`);
+  }
+
+  const task = showTask(id);
+  if (!task) {
+    throw new Error(`Task ${id} not found after assignment`);
+  }
+  addEvent(task.id, "assigned", { assignee: profile });
+  return task;
+}
+
+export function unassignTask(id: number): Task {
+  const db = getDb();
+  const result = db.run(
+    `UPDATE tasks SET assignee = NULL, updated_at = unixepoch() WHERE id = ? AND archived_at IS NULL`,
+    [id]
+  );
+
+  if (result.changes === 0) {
+    throw new Error(`Task ${id} not found or already archived`);
+  }
+
+  const task = showTask(id);
+  if (!task) {
+    throw new Error(`Task ${id} not found after unassignment`);
+  }
+  addEvent(task.id, "unassigned");
+  return task;
+}
+
+export function reassignTask(id: number, profile: string | null, options: ReassignOptions = {}): Task {
+  const db = getDb();
+
+  const reassign = db.transaction(() => {
+    const task = showTask(id);
+    if (!task) {
+      throw new Error(`Task ${id} not found or already archived`);
+    }
+
+    if (task.status === "running" && options.reclaim) {
+      reclaimTask(id, options.reason);
+    }
+
+    if (profile === null) {
+      return unassignTask(id);
+    }
+    return assignTask(id, profile);
+  });
+
+  return reassign();
 }
 
 export function archiveTask(id: number): Task {

@@ -15,13 +15,16 @@ import {
   reviewTask,
   scheduleTask,
   parseDuration,
+  assignTask,
+  unassignTask,
+  reassignTask,
 } from "../models/task";
 import { addComment, getComments } from "../models/comment";
 import { getRuns } from "../models/taskRun";
 import { getEvents, tailEvents, getRecentEvents, getEventsAfter } from "../models/taskEvent";
 import { atomicClaim, reclaimTask, heartbeat } from "../models/claim";
 import { getTaskLogPath } from "../observability";
-import { isEnabled, FF_SCHEDULED_STATUS, FF_REVIEW_STATUS, FF_COMPLETE_METADATA, FF_PRIORITY_INTEGER, FF_SKILLS_ARRAY, FF_MAX_RUNTIME, FF_MAX_RETRIES, FF_TENANT_NAMESPACE, FF_CREATED_BY, FF_MODEL_OVERRIDE, FF_DEFAULT_WORKDIR, FF_CRASH_GRACE_PERIOD, FF_HEARTBEAT, FF_RATE_LIMIT_EXIT_CODE } from "../flags";
+import { isEnabled, FF_SCHEDULED_STATUS, FF_REVIEW_STATUS, FF_COMPLETE_METADATA, FF_PRIORITY_INTEGER, FF_SKILLS_ARRAY, FF_MAX_RUNTIME, FF_MAX_RETRIES, FF_TENANT_NAMESPACE, FF_CREATED_BY, FF_MODEL_OVERRIDE, FF_DEFAULT_WORKDIR, FF_ASSIGN_REASSIGN, FF_CRASH_GRACE_PERIOD, FF_HEARTBEAT, FF_RATE_LIMIT_EXIT_CODE } from "../flags";
 import { resolveBoard } from "../resolveBoard";
 
 const VALID_STATUSES = ["triage", "todo", "scheduled", "ready", "running", "done", "blocked", "review"] as const;
@@ -398,6 +401,62 @@ export const promoteTaskCommand = new Command("promote")
     }
   });
 
+export const assignTaskCommand = new Command("assign")
+  .description("Assign a task to a profile, or 'none' to unassign")
+  .argument("<task_id>", "Task ID")
+  .argument("<profile>", "Profile name or 'none'")
+  .action((taskId: string, profile: string) => {
+    try {
+      if (!isEnabled(FF_ASSIGN_REASSIGN)) {
+        throw new Error("Assign/reassign feature is not enabled.");
+      }
+      const id = parseTaskId(taskId);
+      const trimmed = profile.trim();
+      if (trimmed === "") {
+        throw new Error("Profile cannot be empty.");
+      }
+      if (trimmed.toLowerCase() === "none") {
+        const task = unassignTask(id);
+        console.log(`Unassigned task ${task.id}.`);
+      } else {
+        const task = assignTask(id, trimmed);
+        console.log(`Assigned task ${task.id} to ${trimmed}.`);
+      }
+    } catch (err: any) {
+      console.error(`Error: ${err.message}`);
+      process.exit(1);
+    }
+  });
+
+export const reassignTaskCommand = new Command("reassign")
+  .description("Reassign a task to another profile")
+  .argument("<task_id>", "Task ID")
+  .argument("<profile>", "Profile name or 'none'")
+  .option("--reclaim", "Reclaim active claim on a running task before reassigning")
+  .option("--reason <text>", "Reason for reclaim")
+  .action((taskId: string, profile: string, options: { reclaim?: boolean; reason?: string }) => {
+    try {
+      if (!isEnabled(FF_ASSIGN_REASSIGN)) {
+        throw new Error("Assign/reassign feature is not enabled.");
+      }
+      const id = parseTaskId(taskId);
+      const trimmed = profile.trim();
+      if (trimmed === "") {
+        throw new Error("Profile cannot be empty.");
+      }
+      const targetProfile = trimmed.toLowerCase() === "none" ? null : trimmed;
+      const task = reassignTask(id, targetProfile, { reclaim: options.reclaim, reason: options.reason });
+      if (targetProfile === null) {
+        console.log(`Unassigned task ${task.id}.`);
+      } else {
+        console.log(`Reassigned task ${task.id} to ${targetProfile}.`);
+      }
+    } catch (err: any) {
+      console.error(`Error: ${err.message}`);
+      process.exit(1);
+    }
+  });
+
 export const blockTaskCommand = new Command("block")
   .description("Block a task")
   .argument("<task_id>", "Task ID")
@@ -696,6 +755,9 @@ export const reclaimTaskCommand = new Command("reclaim")
   .option("--reason <text>", "Reason for reclaim")
   .action((taskId: string, options: { reason?: string }) => {
     try {
+      if (options.reason !== undefined && !isEnabled(FF_ASSIGN_REASSIGN)) {
+        throw new Error("The --reason option requires the assign/reassign feature.");
+      }
       const id = parseTaskId(taskId);
       const ok = reclaimTask(id, options.reason);
       if (!ok) {
