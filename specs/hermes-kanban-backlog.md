@@ -444,9 +444,9 @@
   - `task_attachments` table + on-disk storage
   - `kdi attach <task_id> <file>`
 
-- [ ] **KDI-023: Context builder**
-  - `kdi context <task_id>` — print full worker context
-  - Title + body + prior attempts + parent results + role history + comments
+- [x] **KDI-023: Context builder**
+  - `kdi context <task_id> [--board <slug>] [--json]` — print full worker context
+  - Title + body + prior attempts + parent results + role history + comments + attachments
   - Bounded caps on all fields to prevent prompt overflow
   - Surfaces attachment absolute paths for file-tool access
 
@@ -554,7 +554,7 @@
 | `hermes kanban runs` | `kdi runs` | Exists | KDI-000 |
 | `hermes kanban heartbeat` | `kdi heartbeat` | **Done** | KDI-000c |
 | `hermes kanban assignees` | `kdi assignees` | Missing | KDI-024 |
-| `hermes kanban context` | `kdi context` | Missing | KDI-023 |
+| `hermes kanban context` | `kdi context` | **Done** | KDI-023 |
 | `hermes kanban specify` | `kdi specify` | **Done** | KDI-001 (basic) |
 | `hermes kanban decompose` | `kdi decompose` | Missing | KDI-028 |
 | `hermes kanban gc` | `kdi gc` | **Done** | KDI-021 |
@@ -660,7 +660,7 @@
 
 ### P5 — Advanced
 34. **KDI-022**: Attachments
-35. **KDI-023**: Context builder (bounded caps, prior attempts, role history)
+35. ~~**KDI-023**: Context builder (bounded caps, prior attempts, role history)~~
 36. **KDI-024**: Assignees listing
 37. **KDI-025**: Notification subscriptions
 38. **KDI-003**: Review status

@@ -148,7 +148,7 @@ export function unsubscribe(
     );
 
     if (result.changes === 0) {
-      throw new Error("No active subscription found for the given parameters.");
+      throw new Error("No active subscription found.");
     }
 
     addEvent(taskId, "unsubscribed", {
@@ -168,7 +168,7 @@ export function unsubscribe(
   );
 
   if (result.changes === 0) {
-    throw new Error("No active subscription found for the given parameters.");
+    throw new Error("No active subscription found.");
   }
 
   addEvent(taskId, "unsubscribed", {

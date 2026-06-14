@@ -25,7 +25,7 @@ export interface NotificationPayload {
   taskId: number;
   title: string;
   eventKind: string;
-  eventPayload: Record<string, any> | null;
+  eventPayload: Record<string, unknown> | null;
   text: string;
 }
 
@@ -303,7 +303,7 @@ export async function sendNotification(
       return;
     default:
       // Should be caught by validation, but defensive fallback.
-      console.warn(`Unsupported notifier transport: ${(profile as any).transport}`);
+      console.warn(`Unsupported notifier transport: ${profile.transport}`);
   }
 }
 
@@ -374,7 +374,7 @@ export async function runNotifierWatcher(boardSlug: string, lastSeenId: number):
       continue;
     }
 
-    let eventPayload: Record<string, any> | null = null;
+    let eventPayload: Record<string, unknown> | null = null;
     if (event.payload) {
       try {
         eventPayload = JSON.parse(event.payload);

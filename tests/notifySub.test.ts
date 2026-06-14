@@ -161,7 +161,7 @@ describe("notify subscription model", () => {
     const task = createTask({ board_id: board.id, title: "t" });
 
     expect(() => unsubscribe(task.id, "telegram", "-1001")).toThrow(
-      "No active subscription found for the given parameters."
+      "No active subscription found."
     );
   });
 });
