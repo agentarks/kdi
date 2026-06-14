@@ -450,7 +450,7 @@
   - Bounded caps on all fields to prevent prompt overflow
   - Surfaces attachment absolute paths for file-tool access
 
-- [ ] **KDI-024: Assignees listing**
+- [x] **KDI-024: Assignees listing**
   - `kdi assignees` — list known profiles + per-profile task counts
   - Union of `~/.config/kdi/profiles/` and current board assignees
 

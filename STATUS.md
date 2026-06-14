@@ -141,6 +141,17 @@
 - [x] Unit/CLI tests cover counts, JSON output, board resolution, and flag gating
 - [x] `bun run lint`, `bun run test`, `bun run build` pass
 
+## Assignees Listing (KDI-024) — Done
+- [x] Feature flag `ff_assignees_listing` / `FF_ASSIGNEES_LISTING` registered in `specs/feature-flags.md` and `src/flags.ts`, defaults to `false`
+- [x] `getAssigneeCounts()` model helper in `src/models/task.ts` counts non-archived tasks per assignee for a board
+- [x] `kdi assignees [--board <slug>]` command in `src/commands/assignees.ts`, wired into `src/index.ts`
+- [x] Listing merges known profiles from the profile registry with assignees present on the resolved board
+- [x] Each profile shows the count of non-archived tasks assigned to it on the board
+- [x] `kdi assignees --json` emits a stable JSON document (`{ board, assignees: [{ profile, count }] }`)
+- [x] Board resolved via standard chain; errors clearly when board is missing or archived
+- [x] Unit/CLI tests cover counts, JSON output, board resolution, archived exclusion, and flag gating
+- [x] `bun run lint`, `bun run test`, `bun run build` pass
+
 ## Task Lifecycle
 - [x] `kdi create <title> --board <slug> --assignee <profile>` — create task
 - [x] `kdi create <title> --board <slug> --triage` — create task in triage
