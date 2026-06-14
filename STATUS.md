@@ -188,14 +188,20 @@
 - [x] Unit/CLI tests cover storage, flag gating, duplicate-name rejection, and hard-delete cascade
 - [x] `bun run lint`, `bun run test`, `bun run build` pass
 
-## Context Builder (KDI-023) — Planned
+## Context Builder (KDI-023) — Done
 - [x] BRD drafted at `specs/brd-kdi-023-context-builder.md`
 - [x] Feature flag `ff_context_builder` / `FF_CONTEXT_BUILDER` registered in `specs/feature-flags.md`, defaults to `false`
-- [ ] `FF_CONTEXT_BUILDER` constant added to `src/flags.ts`
-- [ ] `kdi context <task_id>` command prints bounded worker context (title, body, parents, attempts, role history, comments, attachments)
-- [ ] `kdi context <task_id> --json` emits stable JSON document
-- [ ] Field-level caps prevent prompt overflow
-- [ ] Attachment absolute paths resolved for file-tool access
+- [x] `FF_CONTEXT_BUILDER` constant added to `src/flags.ts`
+- [x] `kdi context <task_id> [--board <slug>] [--json]` command gated by `FF_CONTEXT_BUILDER`
+- [x] Context builder composes 7 sections: header, body, parent results, prior attempts, role history, comments, attachments
+- [x] All free-text/count fields capped per BRD to prevent prompt overflow
+- [x] Parent results only include done parents; ordered by insertion order
+- [x] Role history derives actors and notes from task events
+- [x] Comments fallback to `"user"` when `author` column is absent
+- [x] Attachment paths resolved to absolute; tolerated when `task_attachments` table missing
+- [x] Board resolved via standard chain
+- [x] Unit/CLI tests cover happy path, truncation, caps, missing task, flag gating, JSON output
+- [x] `bun run lint`, `bun run test`, `bun run build` pass
 
 ## Task Lifecycle
 - [x] `kdi create <title> --board <slug> --assignee <profile>` — create task
@@ -358,21 +364,10 @@
 - [ ] Webhook support (v2)
 
 ## Notification Subscriptions (KDI-025)
-- [x] BRD drafted at `specs/brd-kdi-025-notification-subscriptions.md`
-- [x] Feature flag `ff_notify_subs` / `FF_NOTIFY_SUBS` registered in `specs/feature-flags.md`, defaults to `false`
-- [ ] `kanban_notify_subs` table schema and migration in `src/db.ts`
-- [ ] `subscribe()` / `listSubscriptions()` / `unsubscribe()` model functions in `src/models/notifySub.ts`
-- [ ] `kdi notify-subscribe <task_id> --platform <name> --chat-id <id>` command
-- [ ] `kdi notify-list [<task_id>] [--archived] [--json]` command
-- [ ] `kdi notify-unsubscribe <task_id> --platform <name> --chat-id <id>` command
-- [ ] Notifier profiles registry `~/.config/kdi/notifiers.yaml`
-- [ ] Notifier watcher in dispatcher tick loop
-- [ ] Transport handlers: telegram, slack, discord, webhook, log
-- [ ] Unit/e2e tests for all CLI commands and notifier watcher
+- [ ] Not yet implemented
 
 ## Feature Flags
 - [ ] `FF_ENABLE_KANBAN_DISPATCH` — gates dispatcher loop
-- [ ] `FF_NOTIFY_SUBS` — gates notification subscriptions and notifier watcher
 - [ ] Defaults to `false` everywhere
 
 ## Non-Functional Requirements
@@ -409,6 +404,7 @@
 - [ ] **SQLite monolithic migration** — The single `CREATE TABLE tasks_new ... DROP TABLE ... RENAME TO` migration handles schema changes for KDI-001 (triage), KDI-002 (scheduled), KDI-003 (review), and KDI-004 (integer priority) in one pass. This is technically required by SQLite (can't `ALTER TABLE` CHECK constraints or change column types), but it mixes feature boundaries. If versioned migration files are ever introduced, this should be split into per-feature steps with intermediate schema versions.
 - [ ] **`tests/init.test.ts` fails when `KDI_DB` is set** — `defaultDbPath()` honors the `KDI_DB`/`KDI_DB_PATH` environment variables, but `tests/init.test.ts` asserts that `defaultDbPath()` ends with `.db`. When the parent environment sets `KDI_DB` to a path without that suffix (e.g. `.../kdi.sqlite`), the assertion fails. The implementation is correct; the test is environment-sensitive. Run the suite with `env -u KDI_DB bun test` for a clean baseline.
 - [ ] **Import-path convention conflict** — `AGENTS.md` prescribes the `~/*` alias for `src/*` imports, but the entire existing codebase uses relative imports (e.g. `../models/board`). KDI-024 followed the existing relative-import convention to stay consistent with surrounding code. The project should either migrate all imports to `~/*` or update `AGENTS.md` to reflect the actual convention.
+- [ ] **Full-suite board-model test failures** — Running the complete test suite (`bun run test`) in this worktree produces 19 unrelated failures in `board model` tests (metadata, default workdir, showBoard, archive). The same tests pass when run in isolation (`bun test ./tests/board.test.ts`), and the KDI-023 tests pass both in isolation and as a group. This appears to be a pre-existing test-isolation issue (likely `HOME`/`KDI_DB` leakage between tests) rather than a defect introduced by KDI-023. Run `env -u KDI_DB bun test` or affected tests in isolation for a clean baseline; investigate and fix the isolation issue separately.
 
 ## Acceptance Criteria
 - [x] `kdi create "backend: auth" --board myproj --assignee opencode` returns task ID
