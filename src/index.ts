@@ -33,6 +33,7 @@ import { statsCommand } from "./commands/stats";
 import { gcCommand } from "./commands/gc";
 import { assigneesCommand } from "./commands/assignees";
 import { diagnosticsCommand } from "./commands/diagnostics";
+import { contextCommand } from "./commands/context";
 import { ensureProfiles } from "./profiles";
 const program = new Command();
 
@@ -84,5 +85,6 @@ program.addCommand(dispatchCommand);
 program.addCommand(statsCommand);
 program.addCommand(gcCommand);
 program.addCommand(diagnosticsCommand);
+program.addCommand(contextCommand);
 
 program.parse();
