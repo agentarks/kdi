@@ -132,7 +132,7 @@
 
 ## Board Stats (KDI-019) — Done
 - [x] BRD drafted at `specs/brd-019-stats.md`
-- [x] Feature flag `ff_stats` / `FF_STATS` registered in `src/flags.ts` and `specs/feature-flags.md`, defaults to `false`
+- [x] Feature flag `ff_stats` / `FF_STATS` registered in `specs/feature-flags.md`, defaults to `false`
 - [x] `FF_STATS` constant added to `src/flags.ts`
 - [x] `kdi stats [--board <slug>]` command gated by `FF_STATS`
 - [x] `kdi stats` prints per-status counts, per-assignee counts, and oldest-ready age
@@ -162,6 +162,17 @@
 - [x] `kdi assignees --json` emits a stable JSON document (`{ board, assignees: [{ profile, count }] }`)
 - [x] Board resolved via standard chain; errors clearly when board is missing or archived
 - [x] Unit/CLI tests cover counts, JSON output, board resolution, archived exclusion, and flag gating
+- [x] `bun run lint`, `bun run test`, `bun run build` pass
+
+## Task Attachments (KDI-022) — Done
+- [x] BRD drafted at `specs/brd-kdi-022-task-attachments.md`
+- [x] Feature flag `ff_task_attachments` / `FF_TASK_ATTACHMENTS` registered in `specs/feature-flags.md` and `src/flags.ts`, defaults to `false`
+- [x] `task_attachments` table + index added via schema + migration in `src/db.ts`
+- [x] `kdi attach <task_id> <file>` command copies file to board storage and records metadata
+- [x] `kdi show <id>` displays attachments when flag enabled
+- [x] Board hard-delete cascade-deletes attachment rows and on-disk `attachments/` directory
+- [x] Unit/CLI tests cover storage, flag gating, duplicate-name rejection, and hard-delete cascade
+- [x] `bun run lint`, `bun run test`, `bun run build` pass
 - [x] `bun run lint`, `bun run test`, `bun run build` pass
 
 ## Task Lifecycle
@@ -358,6 +369,7 @@
 - [ ] **KDI-005: `ff_complete_metadata` gating is coarse** — The entire `--metadata` path is gated; the flag doesn't apply to the base `--result`/`--summary` paths. Consider finer-grained flags if metadata needs independent rollout.
 - [ ] **Branch naming convention not enforced** — `AGENTS.md` requires `feat/<brd-id>-<feature-slug>` but the current branch `fix/review-gaps` was not renamed. Either update `AGENTS.md` with an exemption or enforce via CI.
 - [ ] **`spawnHarness` uses `shell: true`** — Changed from manual shell parser to `spawn(command, { shell: true })`. This changes quoting/escaping semantics for profile commands. Verify no existing profiles depend on the old literal-argument behavior. Document in PR description.
+- [ ] **Worker log capture test flaky in full-suite runs** — `worker log capture > spawnHarness writes combined stdout/stderr to log file` (and the matching e2e dispatcher log test) occasionally fail when the full suite runs but pass in isolation. Likely an ordering/timing interaction between tests sharing `HOME`/`KDI_DB` defaults. Documented by reviewer for KDI-022; investigate and fix if it persists on `main`.
 - [ ] **SQLite monolithic migration** — The single `CREATE TABLE tasks_new ... DROP TABLE ... RENAME TO` migration handles schema changes for KDI-001 (triage), KDI-002 (scheduled), KDI-003 (review), and KDI-004 (integer priority) in one pass. This is technically required by SQLite (can't `ALTER TABLE` CHECK constraints or change column types), but it mixes feature boundaries. If versioned migration files are ever introduced, this should be split into per-feature steps with intermediate schema versions.
 - [ ] **`tests/init.test.ts` fails when `KDI_DB` is set** — `defaultDbPath()` honors the `KDI_DB`/`KDI_DB_PATH` environment variables, but `tests/init.test.ts` asserts that `defaultDbPath()` ends with `.db`. When the parent environment sets `KDI_DB` to a path without that suffix (e.g. `.../kdi.sqlite`), the assertion fails. The implementation is correct; the test is environment-sensitive. Run the suite with `env -u KDI_DB bun test` for a clean baseline.
 - [ ] **Import-path convention conflict** — `AGENTS.md` prescribes the `~/*` alias for `src/*` imports, but the entire existing codebase uses relative imports (e.g. `../models/board`). KDI-024 followed the existing relative-import convention to stay consistent with surrounding code. The project should either migrate all imports to `~/*` or update `AGENTS.md` to reflect the actual convention.

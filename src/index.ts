@@ -8,6 +8,7 @@ import {
   showTaskCommand,
   editTaskCommand,
   commentTaskCommand,
+  attachTaskCommand,
   promoteTaskCommand,
   blockTaskCommand,
   unblockTaskCommand,
@@ -58,6 +59,7 @@ program.addCommand(listTasksCommand);
 program.addCommand(showTaskCommand);
 program.addCommand(editTaskCommand);
 program.addCommand(commentTaskCommand);
+program.addCommand(attachTaskCommand);
 program.addCommand(promoteTaskCommand);
 program.addCommand(blockTaskCommand);
 program.addCommand(unblockTaskCommand);

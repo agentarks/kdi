@@ -52,6 +52,7 @@ stateDiagram-v2
 | `ff_worker_log_capture` | `FF_WORKER_LOG_CAPTURE` | CLI / dispatcher | InDev | `false` | KDI-018 | Worker stdout/stderr capture; `kdi log <task_id>` and `--tail`. |
 | `ff_stats` | `FF_STATS` | CLI / observability | InDev | `false` | KDI-019 | Board stats command; per-status counts, per-assignee counts, oldest-ready age, and `--json` output. |
 | `ff_gc` | `FF_GC` | CLI / maintenance | InDev | `false` | KDI-021 | Garbage collection command; prunes old events, old logs, and KDI-owned archived-task workspaces. |
+| `ff_task_attachments` | `FF_TASK_ATTACHMENTS` | CLI / task metadata | InDev | `false` | KDI-022 | Task file attachments; `kdi attach <task_id> <file>` and attachment display in `kdi show`. |
 
 ## Lifecycle Notes
 
@@ -365,6 +366,20 @@ stateDiagram-v2
   - Each listed profile shows the count of non-archived tasks assigned to it on that board.
   - `--json` emits a stable JSON document with the board slug and an array of `{ profile, count }` rows.
 - **Rollback / deactivation:** Set `FF_ASSIGNEES_LISTING=false` to reject the `assignees` command.
+- **Deprecation plan:** N/A
+
+### `ff_task_attachments` — InDev
+
+- **Owner:** kdi core team
+- **BRD:** [BRD-KDI-022](brd-kdi-022-task-attachments.md)
+- **Status transitions:**
+  - `Planned` → `InDev` when `task_attachments` table, `kdi attach`, and `kdi show` display are implemented.
+- **Schema note:** `task_attachments` is a schema-level table — this flag gates the CLI command and display; the schema migration always runs.
+- **Activation criteria:**
+  - `kdi attach <task_id> <file>` copies the file to board storage and records metadata.
+  - `kdi show <id>` lists attachments when the flag is enabled.
+  - Board hard-delete removes attachment rows and files.
+- **Rollback / deactivation:** Set `FF_TASK_ATTACHMENTS=false` to reject `kdi attach` and hide attachment display.
 - **Deprecation plan:** N/A
 
 ### `ff_kanban_dispatch` — Planned
