@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { mkdtempSync, writeFileSync, mkdirSync, existsSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
-import { initDb, closeDb, defaultDbPath } from "../src/db";
+import { join } from "node:path";
+import { initDb, closeDb, getBoardDataDir } from "../src/db";
 import { cleanupDb } from "./cleanupDb";
 import { createBoard, removeBoard } from "../src/models/board";
 import { createTask } from "../src/models/task";
@@ -17,15 +17,23 @@ import { setFlag, clearOverrides, FF_BOARD_RM_DELETE } from "../src/flags";
 
 const TEST_DB = "/tmp/kdi-task-attachment-test.db";
 
-function cleanupAttachments() {
-  const dataDir = dirname(defaultDbPath());
-  try {
-    rmSync(join(dataDir, "boards"), { recursive: true, force: true });
-  } catch {}
-}
-
 describe("task attachment model", () => {
   let sourceDir: string;
+  const createdSlugs: string[] = [];
+
+  function trackBoard(slug: string) {
+    createdSlugs.push(slug);
+    return slug;
+  }
+
+  function cleanupAttachments() {
+    for (const slug of createdSlugs) {
+      try {
+        rmSync(getBoardDataDir(slug), { recursive: true, force: true });
+      } catch {}
+    }
+    createdSlugs.length = 0;
+  }
 
   beforeEach(() => {
     cleanupDb(TEST_DB);
@@ -43,10 +51,12 @@ describe("task attachment model", () => {
     try {
       rmSync(sourceDir, { recursive: true, force: true });
     } catch {}
+    delete process.env.KDI_DB;
   });
 
   it("createAttachment copies file and records metadata", () => {
-    const board = createBoard("alpha", "/tmp/alpha");
+    const slug = trackBoard("alpha");
+    const board = createBoard(slug, "/tmp/alpha");
     const task = createTask({ board_id: board.id, title: "Attach me" });
     const sourcePath = join(sourceDir, "notes.txt");
     writeFileSync(sourcePath, "hello attachments");
@@ -71,7 +81,8 @@ describe("task attachment model", () => {
   });
 
   it("createAttachment defaults uploaded_by from env", () => {
-    const board = createBoard("alpha", "/tmp/alpha");
+    const slug = trackBoard("alpha");
+    const board = createBoard(slug, "/tmp/alpha");
     const task = createTask({ board_id: board.id, title: "Uploader" });
     const sourcePath = join(sourceDir, "file.txt");
     writeFileSync(sourcePath, "x");
@@ -91,7 +102,8 @@ describe("task attachment model", () => {
   });
 
   it("createAttachment accepts explicit uploaded_by", () => {
-    const board = createBoard("alpha", "/tmp/alpha");
+    const slug = trackBoard("alpha");
+    const board = createBoard(slug, "/tmp/alpha");
     const task = createTask({ board_id: board.id, title: "Uploader" });
     const sourcePath = join(sourceDir, "file.txt");
     writeFileSync(sourcePath, "x");
@@ -101,7 +113,8 @@ describe("task attachment model", () => {
   });
 
   it("createAttachment rejects missing file", () => {
-    const board = createBoard("alpha", "/tmp/alpha");
+    const slug = trackBoard("alpha");
+    const board = createBoard(slug, "/tmp/alpha");
     const task = createTask({ board_id: board.id, title: "Missing" });
 
     expect(() => createAttachment(task.id, join(sourceDir, "missing.txt"))).toThrow(
@@ -110,7 +123,8 @@ describe("task attachment model", () => {
   });
 
   it("createAttachment rejects directories", () => {
-    const board = createBoard("alpha", "/tmp/alpha");
+    const slug = trackBoard("alpha");
+    const board = createBoard(slug, "/tmp/alpha");
     const task = createTask({ board_id: board.id, title: "Dir" });
     const dirPath = join(sourceDir, "folder");
     mkdirSync(dirPath);
@@ -118,8 +132,19 @@ describe("task attachment model", () => {
     expect(() => createAttachment(task.id, dirPath)).toThrow(/Not a file/);
   });
 
+  it("createAttachment rejects filenames with path separators or parent references", () => {
+    const slug = trackBoard("alpha");
+    const board = createBoard(slug, "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Traversal" });
+    const sourcePath = join(sourceDir, "safe..txt");
+    writeFileSync(sourcePath, "x");
+
+    expect(() => createAttachment(task.id, sourcePath)).toThrow(/Invalid attachment filename/);
+  });
+
   it("createAttachment rejects duplicate filenames for the same task", () => {
-    const board = createBoard("alpha", "/tmp/alpha");
+    const slug = trackBoard("alpha");
+    const board = createBoard(slug, "/tmp/alpha");
     const task = createTask({ board_id: board.id, title: "Dup" });
     const sourcePath = join(sourceDir, "dup.txt");
     writeFileSync(sourcePath, "first");
@@ -130,7 +155,8 @@ describe("task attachment model", () => {
   });
 
   it("createAttachment allows same filename on different tasks", () => {
-    const board = createBoard("alpha", "/tmp/alpha");
+    const slug = trackBoard("alpha");
+    const board = createBoard(slug, "/tmp/alpha");
     const taskA = createTask({ board_id: board.id, title: "A" });
     const taskB = createTask({ board_id: board.id, title: "B" });
     const sourcePath = join(sourceDir, "same.txt");
@@ -145,7 +171,8 @@ describe("task attachment model", () => {
   });
 
   it("listAttachments returns attachments ordered by created_at", () => {
-    const board = createBoard("alpha", "/tmp/alpha");
+    const slug = trackBoard("alpha");
+    const board = createBoard(slug, "/tmp/alpha");
     const task = createTask({ board_id: board.id, title: "List" });
     const pathA = join(sourceDir, "a.txt");
     const pathB = join(sourceDir, "b.txt");
@@ -166,7 +193,8 @@ describe("task attachment model", () => {
   });
 
   it("getAttachment returns attachment", () => {
-    const board = createBoard("alpha", "/tmp/alpha");
+    const slug = trackBoard("alpha");
+    const board = createBoard(slug, "/tmp/alpha");
     const task = createTask({ board_id: board.id, title: "Get" });
     const sourcePath = join(sourceDir, "get.txt");
     writeFileSync(sourcePath, "x");
@@ -180,7 +208,8 @@ describe("task attachment model", () => {
 
   it("removeBoard hard-delete removes attachment rows and files", () => {
     setFlag(FF_BOARD_RM_DELETE, true);
-    const board = createBoard("alpha", "/tmp/alpha");
+    const slug = trackBoard("alpha");
+    const board = createBoard(slug, "/tmp/alpha");
     const task = createTask({ board_id: board.id, title: "Delete me" });
     const sourcePath = join(sourceDir, "delete-me.txt");
     writeFileSync(sourcePath, "x");

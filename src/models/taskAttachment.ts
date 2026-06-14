@@ -2,7 +2,7 @@ import { getDb } from "../db";
 import { getBoardById } from "./board";
 import { addEvent } from "./taskEvent";
 import { ensureTaskAttachmentDir, getStoredAttachmentPath } from "../attachments";
-import { existsSync, statSync, copyFileSync } from "node:fs";
+import { existsSync, statSync, copyFileSync, unlinkSync } from "node:fs";
 import { basename } from "node:path";
 
 export interface TaskAttachment {
@@ -14,6 +14,20 @@ export interface TaskAttachment {
   size: number;
   uploaded_by: string | null;
   created_at: number;
+}
+
+const FILENAME_PATTERN = /^[^/\\]+$/;
+
+function validateFilename(filename: string): void {
+  if (
+    filename === "" ||
+    filename === "." ||
+    filename === ".." ||
+    filename.includes("..") ||
+    !FILENAME_PATTERN.test(filename)
+  ) {
+    throw new Error(`Invalid attachment filename: "${filename}"`);
+  }
 }
 
 export function createAttachment(
@@ -45,9 +59,7 @@ export function createAttachment(
   }
 
   const filename = basename(sourcePath);
-  if (filename === "" || filename === "." || filename === "..") {
-    throw new Error(`Invalid filename: ${sourcePath}`);
-  }
+  validateFilename(filename);
 
   const dir = ensureTaskAttachmentDir(board.slug, taskId);
   const storedPath = getStoredAttachmentPath(board.slug, taskId, filename);
@@ -57,30 +69,41 @@ export function createAttachment(
 
   copyFileSync(sourcePath, storedPath);
 
-  const file = Bun.file(sourcePath);
-  const contentType = file.type ? file.type.split(";")[0].trim() : null;
-  const size = file.size;
-  const uploader =
-    uploadedBy?.trim() || process.env.KDI_PROFILE || process.env.USER || "unknown";
+  try {
+    const file = Bun.file(sourcePath);
+    const contentType = file.type ? file.type.split(";")[0].trim() : null;
+    const size = file.size;
+    const uploader =
+      uploadedBy?.trim() || process.env.KDI_PROFILE || process.env.USER || "unknown";
 
-  const result = db.run(
-    `INSERT INTO task_attachments (task_id, filename, stored_path, content_type, size, uploaded_by)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-    [taskId, filename, storedPath, contentType, size, uploader]
-  );
+    const insertAndEvent = db.transaction(() => {
+      const result = db.run(
+        `INSERT INTO task_attachments (task_id, filename, stored_path, content_type, size, uploaded_by)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [taskId, filename, storedPath, contentType, size, uploader]
+      );
 
-  const id = Number(result.lastInsertRowid);
-  const attachment = db.query(
-    `SELECT id, task_id, filename, stored_path, content_type, size, uploaded_by, created_at
-     FROM task_attachments WHERE id = ?`
-  ).get(id) as TaskAttachment | undefined;
+      const id = Number(result.lastInsertRowid);
+      const attachment = db.query(
+        `SELECT id, task_id, filename, stored_path, content_type, size, uploaded_by, created_at
+         FROM task_attachments WHERE id = ?`
+      ).get(id) as TaskAttachment | undefined;
 
-  if (!attachment) {
-    throw new Error("Attachment not found after insert");
+      if (!attachment) {
+        throw new Error("Attachment not found after insert");
+      }
+
+      addEvent(taskId, "attached", { filename, size, stored_path: storedPath });
+      return attachment;
+    });
+
+    return insertAndEvent();
+  } catch (err) {
+    try {
+      unlinkSync(storedPath);
+    } catch {}
+    throw err;
   }
-
-  addEvent(taskId, "attached", { filename, size, stored_path: storedPath });
-  return attachment;
 }
 
 export function listAttachments(taskId: number): TaskAttachment[] {

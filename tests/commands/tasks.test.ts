@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
 import { mkdtempSync, writeFileSync, existsSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
-import { initDb, closeDb, defaultDbPath } from "../../src/db";
+import { join } from "node:path";
+import { initDb, closeDb, getBoardDataDir } from "../../src/db";
 import { cleanupDb } from "../cleanupDb";
 import { createBoard } from "../../src/models/board";
 import { createTask } from "../../src/models/task";
@@ -11,12 +11,14 @@ import { listRunsCommand, attachTaskCommand, showTaskCommand } from "../../src/c
 import { setFlag, clearOverrides, FF_TASK_ATTACHMENTS } from "../../src/flags";
 
 const TEST_DB = "/tmp/kdi-commands-tasks-test.db";
+const TEST_SLUGS = ["cmd-board", "attach-board", "show-board"];
 
 function cleanupAttachments() {
-  const dataDir = dirname(defaultDbPath());
-  try {
-    rmSync(join(dataDir, "boards"), { recursive: true, force: true });
-  } catch {}
+  for (const slug of TEST_SLUGS) {
+    try {
+      rmSync(getBoardDataDir(slug), { recursive: true, force: true });
+    } catch {}
+  }
 }
 
 describe("tasks commands", () => {
