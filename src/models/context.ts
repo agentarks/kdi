@@ -2,8 +2,7 @@ import { getDb, getBoardDataDir } from "../db";
 import { showBoard } from "./board";
 import { showTask, type Task } from "./task";
 import { isEnabled, FF_CREATED_BY } from "../flags";
-import { resolve } from "node:path";
-import { isAbsolute } from "node:path";
+import { resolve, isAbsolute } from "node:path";
 
 // Field-level caps for prompt overflow prevention.
 const TITLE_CAP = 500;
@@ -184,7 +183,7 @@ function loadPriorAttempts(taskId: number): { prior_attempts: PriorAttempt[]; ol
   };
 }
 
-function parsePayload(payload: string | null): Record<string, any> {
+function parsePayload(payload: string | null): Record<string, unknown> {
   if (!payload) return {};
   try {
     return JSON.parse(payload);
@@ -201,29 +200,29 @@ function getRunProfile(runId: number): string | null {
   return row?.profile ?? null;
 }
 
-function deriveActor(kind: string, task: Task, runId: number | null, payload: Record<string, any>): string {
+function deriveActor(kind: string, task: Task, runId: number | null, payload: Record<string, unknown>): string {
   if (kind === "created") {
     return task.created_by;
   }
   if (kind === "assigned") {
-    return payload.assignee ?? "unknown";
+    return (payload.assignee ?? "unknown") as string;
   }
   if (kind === "claimed" || kind === "reclaimed") {
     if (runId !== null) {
       const profile = getRunProfile(runId);
       if (profile) return profile;
     }
-    return payload.profile ?? "unknown";
+    return (payload.profile ?? "unknown") as string;
   }
-  return payload.actor ?? payload.by ?? payload.profile ?? payload.assignee ?? "unknown";
+  return (payload.actor ?? payload.by ?? payload.profile ?? payload.assignee ?? "unknown") as string;
 }
 
-function extractNote(kind: string, payload: Record<string, any>): string | null {
+function extractNote(kind: string, payload: Record<string, unknown>): string | null {
   if (kind === "blocked" || kind === "reclaimed" || kind === "reviewed") {
-    return payload.reason ?? null;
+    return (payload.reason ?? null) as string | null;
   }
   if (kind === "heartbeat") {
-    return payload.note ?? null;
+    return (payload.note ?? null) as string | null;
   }
   return null;
 }
@@ -329,7 +328,7 @@ export function buildTaskContext(taskId: number, boardSlug: string): TaskContext
 
   const task = showTask(taskId);
   if (!task || task.board_id !== board.id) {
-    throw new Error(`Task ${taskId} not found or is archived on board "${boardSlug}".`);
+    throw new Error(`Task ${taskId} not found or is archived.`);
   }
 
   const header = loadTaskHeader(task);

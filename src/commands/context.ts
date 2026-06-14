@@ -13,31 +13,32 @@ export function createContextCommand(): Command {
 }
 
 function contextAction(taskIdArg: string, options: { board?: string; json?: boolean }) {
-    try {
-      if (!isEnabled(FF_CONTEXT_BUILDER)) {
-        console.error("Context builder is not enabled.");
-        process.exit(1);
-      }
-
-      const taskId = parseInt(taskIdArg, 10);
-      if (isNaN(taskId) || taskId <= 0) {
-        console.error(`Invalid task ID: ${taskIdArg}`);
-        process.exit(1);
-      }
-
-      const boardSlug = resolveBoard(options.board);
-      const ctx = buildTaskContext(taskId, boardSlug);
-
-      if (options.json) {
-        console.log(JSON.stringify(ctx, null, 2));
-        return;
-      }
-
-      console.log(formatContext(ctx));
-    } catch (err: any) {
-      console.error(err.message || String(err));
+  try {
+    if (!isEnabled(FF_CONTEXT_BUILDER)) {
+      console.error("Context builder is not enabled.");
       process.exit(1);
     }
+
+    const taskId = parseInt(taskIdArg, 10);
+    if (isNaN(taskId) || taskId <= 0) {
+      console.error(`Invalid task ID: ${taskIdArg}`);
+      process.exit(1);
+    }
+
+    const boardSlug = resolveBoard(options.board);
+    const ctx = buildTaskContext(taskId, boardSlug);
+
+    if (options.json) {
+      console.log(JSON.stringify(ctx, null, 2));
+      return;
+    }
+
+    console.log(formatContext(ctx));
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(message);
+    process.exit(1);
+  }
 }
 
 export const contextCommand = createContextCommand();

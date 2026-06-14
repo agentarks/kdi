@@ -13,7 +13,6 @@ import { rmSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, isAbsolute, basename } from "node:path";
 import { cleanupDb } from "./cleanupDb";
-import { createAttachment } from "../src/models/taskAttachment";
 
 const TEST_DB = "/tmp/kdi-context-test.db";
 
