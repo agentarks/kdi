@@ -188,6 +188,15 @@
 - [x] Unit/CLI tests cover storage, flag gating, duplicate-name rejection, and hard-delete cascade
 - [x] `bun run lint`, `bun run test`, `bun run build` pass
 
+## Context Builder (KDI-023) — Planned
+- [x] BRD drafted at `specs/brd-kdi-023-context-builder.md`
+- [x] Feature flag `ff_context_builder` / `FF_CONTEXT_BUILDER` registered in `specs/feature-flags.md`, defaults to `false`
+- [ ] `FF_CONTEXT_BUILDER` constant added to `src/flags.ts`
+- [ ] `kdi context <task_id>` command prints bounded worker context (title, body, parents, attempts, role history, comments, attachments)
+- [ ] `kdi context <task_id> --json` emits stable JSON document
+- [ ] Field-level caps prevent prompt overflow
+- [ ] Attachment absolute paths resolved for file-tool access
+
 ## Task Lifecycle
 - [x] `kdi create <title> --board <slug> --assignee <profile>` — create task
 - [x] `kdi create <title> --board <slug> --triage` — create task in triage

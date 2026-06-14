@@ -54,6 +54,7 @@ stateDiagram-v2
 | `ff_gc` | `FF_GC` | CLI / maintenance | InDev | `false` | KDI-021 | Garbage collection command; prunes old events, old logs, and KDI-owned archived-task workspaces. |
 | `ff_task_attachments` | `FF_TASK_ATTACHMENTS` | CLI / task metadata | InDev | `false` | KDI-022 | Task file attachments; `kdi attach <task_id> <file>` and attachment display in `kdi show`. |
 | `ff_diagnostics` | `FF_DIAGNOSTICS` | CLI / observability | InDev | `false` | KDI-020 | Board diagnostics command; health-check rules, severity filtering, per-task mode, and `--json` output. |
+| `ff_context_builder` | `FF_CONTEXT_BUILDER` | CLI / task context | Planned | `false` | KDI-023 | Worker context builder; `kdi context <task_id>` with bounded caps for title, body, parents, attempts, role history, comments, and attachments. |
 | `ff_notify_subs` | `FF_NOTIFY_SUBS` | CLI / notifier watcher | Planned | `false` | KDI-025 | Notification subscriptions; `notify-subscribe/list/unsubscribe` commands; notifier watcher in dispatcher tick.
 
 ## Lifecycle Notes
@@ -397,6 +398,21 @@ stateDiagram-v2
   - `kdi diagnostics --task <task_id>` restricts findings to a single task.
   - `kdi diagnostics --json` emits a stable JSON array of findings.
 - **Rollback / deactivation:** Set `FF_DIAGNOSTICS=false` to reject the `diagnostics` command.
+- **Deprecation plan:** N/A
+
+### `ff_context_builder` — Planned
+
+- **Owner:** kdi core team
+- **BRD:** [BRD-KDI-023](brd-kdi-023-context-builder.md)
+- **Status transitions:**
+  - `Planned` → `InDev` when `kdi context` command and `buildTaskContext` helpers are implemented.
+  - `InDev` → `Active` when context output shape and caps are stable and safe to enable by default.
+- **Schema note:** No schema changes; reads from existing `tasks`, `dependencies`, `task_runs`, `task_events`, and `comments` tables. Optionally reads from `task_attachments` (KDI-022) and `comments.author` (KDI-033) when present.
+- **Activation criteria:**
+  - `kdi context <task_id>` prints a bounded worker context with title, body, parent results, prior attempts, role history, comments, and attachment paths.
+  - `kdi context <task_id> --json` emits the stable JSON document defined in the BRD.
+  - All field-level caps are enforced to prevent prompt overflow.
+- **Rollback / deactivation:** Set `FF_CONTEXT_BUILDER=false` to reject the `kdi context` command.
 - **Deprecation plan:** N/A
 
 ### `ff_notify_subs` — Planned
