@@ -9,7 +9,7 @@ import { atomicClaim, heartbeat } from "./models/claim";
 import { isBlockedByDependencies } from "./models/dependency";
 import { getProfile, substituteCommand } from "./profiles";
 import { createWorktree, removeWorktree, type RemoveWorktreeResult } from "./worktree";
-import { isEnabled, FF_ENABLE_KANBAN_DISPATCH, FF_CRASH_GRACE_PERIOD, FF_HEARTBEAT, FF_RATE_LIMIT_EXIT_CODE } from "./flags";
+import { isEnabled, FF_ENABLE_KANBAN_DISPATCH, FF_WORKER_LOG_CAPTURE, FF_CRASH_GRACE_PERIOD, FF_HEARTBEAT, FF_RATE_LIMIT_EXIT_CODE } from "./flags";
 import {
   recordTick,
   recordClaim,
@@ -66,7 +66,10 @@ export async function spawnHarness(command: string, cwd: string, logPath?: strin
     if (logPath) {
       try {
         mkdirSync(dirname(logPath), { recursive: true });
-        logStream = createWriteStream(logPath);
+        logStream = createWriteStream(logPath, { flags: "a" });
+        logStream.on("error", () => {
+          // Swallow stream errors so log-write failures don't fail the task
+        });
       } catch {
         // Best effort logging
       }
@@ -429,7 +432,7 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
     }
 
     const boardSlug = getBoardSlug(task.board_id);
-    const logPath = boardSlug ? getTaskLogPath(boardSlug, task.id) : undefined;
+    const logPath = boardSlug && isEnabled(FF_WORKER_LOG_CAPTURE) ? getTaskLogPath(boardSlug, task.id) : undefined;
 
     try {
       const skillsValue = task.skills && task.skills.length > 0 ? task.skills.join(",") : "";

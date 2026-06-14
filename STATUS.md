@@ -119,16 +119,16 @@
 - [x] Unit/e2e tests added and passing
 - [x] `bun run lint`, `bun run test`, `bun run build` pass
 
-## Worker Log Capture (KDI-018) — Spec Ready
+## Worker Log Capture (KDI-018) — Done
 - [x] BRD drafted at `specs/brd-kdi-018-worker-log-capture.md`
 - [x] Feature flag `ff_worker_log_capture` / `FF_WORKER_LOG_CAPTURE` registered in `specs/feature-flags.md`, defaults to `false`
-- [ ] `FF_WORKER_LOG_CAPTURE` constant added to `src/flags.ts`
-- [ ] Dispatcher writes harness stdout/stderr to `~/.local/share/kdi/logs/<board>/<task_id>.log`
-- [ ] `kdi log <task_id>` command prints the captured log
-- [ ] `kdi log <task_id> --tail <bytes>` prints only trailing bytes
-- [ ] Log-write failures do not cause the dispatcher to fail the task
-- [ ] Unit/dispatcher integration tests cover log creation, `--tail`, missing log handling, and flag gating
-- [ ] `bun run lint`, `bun run test`, `bun run build` pass
+- [x] `FF_WORKER_LOG_CAPTURE` constant added to `src/flags.ts`
+- [x] Dispatcher writes harness stdout/stderr to `~/.local/share/kdi/logs/<board>/<task_id>.log` when flag enabled
+- [x] `kdi log <task_id>` command prints the captured log
+- [x] `kdi log <task_id> --tail <bytes>` prints only trailing bytes
+- [x] Log-write failures do not cause the dispatcher to fail the task
+- [x] Unit/dispatcher integration tests cover log creation, `--tail`, missing log handling, and flag gating
+- [x] `bun run lint`, `bun run test`, `bun run build` pass
 
 ## Board Stats (KDI-019) — Done
 - [x] BRD drafted at `specs/brd-019-stats.md`

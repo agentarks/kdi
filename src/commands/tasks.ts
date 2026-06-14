@@ -24,7 +24,7 @@ import { getRuns } from "../models/taskRun";
 import { getEvents, tailEvents, getRecentEvents, getEventsAfter } from "../models/taskEvent";
 import { atomicClaim, reclaimTask, heartbeat } from "../models/claim";
 import { getTaskLogPath } from "../observability";
-import { isEnabled, FF_SCHEDULED_STATUS, FF_REVIEW_STATUS, FF_COMPLETE_METADATA, FF_PRIORITY_INTEGER, FF_SKILLS_ARRAY, FF_MAX_RUNTIME, FF_MAX_RETRIES, FF_TENANT_NAMESPACE, FF_CREATED_BY, FF_MODEL_OVERRIDE, FF_DEFAULT_WORKDIR, FF_ASSIGN_REASSIGN, FF_CRASH_GRACE_PERIOD, FF_HEARTBEAT, FF_RATE_LIMIT_EXIT_CODE } from "../flags";
+import { isEnabled, FF_SCHEDULED_STATUS, FF_REVIEW_STATUS, FF_COMPLETE_METADATA, FF_PRIORITY_INTEGER, FF_SKILLS_ARRAY, FF_MAX_RUNTIME, FF_MAX_RETRIES, FF_TENANT_NAMESPACE, FF_CREATED_BY, FF_MODEL_OVERRIDE, FF_DEFAULT_WORKDIR, FF_WORKER_LOG_CAPTURE, FF_ASSIGN_REASSIGN, FF_CRASH_GRACE_PERIOD, FF_HEARTBEAT, FF_RATE_LIMIT_EXIT_CODE } from "../flags";
 import { resolveBoard } from "../resolveBoard";
 
 const VALID_STATUSES = ["triage", "todo", "scheduled", "ready", "running", "done", "blocked", "review"] as const;
@@ -334,6 +334,12 @@ export const showTaskCommand = new Command("show")
       if (task.skills && task.skills.length > 0) console.log(`Skills: ${task.skills.join(", ")}`);
       if (isEnabled(FF_MODEL_OVERRIDE) && task.model_override) console.log(`Model override: ${task.model_override}`);
       if (isEnabled(FF_CREATED_BY)) console.log(`Created by: ${task.created_by}`);
+      if (isEnabled(FF_WORKER_LOG_CAPTURE)) {
+        const board = getBoardById(task.board_id);
+        if (board) {
+          console.log(`Log: ${getTaskLogPath(board.slug, task.id)}`);
+        }
+      }
       if (isEnabled(FF_HEARTBEAT) && task.status === "running" && task.last_heartbeat_at) {
         console.log(`Last heartbeat: ${new Date(task.last_heartbeat_at * 1000).toISOString()}`);
       }
@@ -817,6 +823,10 @@ export const logTaskCommand = new Command("log")
   .option("--tail <bytes>", "Only show last N bytes")
   .action((taskId: string, options: { tail?: string }) => {
     try {
+      if (!isEnabled(FF_WORKER_LOG_CAPTURE)) {
+        throw new Error("Worker log capture is not enabled.");
+      }
+
       const id = parseTaskId(taskId);
       const task = showTask(id);
       if (!task) {
@@ -829,16 +839,23 @@ export const logTaskCommand = new Command("log")
         process.exit(1);
       }
       const logPath = getTaskLogPath(board.slug, id);
+
+      let tailBytes: number | undefined;
+      if (options.tail !== undefined) {
+        tailBytes = parseInt(options.tail, 10);
+        if (isNaN(tailBytes) || tailBytes <= 0) {
+          throw new Error("--tail must be a positive integer.");
+        }
+      }
+
       if (!existsSync(logPath)) {
         console.log("No log found for this task.");
         return;
       }
+
       let content = readFileSync(logPath, "utf-8");
-      if (options.tail) {
-        const tailBytes = parseInt(options.tail, 10);
-        if (!isNaN(tailBytes) && tailBytes > 0 && content.length > tailBytes) {
-          content = content.slice(-tailBytes);
-        }
+      if (tailBytes !== undefined && content.length > tailBytes) {
+        content = content.slice(-tailBytes);
       }
       process.stdout.write(content);
     } catch (err: any) {
