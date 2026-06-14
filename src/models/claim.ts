@@ -51,6 +51,7 @@ export function atomicClaim(
     profile,
     status: "running",
     started_at: now,
+    spawned_at: now,
     claim_lock: profile,
     claim_expires: expiresAt,
     max_runtime_seconds: taskRow.max_runtime_seconds,

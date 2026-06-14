@@ -21,7 +21,7 @@ import { getRuns } from "../models/taskRun";
 import { getEvents, tailEvents, getRecentEvents, getEventsAfter } from "../models/taskEvent";
 import { atomicClaim, reclaimTask, heartbeat } from "../models/claim";
 import { getTaskLogPath } from "../observability";
-import { isEnabled, FF_SCHEDULED_STATUS, FF_REVIEW_STATUS, FF_COMPLETE_METADATA, FF_PRIORITY_INTEGER, FF_SKILLS_ARRAY, FF_MAX_RUNTIME, FF_MAX_RETRIES, FF_TENANT_NAMESPACE, FF_CREATED_BY, FF_MODEL_OVERRIDE, FF_DEFAULT_WORKDIR, FF_HEARTBEAT, FF_RATE_LIMIT_EXIT_CODE } from "../flags";
+import { isEnabled, FF_SCHEDULED_STATUS, FF_REVIEW_STATUS, FF_COMPLETE_METADATA, FF_PRIORITY_INTEGER, FF_SKILLS_ARRAY, FF_MAX_RUNTIME, FF_MAX_RETRIES, FF_TENANT_NAMESPACE, FF_CREATED_BY, FF_MODEL_OVERRIDE, FF_DEFAULT_WORKDIR, FF_CRASH_GRACE_PERIOD, FF_HEARTBEAT, FF_RATE_LIMIT_EXIT_CODE } from "../flags";
 import { resolveBoard } from "../resolveBoard";
 
 const VALID_STATUSES = ["triage", "todo", "scheduled", "ready", "running", "done", "blocked", "review"] as const;
@@ -803,6 +803,9 @@ export const listRunsCommand = new Command("runs")
         if (run.outcome) line += ` outcome=${run.outcome}`;
         if (run.profile) line += ` profile=${run.profile}`;
         line += ` started=${started}`;
+        if (isEnabled(FF_CRASH_GRACE_PERIOD) && run.spawned_at) {
+          line += ` spawned=${new Date(run.spawned_at * 1000).toISOString()}`;
+        }
         if (ended) line += ` ended=${ended}`;
         if (run.summary) line += ` summary="${run.summary}"`;
         if (run.metadata) line += ` metadata="${run.metadata}"`;

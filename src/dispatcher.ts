@@ -2,14 +2,14 @@ import { spawn } from "node:child_process";
 import { createWriteStream, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { getDb } from "./db";
-import { TASK_COLUMNS, type Task, promoteScheduledTasks, hydrateTask } from "./models/task";
+import { TASK_COLUMNS, type Task, promoteScheduledTasks, hydrateTask, showTask } from "./models/task";
 import { finishRun, updateRun } from "./models/taskRun";
 import { addEvent } from "./models/taskEvent";
 import { atomicClaim, heartbeat } from "./models/claim";
 import { isBlockedByDependencies } from "./models/dependency";
 import { getProfile, substituteCommand } from "./profiles";
 import { createWorktree, removeWorktree, type RemoveWorktreeResult } from "./worktree";
-import { isEnabled, FF_ENABLE_KANBAN_DISPATCH, FF_HEARTBEAT, FF_RATE_LIMIT_EXIT_CODE } from "./flags";
+import { isEnabled, FF_ENABLE_KANBAN_DISPATCH, FF_CRASH_GRACE_PERIOD, FF_HEARTBEAT, FF_RATE_LIMIT_EXIT_CODE } from "./flags";
 import {
   recordTick,
   recordClaim,
@@ -19,6 +19,8 @@ import {
   logToBoard,
   getTaskLogPath,
 } from "./observability";
+
+export const CRASH_GRACE_PERIOD_SECONDS = 30;
 
 export interface HarnessResult {
   stdout: string;
@@ -233,6 +235,69 @@ function handleFailure(task: Task, result: string, reason: string, runId: number
   }
 }
 
+function isProcessAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function handleCrash(task: Task, reason: string, runId: number | null): void {
+  const db = getDb();
+  const consecutiveFailures = task.consecutive_failures + 1;
+  const hasMaxRetries = task.max_retries !== null && task.max_retries !== undefined;
+
+  if (runId !== null) {
+    finishRun(runId, "crashed", null, null, reason);
+  }
+
+  if (hasMaxRetries && consecutiveFailures >= task.max_retries!) {
+    db.run(
+      `UPDATE tasks SET status = 'blocked', result = ?, block_reason = ?, consecutive_failures = ?, claim_lock = NULL, claim_expires = NULL, started_at = NULL, updated_at = unixepoch() WHERE id = ?`,
+      ["", `Circuit breaker: ${consecutiveFailures} consecutive failures`, consecutiveFailures, task.id]
+    );
+    addEvent(task.id, "blocked", { reason: `Circuit breaker: ${consecutiveFailures} consecutive failures`, run_error: reason, consecutive_failures: consecutiveFailures }, runId ?? undefined);
+  } else if (hasMaxRetries) {
+    db.run(
+      `UPDATE tasks SET status = 'ready', result = ?, claim_lock = NULL, claim_expires = NULL, started_at = NULL, consecutive_failures = ?, updated_at = unixepoch() WHERE id = ?`,
+      [reason, consecutiveFailures, task.id]
+    );
+    addEvent(task.id, "reclaimed", { reason, consecutive_failures: consecutiveFailures }, runId ?? undefined);
+  } else {
+    db.run(
+      `UPDATE tasks SET status = 'blocked', result = ?, block_reason = ?, consecutive_failures = ?, claim_lock = NULL, claim_expires = NULL, started_at = NULL, updated_at = unixepoch() WHERE id = ?`,
+      ["", reason, consecutiveFailures, task.id]
+    );
+    addEvent(task.id, "blocked", { reason, consecutive_failures: consecutiveFailures }, runId ?? undefined);
+  }
+}
+
+function checkCrashedRuns(): void {
+  const db = getDb();
+  const now = Math.floor(Date.now() / 1000);
+
+  const runs = db.query(
+    `SELECT id, task_id, worker_pid, spawned_at FROM task_runs WHERE status = 'running' AND worker_pid IS NOT NULL`
+  ).all() as { id: number; task_id: number; worker_pid: number; spawned_at: number | null }[];
+
+  for (const run of runs) {
+    const task = showTask(run.task_id);
+    if (!task || task.status !== "running") {
+      continue;
+    }
+
+    if (isEnabled(FF_CRASH_GRACE_PERIOD) && run.spawned_at !== null && (now - run.spawned_at) < CRASH_GRACE_PERIOD_SECONDS) {
+      continue;
+    }
+
+    if (!isProcessAlive(run.worker_pid)) {
+      handleCrash(task, `Worker process died after grace period (PID ${run.worker_pid})`, run.id);
+    }
+  }
+}
+
 function reapStaleClaims(): void {
   const db = getDb();
   const now = Math.floor(Date.now() / 1000);
@@ -304,6 +369,7 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
 
   reapStaleClaims();
   promoteScheduledTasks(Math.floor(Date.now() / 1000));
+  checkCrashedRuns();
 
   const tasks = listReadyTasks();
   let processed = 0;

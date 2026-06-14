@@ -80,16 +80,17 @@
 - [x] Unit/e2e tests added and passing
 - [x] `bun run lint`, `bun run test`, `bun run build` pass
 
-## Crash Grace Period (KDI-016b) — Spec Ready
+## Crash Grace Period (KDI-016b) — Done
 - [x] BRD drafted at `specs/brd-kdi-016b-crash-grace.md`
-- [x] Feature flag `ff_crash_grace_period` / `FF_CRASH_GRACE_PERIOD` registered in `specs/feature-flags.md`, defaults to `false`
-- [ ] `FF_CRASH_GRACE_PERIOD` constant added to `src/flags.ts`
-- [ ] `spawned_at INTEGER` column added to `task_runs` via migration in `src/db.ts`
-- [ ] `TaskRun` interface and run column list updated to include `spawned_at`
-- [ ] Dispatcher waits 30 seconds after spawn before treating dead PID as crashed
-- [ ] `kdi runs <task_id>` displays `spawned_at` when flag enabled
-- [ ] Unit/dispatcher integration tests cover grace-period protection, post-grace crash detection, and flag-disabled fallback
-- [ ] `bun run lint`, `bun run test`, `bun run build` pass
+- [x] Feature flag `ff_crash_grace_period` / `FF_CRASH_GRACE_PERIOD` registered in `specs/feature-flags.md` and `src/flags.ts`, defaults to `false`
+- [x] `spawned_at INTEGER` column added to `task_runs` via schema + migration in `src/db.ts`
+- [x] `TaskRun` interface, column list, `createRun`, and `updateRun` updated to include `spawned_at`
+- [x] Dispatcher records `spawned_at` on active runs at claim time and checks running runs for dead PIDs
+- [x] Dispatcher skips dead-PID crash detection for 30 seconds after `spawned_at` when flag enabled
+- [x] Dispatcher finalizes post-grace dead-PID runs as `outcome=crashed` and blocks/requeues per `max_retries`
+- [x] `kdi runs <task_id>` displays `spawned_at` when flag enabled
+- [x] Unit/dispatcher integration tests cover grace-period protection, post-grace crash detection, flag-disabled fallback, and `runs` display
+- [x] `bun run lint`, `bun run test`, `bun run build` pass
 
 ## Rate-Limit Exit Code Handling (KDI-016c) — Done
 - [x] BRD drafted at `specs/brd-kdi-016c-rate-limit-exit-code.md`
