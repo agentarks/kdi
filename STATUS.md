@@ -350,7 +350,7 @@
 
 ## Notification Subscriptions (KDI-025)
 - [x] BRD drafted at `specs/brd-kdi-025-notification-subscriptions.md`
-- [ ] Feature flag `ff_notify_subs` / `FF_NOTIFY_SUBS` registered in `specs/feature-flags.md`, defaults to `false`
+- [x] Feature flag `ff_notify_subs` / `FF_NOTIFY_SUBS` registered in `specs/feature-flags.md`, defaults to `false`
 - [ ] `kanban_notify_subs` table schema and migration in `src/db.ts`
 - [ ] `subscribe()` / `listSubscriptions()` / `unsubscribe()` model functions in `src/models/notifySub.ts`
 - [ ] `kdi notify-subscribe <task_id> --platform <name> --chat-id <id>` command

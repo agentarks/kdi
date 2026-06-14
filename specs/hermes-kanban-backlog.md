@@ -396,21 +396,21 @@
   - Tasks created without `--workspace` inherit board default
 
 ### Phase 4 — Worker Lifecycle
-- [x] **KDI-016: Heartbeat**
+- [ ] **KDI-016: Heartbeat**
   - `kdi heartbeat <task_id>` — worker liveness signal
   - `kdi heartbeat --note "..."` — optional note on heartbeat event
   - Updates `last_heartbeat_at` on task + active run
   - Stale heartbeat detection in dispatcher (older than 60min → auto-reclaim)
 
-- [x] **KDI-016b: Crash grace period**
+- [ ] **KDI-016b: Crash grace period**
   - 30s grace before PID liveness check after expected worker start
   - Prevents false crash detection on slow process startup
 
-- [x] **KDI-016c: Rate-limit exit code handling**
+- [ ] **KDI-016c: Rate-limit exit code handling**
   - `EX_TEMPFAIL` (exit code 75) → requeue to `ready` WITHOUT incrementing `consecutive_failures`
   - Cooldown before respawn to avoid hammering rate-limited provider
 
-- [x] **KDI-017: Assign / reassign**
+- [ ] **KDI-017: Assign / reassign**
   - `kdi assign <task_id> <profile>`
   - `kdi assign <task_id> none` — unassign task
   - `kdi reassign <task_id> <profile> --reclaim`
@@ -418,13 +418,13 @@
   - `kdi reassign --reason "..."` — record reason on reclaimed event
   - `kdi reclaim <task_id> --reason "..."` — record reason on reclaimed event
 
-- [x] **KDI-018: Worker log capture**
+- [ ] **KDI-018: Worker log capture**
   - Capture stdout/stderr to `~/.local/share/kdi/logs/<board>/<task_id>.log`
   - `kdi log <task_id>` — print log
   - `kdi log <task_id> --tail 100` — last N bytes
 
 ### Phase 5 — Observability & Health
-- [x] **KDI-019: Stats**
+- [ ] **KDI-019: Stats**
   - `kdi stats` — per-status + per-assignee counts + oldest-ready age
   - `kdi stats --json`
 
