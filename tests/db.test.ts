@@ -39,6 +39,9 @@ describe("db", () => {
     // Verify task_runs table exists
     expect(names).toContain("task_runs");
 
+    // Verify kanban_notify_subs table exists
+    expect(names).toContain("kanban_notify_subs");
+
     // Verify scheduled status exists in CHECK constraint
     const tasksCreateSql = db.query(
       "SELECT sql FROM sqlite_master WHERE type='table' AND name='tasks'"
@@ -66,6 +69,8 @@ describe("db", () => {
     expect(indexNames).toContain("idx_events_run");
     expect(indexNames).toContain("idx_runs_task");
     expect(indexNames).toContain("idx_runs_status");
+    expect(indexNames).toContain("idx_notify_subs_task");
+    expect(indexNames).toContain("idx_notify_subs_active");
   });
 
   it("returns the same instance on subsequent calls, then creates a new instance after closeDb", () => {

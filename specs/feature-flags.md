@@ -55,6 +55,7 @@ stateDiagram-v2
 | `ff_task_attachments` | `FF_TASK_ATTACHMENTS` | CLI / task metadata | InDev | `false` | KDI-022 | Task file attachments; `kdi attach <task_id> <file>` and attachment display in `kdi show`. |
 | `ff_diagnostics` | `FF_DIAGNOSTICS` | CLI / observability | InDev | `false` | KDI-020 | Board diagnostics command; health-check rules, severity filtering, per-task mode, and `--json` output. |
 | `ff_context_builder` | `FF_CONTEXT_BUILDER` | CLI / task context | InDev | `false` | KDI-023 | `kdi context` bounded worker context builder. |
+| `ff_notify_subs` | `FF_NOTIFY_SUBS` | CLI / notifier watcher | InDev | `false` | KDI-025 | Notification subscriptions; `notify-subscribe/list/unsubscribe` commands; notifier watcher in dispatcher tick.
 
 ## Lifecycle Notes
 
@@ -409,9 +410,22 @@ stateDiagram-v2
 - **Schema note:** No schema changes; reads from existing `tasks`, `dependencies`, `task_runs`, `task_events`, and `comments` tables. Optionally reads from `task_attachments` (KDI-022) and `comments.author` (KDI-033) when present.
 - **Activation criteria:**
   - `kdi context <task_id>` prints a bounded worker context with title, body, parent results, prior attempts, role history, comments, and attachment paths.
-  - `kdi context <task_id> --json` emits the stable JSON document defined in the BRD.
-  - All field-level caps are enforced to prevent prompt overflow.
-- **Rollback / deactivation:** Set `FF_CONTEXT_BUILDER=false` to reject the `kdi context` command.
+
+### `ff_notify_subs` — InDev
+
+- **Owner:** kdi core team
+- **BRD:** [BRD-KDI-025](brd-kdi-025-notification-subscriptions.md)
+- **Status transitions:**
+  - `Planned` → `InDev` when `kdi notify-subscribe/list/unsubscribe` commands, notifier registry, and watcher are implemented.
+  - `InDev` → `Active` when subscription CRUD, transport handlers, and dispatcher integration are stable and safe to enable by default.
+- **Schema note:** Adds `kanban_notify_subs` table with foreign key to `tasks`, unique constraint on active subscriptions, and indexes for lookup.
+- **Activation criteria:**
+  - `kdi notify-subscribe <task_id> --platform <name> --chat-id <id>` stores an active subscription.
+  - `kdi notify-list [<task_id>]` lists active subscriptions for a task or board.
+  - `kdi notify-unsubscribe <task_id> --platform <name> --chat-id <id>` soft-deletes a matching subscription.
+  - Notifier watcher in dispatcher tick loop delivers events to active subscriptions when flag enabled.
+  - `log` built-in notifier profile always available.
+- **Rollback / deactivation:** Set `FF_NOTIFY_SUBS=false` to reject notify commands and disable the notifier watcher.
 - **Deprecation plan:** N/A
 
 ### `ff_kanban_dispatch` — Planned

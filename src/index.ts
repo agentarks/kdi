@@ -35,6 +35,12 @@ import { assigneesCommand } from "./commands/assignees";
 import { diagnosticsCommand } from "./commands/diagnostics";
 import { contextCommand } from "./commands/context";
 import { ensureProfiles } from "./profiles";
+import { ensureNotifiers } from "./notifiers";
+import {
+  notifySubscribeCommand,
+  notifyListCommand,
+  notifyUnsubscribeCommand,
+} from "./commands/notify";
 const program = new Command();
 
 program
@@ -53,6 +59,12 @@ try {
   ensureProfiles();
 } catch (err: any) {
   console.warn(`Warning: Could not initialize profiles: ${err.message}`);
+}
+
+try {
+  ensureNotifiers();
+} catch (err: any) {
+  console.warn(`Warning: Could not initialize notifiers: ${err.message}`);
 }
 
 program.addCommand(boardsCommand);
@@ -86,5 +98,8 @@ program.addCommand(statsCommand);
 program.addCommand(gcCommand);
 program.addCommand(diagnosticsCommand);
 program.addCommand(contextCommand);
+program.addCommand(notifySubscribeCommand);
+program.addCommand(notifyListCommand);
+program.addCommand(notifyUnsubscribeCommand);
 
 program.parse();

@@ -203,6 +203,20 @@
 - [x] Unit/CLI tests cover happy path, truncation, caps, missing task, flag gating, JSON output
 - [x] `bun run lint`, `bun run test`, `bun run build` pass
 
+## Notification Subscriptions (KDI-025) — Done
+- [x] BRD drafted at `specs/brd-kdi-025-notification-subscriptions.md`
+- [x] Feature flag `ff_notify_subs` / `FF_NOTIFY_SUBS` registered in `specs/feature-flags.md` and `src/flags.ts`, defaults to `false`
+- [x] `kanban_notify_subs` table schema and migration in `src/db.ts`
+- [x] `subscribe()` / `listSubscriptions()` / `unsubscribe()` model functions in `src/models/notifySub.ts`
+- [x] `kdi notify-subscribe <task_id> --platform <name> --chat-id <id>` command
+- [x] `kdi notify-list [<task_id>] [--archived] [--json]` command
+- [x] `kdi notify-unsubscribe <task_id> --platform <name> --chat-id <id>` command
+- [x] Notifier profiles registry `~/.config/kdi/notifiers.yaml` with built-in `log` profile
+- [x] Notifier watcher in dispatcher tick loop gated by `FF_NOTIFY_SUBS`
+- [x] Transport handlers: telegram, slack, discord, webhook, log
+- [x] Unit/CLI tests for all CLI commands and notifier watcher
+- [x] `bun run lint`, `bun run test`, `bun run build` pass
+
 ## Task Lifecycle
 - [x] `kdi create <title> --board <slug> --assignee <profile>` — create task
 - [x] `kdi create <title> --board <slug> --triage` — create task in triage
@@ -363,9 +377,6 @@
 - [ ] Terminal delivery on task completion
 - [ ] Webhook support (v2)
 
-## Notification Subscriptions (KDI-025)
-- [ ] Not yet implemented
-
 ## Feature Flags
 - [ ] `FF_ENABLE_KANBAN_DISPATCH` — gates dispatcher loop
 - [ ] Defaults to `false` everywhere
@@ -404,7 +415,6 @@
 - [ ] **SQLite monolithic migration** — The single `CREATE TABLE tasks_new ... DROP TABLE ... RENAME TO` migration handles schema changes for KDI-001 (triage), KDI-002 (scheduled), KDI-003 (review), and KDI-004 (integer priority) in one pass. This is technically required by SQLite (can't `ALTER TABLE` CHECK constraints or change column types), but it mixes feature boundaries. If versioned migration files are ever introduced, this should be split into per-feature steps with intermediate schema versions.
 - [ ] **`tests/init.test.ts` fails when `KDI_DB` is set** — `defaultDbPath()` honors the `KDI_DB`/`KDI_DB_PATH` environment variables, but `tests/init.test.ts` asserts that `defaultDbPath()` ends with `.db`. When the parent environment sets `KDI_DB` to a path without that suffix (e.g. `.../kdi.sqlite`), the assertion fails. The implementation is correct; the test is environment-sensitive. Run the suite with `env -u KDI_DB bun test` for a clean baseline.
 - [ ] **Import-path convention conflict** — `AGENTS.md` prescribes the `~/*` alias for `src/*` imports, but the entire existing codebase uses relative imports (e.g. `../models/board`). KDI-024 followed the existing relative-import convention to stay consistent with surrounding code. The project should either migrate all imports to `~/*` or update `AGENTS.md` to reflect the actual convention.
-- [ ] **Full-suite board-model test failures** — Running the complete test suite (`bun run test`) in this worktree produces 19 unrelated failures in `board model` tests (metadata, default workdir, showBoard, archive). The same tests pass when run in isolation (`bun test ./tests/board.test.ts`), and the KDI-023 tests pass both in isolation and as a group. This appears to be a pre-existing test-isolation issue (likely `HOME`/`KDI_DB` leakage between tests) rather than a defect introduced by KDI-023. Run `env -u KDI_DB bun test` or affected tests in isolation for a clean baseline; investigate and fix the isolation issue separately.
 
 ## Acceptance Criteria
 - [x] `kdi create "backend: auth" --board myproj --assignee opencode` returns task ID

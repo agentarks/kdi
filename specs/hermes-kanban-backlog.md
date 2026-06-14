@@ -454,7 +454,7 @@
   - `kdi assignees` — list known profiles + per-profile task counts
   - Union of `~/.config/kdi/profiles/` and current board assignees
 
-- [ ] **KDI-025: Notification subscriptions**
+- [x] **KDI-025: Notification subscriptions**
   - `kdi notify-subscribe <task_id> --platform telegram --chat-id ...`
   - `kdi notify-subscribe --notifier-profile <profile>` — gateway that delivers
   - `kdi notify-list [<task_id>]` — global or per-task listing
@@ -559,8 +559,8 @@
 | `hermes kanban decompose` | `kdi decompose` | Missing | KDI-028 |
 | `hermes kanban gc` | `kdi gc` | **Done** | KDI-021 |
 | `hermes kanban diagnostics` | `kdi diagnostics` | **Done** | KDI-020 |
-| `hermes kanban notify-subscribe` | `kdi notify-subscribe` | Missing | KDI-025 |
-| `hermes kanban notify-unsubscribe` | `kdi notify-unsubscribe` | Missing | KDI-025 |
+| `hermes kanban notify-subscribe` | `kdi notify-subscribe` | **Done** | KDI-025 |
+| `hermes kanban notify-unsubscribe` | `kdi notify-unsubscribe` | **Done** | KDI-025 |
 | `hermes kanban init` | `kdi init` | **Done** | KDI-013b |
 | `--board` flag + env resolution | `--board` + `KDI_BOARD` | Missing | KDI-013 |
 | `boards list --all` | `kdi boards list --all` | **Done** | KDI-012b |
@@ -588,9 +588,9 @@
 | `heartbeat --note` | `kdi heartbeat --note` | **Done** | KDI-000c |
 | `log --tail` | `kdi log --tail` | Missing | KDI-018 |
 | `runs --state-type/--state-name` | `kdi runs --state-type/--state-name` | Missing | KDI-036 |
-| `notify-subscribe --notifier-profile` | `kdi notify-subscribe --notifier-profile` | Missing | KDI-025 |
-| `notify-list` without task_id | `kdi notify-list` without task_id | Missing | KDI-025 |
-| `notify-unsubscribe --thread-id` | `kdi notify-unsubscribe --thread-id` | Missing | KDI-025 |
+| `notify-subscribe --notifier-profile` | `kdi notify-subscribe --notifier-profile` | **Done** | KDI-025 |
+| `notify-list` without task_id | `kdi notify-list` without task_id | **Done** | KDI-025 |
+| `notify-unsubscribe --thread-id` | `kdi notify-unsubscribe --thread-id` | **Done** | KDI-025 |
 | `assign` → `none` | `kdi assign none` | Missing | KDI-017 |
 | `reclaim --reason` | `kdi reclaim --reason` | Missing | KDI-017 |
 | `reassign --reason` | `kdi reassign --reason` | Missing | KDI-017 |
