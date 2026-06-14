@@ -348,8 +348,22 @@
 - [ ] Terminal delivery on task completion
 - [ ] Webhook support (v2)
 
+## Notification Subscriptions (KDI-025)
+- [x] BRD drafted at `specs/brd-kdi-025-notification-subscriptions.md`
+- [x] Feature flag `ff_notify_subs` / `FF_NOTIFY_SUBS` registered in `specs/feature-flags.md`, defaults to `false`
+- [ ] `kanban_notify_subs` table schema and migration in `src/db.ts`
+- [ ] `subscribe()` / `listSubscriptions()` / `unsubscribe()` model functions in `src/models/notifySub.ts`
+- [ ] `kdi notify-subscribe <task_id> --platform <name> --chat-id <id>` command
+- [ ] `kdi notify-list [<task_id>] [--archived] [--json]` command
+- [ ] `kdi notify-unsubscribe <task_id> --platform <name> --chat-id <id>` command
+- [ ] Notifier profiles registry `~/.config/kdi/notifiers.yaml`
+- [ ] Notifier watcher in dispatcher tick loop
+- [ ] Transport handlers: telegram, slack, discord, webhook, log
+- [ ] Unit/e2e tests for all CLI commands and notifier watcher
+
 ## Feature Flags
 - [ ] `FF_ENABLE_KANBAN_DISPATCH` — gates dispatcher loop
+- [ ] `FF_NOTIFY_SUBS` — gates notification subscriptions and notifier watcher
 - [ ] Defaults to `false` everywhere
 
 ## Non-Functional Requirements
