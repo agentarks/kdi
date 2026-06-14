@@ -9,7 +9,8 @@ import { atomicClaim, heartbeat } from "./models/claim";
 import { isBlockedByDependencies } from "./models/dependency";
 import { getProfile, substituteCommand } from "./profiles";
 import { createWorktree, removeWorktree, type RemoveWorktreeResult } from "./worktree";
-import { isEnabled, FF_ENABLE_KANBAN_DISPATCH, FF_WORKER_LOG_CAPTURE, FF_CRASH_GRACE_PERIOD, FF_HEARTBEAT, FF_RATE_LIMIT_EXIT_CODE } from "./flags";
+import { isEnabled, FF_ENABLE_KANBAN_DISPATCH, FF_WORKER_LOG_CAPTURE, FF_CRASH_GRACE_PERIOD, FF_HEARTBEAT, FF_RATE_LIMIT_EXIT_CODE, FF_NOTIFY_SUBS } from "./flags";
+import { runNotifierWatcher, getLastSeenEventId, setLastSeenEventId } from "./notifiers";
 import {
   recordTick,
   recordClaim,
@@ -491,6 +492,27 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
       if (updated) {
         const message = `Task #${task.id} "${task.title}" completed with status=${updated.status}`;
         logToBoard(boardSlug, message);
+      }
+    }
+  }
+
+  if (isEnabled(FF_NOTIFY_SUBS)) {
+    const db = getDb();
+    const boardSlugs = db.query(
+      `SELECT DISTINCT b.slug
+       FROM kanban_notify_subs s
+       JOIN tasks t ON t.id = s.task_id
+       JOIN boards b ON b.id = t.board_id
+       WHERE s.unsubscribed_at IS NULL AND t.archived_at IS NULL`
+    ).all() as { slug: string }[];
+
+    for (const { slug } of boardSlugs) {
+      try {
+        const lastSeen = getLastSeenEventId(slug);
+        const newLastSeen = await runNotifierWatcher(slug, lastSeen);
+        setLastSeenEventId(slug, newLastSeen);
+      } catch (err) {
+        console.warn(`Notifier watcher failed for board ${slug}:`, err);
       }
     }
   }

@@ -6,7 +6,8 @@ import { initDb, closeDb, getDb } from "../src/db";
 import { createBoard } from "../src/models/board";
 import { createTask, promoteTask, showTask } from "../src/models/task";
 import { addDependency } from "../src/models/dependency";
-import { setFlag, clearOverrides, FF_RATE_LIMIT_EXIT_CODE } from "../src/flags";
+import { setFlag, clearOverrides, FF_RATE_LIMIT_EXIT_CODE, FF_NOTIFY_SUBS } from "../src/flags";
+import { subscribe } from "../src/models/notifySub";
 import { atomicClaim, heartbeat } from "../src/models/claim";
 import { tick, startDispatcher } from "../src/dispatcher";
 import { getEvents } from "../src/models/taskEvent";
@@ -1160,5 +1161,79 @@ describe("dispatcher", () => {
       expect(runs[0].status).toBe("timed_out");
     });
 
+  });
+
+  describe("notifier watcher integration", () => {
+    let notifierHome: string;
+    let stderrWrites: string[];
+    let originalStderrWrite: typeof process.stderr.write;
+
+    beforeEach(() => {
+      notifierHome = mkdtempSync(join(tmpdir(), "kdi-dispatcher-notify-"));
+      process.env.KDI_NOTIFIERS_PATH = join(notifierHome, "notifiers.yaml");
+      process.env.KDI_NOTIFIER_CURSORS_PATH = join(notifierHome, "cursors");
+      setFlag(FF_NOTIFY_SUBS, true);
+
+      stderrWrites = [];
+      originalStderrWrite = process.stderr.write.bind(process.stderr);
+      process.stderr.write = ((chunk: string | Uint8Array, ...args: any[]) => {
+        stderrWrites.push(typeof chunk === "string" ? chunk : new TextDecoder().decode(chunk));
+        return originalStderrWrite(chunk, ...args);
+      }) as any;
+    });
+
+    afterEach(() => {
+      process.stderr.write = originalStderrWrite;
+      if (process.env.KDI_NOTIFIERS_PATH === join(notifierHome, "notifiers.yaml")) {
+        delete process.env.KDI_NOTIFIERS_PATH;
+      }
+      if (process.env.KDI_NOTIFIER_CURSORS_PATH === join(notifierHome, "cursors")) {
+        delete process.env.KDI_NOTIFIER_CURSORS_PATH;
+      }
+      rmSync(notifierHome, { recursive: true, force: true });
+    });
+
+    it("delivers a completed event notification via log transport on tick", async () => {
+      const board = createBoard("notify-dispatch-board", "/tmp/notify-dispatch-board");
+      const task = createTask({ board_id: board.id, title: "Notify me", assignee: "opencode" });
+      promoteTask(task.id);
+      subscribe(task.id, "telegram", "-1001", { notifierProfile: "log" });
+
+      await tick({
+        spawnHarness: () => Promise.resolve({ stdout: "done", stderr: "", exitCode: 0 }),
+        createWorktree: () => "/tmp/mock-worktree",
+        removeWorktree: () => ({ worktreeRemoved: true, branchDeleted: true, found: true }),
+      });
+
+      const updated = showTask(task.id);
+      expect(updated!.status).toBe("done");
+
+      const delivered = stderrWrites
+        .map((line) => JSON.parse(line))
+        .find((entry) => entry.eventKind === "finished" || entry.eventKind === "completed");
+      expect(delivered).toBeDefined();
+      expect(delivered.taskId).toBe(task.id);
+      expect(delivered.profile).toBe("log");
+    });
+
+    it("does not run notifier watcher when FF_NOTIFY_SUBS is disabled", async () => {
+      setFlag(FF_NOTIFY_SUBS, false);
+
+      const board = createBoard("notify-off-board", "/tmp/notify-off-board");
+      const task = createTask({ board_id: board.id, title: "No notify", assignee: "opencode" });
+      promoteTask(task.id);
+      subscribe(task.id, "telegram", "-1001", { notifierProfile: "log" });
+
+      await tick({
+        spawnHarness: () => Promise.resolve({ stdout: "done", stderr: "", exitCode: 0 }),
+        createWorktree: () => "/tmp/mock-worktree",
+        removeWorktree: () => ({ worktreeRemoved: true, branchDeleted: true, found: true }),
+      });
+
+      const delivered = stderrWrites
+        .map((line) => JSON.parse(line))
+        .find((entry) => entry.eventKind === "finished" || entry.eventKind === "completed");
+      expect(delivered).toBeUndefined();
+    });
   });
 });

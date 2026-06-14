@@ -188,6 +188,20 @@
 - [x] Unit/CLI tests cover storage, flag gating, duplicate-name rejection, and hard-delete cascade
 - [x] `bun run lint`, `bun run test`, `bun run build` pass
 
+## Notification Subscriptions (KDI-025) — Done
+- [x] BRD drafted at `specs/brd-kdi-025-notification-subscriptions.md`
+- [x] Feature flag `ff_notify_subs` / `FF_NOTIFY_SUBS` registered in `specs/feature-flags.md` and `src/flags.ts`, defaults to `false`
+- [x] `kanban_notify_subs` table schema and migration in `src/db.ts`
+- [x] `subscribe()` / `listSubscriptions()` / `unsubscribe()` model functions in `src/models/notifySub.ts`
+- [x] `kdi notify-subscribe <task_id> --platform <name> --chat-id <id>` command
+- [x] `kdi notify-list [<task_id>] [--archived] [--json]` command
+- [x] `kdi notify-unsubscribe <task_id> --platform <name> --chat-id <id>` command
+- [x] Notifier profiles registry `~/.config/kdi/notifiers.yaml` with built-in `log` profile
+- [x] Notifier watcher in dispatcher tick loop gated by `FF_NOTIFY_SUBS`
+- [x] Transport handlers: telegram, slack, discord, webhook, log
+- [x] Unit/CLI tests for all CLI commands and notifier watcher
+- [x] `bun run lint`, `bun run test`, `bun run build` pass
+
 ## Task Lifecycle
 - [x] `kdi create <title> --board <slug> --assignee <profile>` — create task
 - [x] `kdi create <title> --board <slug> --triage` — create task in triage
@@ -348,18 +362,18 @@
 - [ ] Terminal delivery on task completion
 - [ ] Webhook support (v2)
 
-## Notification Subscriptions (KDI-025)
+## Notification Subscriptions (KDI-025) — Done
 - [x] BRD drafted at `specs/brd-kdi-025-notification-subscriptions.md`
 - [x] Feature flag `ff_notify_subs` / `FF_NOTIFY_SUBS` registered in `specs/feature-flags.md`, defaults to `false`
-- [ ] `kanban_notify_subs` table schema and migration in `src/db.ts`
-- [ ] `subscribe()` / `listSubscriptions()` / `unsubscribe()` model functions in `src/models/notifySub.ts`
-- [ ] `kdi notify-subscribe <task_id> --platform <name> --chat-id <id>` command
-- [ ] `kdi notify-list [<task_id>] [--archived] [--json]` command
-- [ ] `kdi notify-unsubscribe <task_id> --platform <name> --chat-id <id>` command
-- [ ] Notifier profiles registry `~/.config/kdi/notifiers.yaml`
-- [ ] Notifier watcher in dispatcher tick loop
-- [ ] Transport handlers: telegram, slack, discord, webhook, log
-- [ ] Unit/e2e tests for all CLI commands and notifier watcher
+- [x] `kanban_notify_subs` table schema and migration in `src/db.ts`
+- [x] `subscribe()` / `listSubscriptions()` / `unsubscribe()` model functions in `src/models/notifySub.ts`
+- [x] `kdi notify-subscribe <task_id> --platform <name> --chat-id <id>` command
+- [x] `kdi notify-list [<task_id>] [--archived] [--json]` command
+- [x] `kdi notify-unsubscribe <task_id> --platform <name> --chat-id <id>` command
+- [x] Notifier profiles registry `~/.config/kdi/notifiers.yaml`
+- [x] Notifier watcher in dispatcher tick loop
+- [x] Transport handlers: telegram, slack, discord, webhook, log
+- [x] Unit/e2e tests for all CLI commands and notifier watcher
 
 ## Feature Flags
 - [ ] `FF_ENABLE_KANBAN_DISPATCH` — gates dispatcher loop

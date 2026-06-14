@@ -118,6 +118,22 @@ CREATE TABLE IF NOT EXISTS task_attachments (
   created_at INTEGER NOT NULL DEFAULT (unixepoch())
 );
 
+CREATE TABLE IF NOT EXISTS kanban_notify_subs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  task_id INTEGER NOT NULL REFERENCES tasks(id),
+  platform TEXT NOT NULL,
+  chat_id TEXT NOT NULL,
+  thread_id TEXT,
+  user_id TEXT,
+  notifier_profile TEXT NOT NULL,
+  subscribed_at INTEGER NOT NULL DEFAULT (unixepoch()),
+  unsubscribed_at INTEGER,
+  UNIQUE (task_id, platform, chat_id, thread_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_notify_subs_task ON kanban_notify_subs(task_id);
+CREATE INDEX IF NOT EXISTS idx_notify_subs_active ON kanban_notify_subs(task_id, unsubscribed_at);
+
 CREATE INDEX IF NOT EXISTS idx_tasks_board_status ON tasks(board_id, status);
 CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks(assignee);
 CREATE INDEX IF NOT EXISTS idx_tasks_priority ON tasks(priority);
@@ -451,6 +467,29 @@ export function initDb(path?: string): Database {
     dbInstance.exec("CREATE INDEX IF NOT EXISTS idx_tasks_scheduled_at ON tasks(status, scheduled_at)");
     dbInstance.exec("CREATE INDEX IF NOT EXISTS idx_tasks_tenant ON tasks(board_id, tenant)");
     dbInstance.exec("CREATE INDEX IF NOT EXISTS idx_runs_status ON task_runs(status)");
+
+    // Migrate: add kanban_notify_subs table and indexes if missing
+    const hasNotifySubs = dbInstance.query(
+      "SELECT 1 FROM sqlite_master WHERE type='table' AND name='kanban_notify_subs'"
+    ).get() as { 1: number } | undefined;
+    if (!hasNotifySubs) {
+      dbInstance.exec(`
+        CREATE TABLE kanban_notify_subs (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          task_id INTEGER NOT NULL REFERENCES tasks(id),
+          platform TEXT NOT NULL,
+          chat_id TEXT NOT NULL,
+          thread_id TEXT,
+          user_id TEXT,
+          notifier_profile TEXT NOT NULL,
+          subscribed_at INTEGER NOT NULL DEFAULT (unixepoch()),
+          unsubscribed_at INTEGER,
+          UNIQUE (task_id, platform, chat_id, thread_id)
+        )
+      `);
+      dbInstance.exec("CREATE INDEX idx_notify_subs_task ON kanban_notify_subs(task_id)");
+      dbInstance.exec("CREATE INDEX idx_notify_subs_active ON kanban_notify_subs(task_id, unsubscribed_at)");
+    }
   } catch (err) {
     closeDb();
     throw err;

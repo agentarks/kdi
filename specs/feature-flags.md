@@ -54,7 +54,7 @@ stateDiagram-v2
 | `ff_gc` | `FF_GC` | CLI / maintenance | InDev | `false` | KDI-021 | Garbage collection command; prunes old events, old logs, and KDI-owned archived-task workspaces. |
 | `ff_task_attachments` | `FF_TASK_ATTACHMENTS` | CLI / task metadata | InDev | `false` | KDI-022 | Task file attachments; `kdi attach <task_id> <file>` and attachment display in `kdi show`. |
 | `ff_diagnostics` | `FF_DIAGNOSTICS` | CLI / observability | InDev | `false` | KDI-020 | Board diagnostics command; health-check rules, severity filtering, per-task mode, and `--json` output. |
-| `ff_notify_subs` | `FF_NOTIFY_SUBS` | CLI / notifier watcher | Planned | `false` | KDI-025 | Notification subscriptions; `notify-subscribe/list/unsubscribe` commands; notifier watcher in dispatcher tick.
+| `ff_notify_subs` | `FF_NOTIFY_SUBS` | CLI / notifier watcher | InDev | `false` | KDI-025 | Notification subscriptions; `notify-subscribe/list/unsubscribe` commands; notifier watcher in dispatcher tick.
 
 ## Lifecycle Notes
 
@@ -399,7 +399,7 @@ stateDiagram-v2
 - **Rollback / deactivation:** Set `FF_DIAGNOSTICS=false` to reject the `diagnostics` command.
 - **Deprecation plan:** N/A
 
-### `ff_notify_subs` — Planned
+### `ff_notify_subs` — InDev
 
 - **Owner:** kdi core team
 - **BRD:** [BRD-KDI-025](brd-kdi-025-notification-subscriptions.md)
