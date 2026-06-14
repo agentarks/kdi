@@ -51,6 +51,7 @@ stateDiagram-v2
 | `ff_assign_reassign` | `FF_ASSIGN_REASSIGN` | CLI / task lifecycle | InDev | `false` | KDI-017 | Assign/reassign task assignee; `assign`, `reassign`, and `reassign --reclaim`. |
 | `ff_worker_log_capture` | `FF_WORKER_LOG_CAPTURE` | CLI / dispatcher | InDev | `false` | KDI-018 | Worker stdout/stderr capture; `kdi log <task_id>` and `--tail`. |
 | `ff_stats` | `FF_STATS` | CLI / observability | InDev | `false` | KDI-019 | Board stats command; per-status counts, per-assignee counts, oldest-ready age, and `--json` output. |
+| `ff_gc` | `FF_GC` | CLI / maintenance | InDev | `false` | KDI-021 | Garbage collection command; prunes old events, old logs, and KDI-owned archived-task workspaces. |
 
 ## Lifecycle Notes
 
@@ -334,6 +335,22 @@ stateDiagram-v2
   - `kdi stats --json` emits a stable JSON document.
   - Flag gating rejects the command with a clear error when disabled.
 - **Rollback / deactivation:** Set `FF_STATS=false` to reject the `stats` command.
+- **Deprecation plan:** N/A
+
+### `ff_gc` — InDev
+
+- **Owner:** kdi core team
+- **BRD:** [BRD-KDI-021](brd-kdi-021-gc.md)
+- **Status transitions:**
+  - `Planned` → `InDev` when `kdi gc` command and garbage-collection helpers are implemented.
+  - `InDev` → `Active` when cleanup logic is safe to enable by default.
+- **Schema note:** No schema changes; deletes from existing `tasks`, `task_events`, and `boards` tables and removes files from the existing log directory layout.
+- **Activation criteria:**
+  - `kdi gc --event-retention-days N` deletes task events older than N days.
+  - `kdi gc --log-retention-days N` deletes worker logs older than N days.
+  - `kdi gc` cleans KDI-owned workspaces for archived tasks.
+  - Flag gating rejects the command with a clear error when disabled.
+- **Rollback / deactivation:** Set `FF_GC=false` to reject the `gc` command.
 - **Deprecation plan:** N/A
 
 ### `ff_assignees_listing` — InDev

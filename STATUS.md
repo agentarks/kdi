@@ -132,13 +132,25 @@
 
 ## Board Stats (KDI-019) — Done
 - [x] BRD drafted at `specs/brd-019-stats.md`
-- [x] Feature flag `ff_stats` / `FF_STATS` registered in `specs/feature-flags.md`, defaults to `false`
+- [x] Feature flag `ff_stats` / `FF_STATS` registered in `src/flags.ts` and `specs/feature-flags.md`, defaults to `false`
 - [x] `FF_STATS` constant added to `src/flags.ts`
 - [x] `kdi stats [--board <slug>]` command gated by `FF_STATS`
 - [x] `kdi stats` prints per-status counts, per-assignee counts, and oldest-ready age
 - [x] `kdi stats --json` emits stable JSON document
 - [x] Board resolved via standard chain
 - [x] Unit/CLI tests cover counts, JSON output, board resolution, and flag gating
+- [x] `bun run lint`, `bun run test`, `bun run build` pass
+
+## Garbage Collection (KDI-021) — Done
+- [x] BRD drafted at `specs/brd-kdi-021-gc.md`
+- [x] Feature flag `ff_gc` / `FF_GC` registered in `src/flags.ts` and `specs/feature-flags.md`, defaults to `false`
+- [x] `FF_GC` constant added to `src/flags.ts`
+- [x] `kdi gc [--board <slug>] [--event-retention-days <n>] [--log-retention-days <n>]` command gated by `FF_GC`
+- [x] `kdi gc` deletes task events older than `--event-retention-days`
+- [x] `kdi gc` deletes worker logs older than `--log-retention-days`
+- [x] `kdi gc` cleans KDI-owned workspaces for archived tasks (board data dir or temp `kdi-*` paths)
+- [x] Board resolved via standard chain
+- [x] Unit/CLI tests cover event deletion, log deletion, workspace cleanup, board resolution, and flag gating
 - [x] `bun run lint`, `bun run test`, `bun run build` pass
 
 ## Assignees Listing (KDI-024) — Done
