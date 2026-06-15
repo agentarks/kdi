@@ -62,7 +62,10 @@ CREATE TABLE IF NOT EXISTS tasks (
   consecutive_failures INTEGER NOT NULL DEFAULT 0,
   idempotency_key TEXT,
   model_override TEXT,
-  rate_limited_until INTEGER
+  rate_limited_until INTEGER,
+  session_id TEXT,
+  workflow_template_id TEXT,
+  current_step_key TEXT
 );
 
 CREATE TABLE IF NOT EXISTS comments (
@@ -337,6 +340,24 @@ export function initDb(path?: string): Database {
     }
     dbInstance.exec("CREATE INDEX IF NOT EXISTS idx_tasks_rate_limited_until ON tasks(status, rate_limited_until)");
 
+    // Migrate: add session_id column if missing
+    const hasSessionId = tableInfo.some((col) => col.name === "session_id");
+    if (!hasSessionId) {
+      dbInstance.exec("ALTER TABLE tasks ADD COLUMN session_id TEXT");
+    }
+
+    // Migrate: add workflow_template_id column if missing
+    const hasWorkflowTemplateId = tableInfo.some((col) => col.name === "workflow_template_id");
+    if (!hasWorkflowTemplateId) {
+      dbInstance.exec("ALTER TABLE tasks ADD COLUMN workflow_template_id TEXT");
+    }
+
+    // Migrate: add current_step_key column if missing
+    const hasCurrentStepKey = tableInfo.some((col) => col.name === "current_step_key");
+    if (!hasCurrentStepKey) {
+      dbInstance.exec("ALTER TABLE tasks ADD COLUMN current_step_key TEXT");
+    }
+
     // Migrate: add created_by if missing
     const hasCreatedBy = tableInfo.some((col) => col.name === "created_by");
     if (!hasCreatedBy) {
@@ -440,14 +461,17 @@ export function initDb(path?: string): Database {
             consecutive_failures INTEGER NOT NULL DEFAULT 0,
             idempotency_key TEXT,
             model_override TEXT,
-            rate_limited_until INTEGER
+            rate_limited_until INTEGER,
+            session_id TEXT,
+            workflow_template_id TEXT,
+            current_step_key TEXT
           );
           INSERT INTO tasks_new
-            (id, board_id, title, body, assignee, status, priority, tenant, workspace_kind, workspace, branch, result, summary, block_reason, schedule_reason, review_reason, scheduled_at, created_by, skills, created_at, updated_at, started_at, archived_at, current_run_id, claim_lock, claim_expires, last_heartbeat_at, max_runtime_seconds, max_retries, consecutive_failures, idempotency_key, model_override, rate_limited_until)
+            (id, board_id, title, body, assignee, status, priority, tenant, workspace_kind, workspace, branch, result, summary, block_reason, schedule_reason, review_reason, scheduled_at, created_by, skills, created_at, updated_at, started_at, archived_at, current_run_id, claim_lock, claim_expires, last_heartbeat_at, max_runtime_seconds, max_retries, consecutive_failures, idempotency_key, model_override, rate_limited_until, session_id, workflow_template_id, current_step_key)
           SELECT
             id, board_id, title, body, assignee, status,
             CASE priority WHEN 'low' THEN 1 WHEN 'medium' THEN 2 WHEN 'high' THEN 3 ELSE COALESCE(priority, 0) END,
-            tenant, workspace_kind, workspace, branch, result, summary, block_reason, schedule_reason, review_reason, scheduled_at, COALESCE(created_by, 'unknown'), skills, created_at, updated_at, started_at, archived_at, current_run_id, claim_lock, claim_expires, last_heartbeat_at, max_runtime_seconds, max_retries, COALESCE(consecutive_failures, 0), idempotency_key, model_override, rate_limited_until
+            tenant, workspace_kind, workspace, branch, result, summary, block_reason, schedule_reason, review_reason, scheduled_at, COALESCE(created_by, 'unknown'), skills, created_at, updated_at, started_at, archived_at, current_run_id, claim_lock, claim_expires, last_heartbeat_at, max_runtime_seconds, max_retries, COALESCE(consecutive_failures, 0), idempotency_key, model_override, rate_limited_until, NULL, NULL, NULL
           FROM tasks;
           DROP TABLE tasks;
           ALTER TABLE tasks_new RENAME TO tasks;
@@ -466,6 +490,9 @@ export function initDb(path?: string): Database {
     dbInstance.exec("CREATE INDEX IF NOT EXISTS idx_tasks_priority ON tasks(priority)");
     dbInstance.exec("CREATE INDEX IF NOT EXISTS idx_tasks_scheduled_at ON tasks(status, scheduled_at)");
     dbInstance.exec("CREATE INDEX IF NOT EXISTS idx_tasks_tenant ON tasks(board_id, tenant)");
+    dbInstance.exec("CREATE INDEX IF NOT EXISTS idx_tasks_session ON tasks(board_id, session_id)");
+    dbInstance.exec("CREATE INDEX IF NOT EXISTS idx_tasks_workflow_template ON tasks(board_id, workflow_template_id)");
+    dbInstance.exec("CREATE INDEX IF NOT EXISTS idx_tasks_step_key ON tasks(board_id, current_step_key)");
     dbInstance.exec("CREATE INDEX IF NOT EXISTS idx_runs_status ON task_runs(status)");
 
     // Migrate: add kanban_notify_subs table and indexes if missing
@@ -490,6 +517,7 @@ export function initDb(path?: string): Database {
       dbInstance.exec("CREATE INDEX idx_notify_subs_task ON kanban_notify_subs(task_id)");
       dbInstance.exec("CREATE INDEX idx_notify_subs_active ON kanban_notify_subs(task_id, unsubscribed_at)");
     }
+
   } catch (err) {
     closeDb();
     throw err;

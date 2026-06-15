@@ -18,6 +18,7 @@ import {
   assignTask,
   unassignTask,
   reassignTask,
+  VALID_SORT_KEYS,
 } from "../models/task";
 import { addComment, getComments } from "../models/comment";
 import { createAttachment, listAttachments } from "../models/taskAttachment";
@@ -25,7 +26,7 @@ import { getRuns } from "../models/taskRun";
 import { getEvents, tailEvents, getRecentEvents, getEventsAfter } from "../models/taskEvent";
 import { atomicClaim, reclaimTask, heartbeat } from "../models/claim";
 import { getTaskLogPath } from "../observability";
-import { isEnabled, FF_SCHEDULED_STATUS, FF_REVIEW_STATUS, FF_COMPLETE_METADATA, FF_PRIORITY_INTEGER, FF_SKILLS_ARRAY, FF_MAX_RUNTIME, FF_MAX_RETRIES, FF_TENANT_NAMESPACE, FF_CREATED_BY, FF_MODEL_OVERRIDE, FF_DEFAULT_WORKDIR, FF_WORKER_LOG_CAPTURE, FF_ASSIGN_REASSIGN, FF_CRASH_GRACE_PERIOD, FF_HEARTBEAT, FF_RATE_LIMIT_EXIT_CODE, FF_TASK_ATTACHMENTS } from "../flags";
+import { isEnabled, FF_SCHEDULED_STATUS, FF_REVIEW_STATUS, FF_COMPLETE_METADATA, FF_PRIORITY_INTEGER, FF_SKILLS_ARRAY, FF_MAX_RUNTIME, FF_MAX_RETRIES, FF_TENANT_NAMESPACE, FF_CREATED_BY, FF_MODEL_OVERRIDE, FF_DEFAULT_WORKDIR, FF_WORKER_LOG_CAPTURE, FF_ASSIGN_REASSIGN, FF_CRASH_GRACE_PERIOD, FF_HEARTBEAT, FF_RATE_LIMIT_EXIT_CODE, FF_TASK_ATTACHMENTS, FF_LIST_FILTERS_SORT } from "../flags";
 import { resolveBoard } from "../resolveBoard";
 
 const VALID_STATUSES = ["triage", "todo", "scheduled", "ready", "running", "done", "blocked", "review"] as const;
@@ -71,6 +72,10 @@ function resolveCreator(optionsCreatedBy?: string): string {
   return "unknown";
 }
 
+function resolveCurrentProfile(): string {
+  return process.env.KDI_PROFILE || process.env.HERMES_PROFILE || "user";
+}
+
 function parseTimestamp(raw: string): number {
   if (/^\d+$/.test(raw)) {
     return parseInt(raw, 10);
@@ -114,7 +119,8 @@ export const createTaskCommand = new Command("create")
   .option("--model <model>", "Model override for the harness")
   .option("--created-by <actor>", "Actor that created the task")
   .option("--workspace <path>", "Workspace path for this task. Feature-flagged.")
-  .action((title: string, options: { board?: string; assignee?: string; body?: string; triage?: boolean; initialStatus?: string; at?: string; priority?: string; idempotencyKey?: string; maxRuntime?: string; maxRetries?: string; tenant?: string; skill: string[]; createdBy?: string; model?: string; workspace?: string }) => {
+  .option("--session <session_id>", "Originating session ID. Feature-flagged.")
+  .action((title: string, options: { board?: string; assignee?: string; body?: string; triage?: boolean; initialStatus?: string; at?: string; priority?: string; idempotencyKey?: string; maxRuntime?: string; maxRetries?: string; tenant?: string; skill: string[]; createdBy?: string; model?: string; workspace?: string; session?: string }) => {
     try {
       if (!title || title.trim() === "") {
         throw new Error("Title is required.");
@@ -239,6 +245,15 @@ export const createTaskCommand = new Command("create")
         workspace = board.default_workdir;
       }
 
+      if (options.session !== undefined) {
+        if (!isEnabled(FF_LIST_FILTERS_SORT)) {
+          throw new Error("List filters and sort feature is not enabled.");
+        }
+        if (options.session.trim() === "") {
+          throw new Error("Session ID cannot be empty.");
+        }
+      }
+
       const task = createTask({
         board_id: board.id,
         title,
@@ -256,6 +271,7 @@ export const createTaskCommand = new Command("create")
         created_by: createdBy,
         model_override: options.model,
         workspace,
+        session_id: options.session,
       });
       console.log(task.id);
     } catch (err: any) {
@@ -271,8 +287,20 @@ export const listTasksCommand = new Command("list")
   .option("--assignee <profile>", "Filter by assignee")
   .option("--tenant <name>", "Filter by tenant namespace")
   .option("--created-by <actor>", "Filter by creator")
-  .action((options: { board?: string; status?: string; assignee?: string; tenant?: string; createdBy?: string }) => {
+  .option("--mine", "Show only tasks assigned to your current profile")
+  .option("--session <session_id>", "Filter by originating session ID")
+  .option("--archived", "Include archived tasks")
+  .option("--sort <key>", "Sort order (assignee, created, created-desc, priority, priority-desc, status, title, updated)")
+  .option("--workflow-template-id <id>", "Filter by workflow template ID")
+  .option("--step-key <key>", "Filter by current step key")
+  .action((options: { board?: string; status?: string; assignee?: string; tenant?: string; createdBy?: string; mine?: boolean; session?: string; archived?: boolean; sort?: string; workflowTemplateId?: string; stepKey?: string }) => {
     try {
+      // Gate new options behind FF_LIST_FILTERS_SORT
+      const hasNewOption = options.mine || options.session !== undefined || options.archived || options.sort !== undefined || options.workflowTemplateId !== undefined || options.stepKey !== undefined;
+      if (hasNewOption && !isEnabled(FF_LIST_FILTERS_SORT)) {
+        throw new Error("List filters and sort feature is not enabled.");
+      }
+
       if (options.status && !isValidStatus(options.status)) {
         throw new Error(`Invalid status "${options.status}". Valid: ${VALID_STATUSES.join(", ")}`);
       }
@@ -287,9 +315,39 @@ export const listTasksCommand = new Command("list")
       if (options.createdBy !== undefined && !isEnabled(FF_CREATED_BY)) {
         throw new Error("Created-by tracking is not enabled.");
       }
+
+      // --mine and --assignee are mutually exclusive
+      if (options.mine && options.assignee) {
+        throw new Error("--mine and --assignee cannot be used together.");
+      }
+
+      // Resolve assignee from --mine or --assignee
+      let assignee = options.assignee;
+      if (options.mine) {
+        assignee = resolveCurrentProfile();
+      }
+
+      // Validate sort key
+      if (options.sort !== undefined) {
+        const validKeys: readonly string[] = VALID_SORT_KEYS;
+        if (!validKeys.includes(options.sort)) {
+          throw new Error(`Invalid sort key "${options.sort}". Valid: ${validKeys.join(", ")}`);
+        }
+      }
+
       const boardSlug = resolveBoard(options.board);
       const boardId = getBoardIdBySlug(boardSlug);
-      const tasks = listTasks({ board_id: boardId, status: options.status as any, assignee: options.assignee, tenant: options.tenant, created_by: options.createdBy });
+      const tasks = listTasks({
+        board_id: boardId,
+        status: options.status as any,
+        assignee,
+        tenant: options.tenant,
+        created_by: options.createdBy,
+        includeArchived: options.archived,
+        session_id: options.session,
+        workflow_template_id: options.workflowTemplateId,
+        current_step_key: options.stepKey,
+      }, options.sort);
       if (tasks.length === 0) {
         console.log("No tasks.");
         return;

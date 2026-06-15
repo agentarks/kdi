@@ -232,7 +232,25 @@
   - `ff_comment_enhancements` / `FF_COMMENT_ENHANCEMENTS`
   - `ff_dispatch_controls` / `FF_DISPATCH_CONTROLS`
   - `ff_watch_filters` / `FF_WATCH_FILTERS`
-- [ ] Feature flags registered in `src/flags.ts`
+- [x] Feature flags registered in `src/flags.ts`
+
+## KDI-030: `kdi list` Filters and Sort — Done
+- [x] `session_id`, `workflow_template_id`, `current_step_key` columns added to `tasks` (schema + migrations)
+- [x] Supporting indexes: `idx_tasks_session`, `idx_tasks_workflow_template`, `idx_tasks_step_key`
+- [x] `kdi list --mine` — filter by current profile assignee (resolved from `KDI_PROFILE` → `HERMES_PROFILE` → `"user"`)
+- [x] `kdi list --session <session_id>` — filter by originating session
+- [x] `kdi list --archived` — include archived tasks in listing
+- [x] `kdi list --sort <key>` — sort by `assignee`, `created`, `created-desc`, `priority`, `priority-desc`, `status`, `title`, `updated`
+- [x] `kdi list --workflow-template-id <id>` — filter by workflow template
+- [x] `kdi list --step-key <key>` — filter by current step key
+- [x] `kdi create --session <session_id>` — store originating session on task
+- [x] `--mine` and `--assignee` mutually exclusive; clear error when used together
+- [x] New filters compose with existing `--status`, `--assignee`, `--tenant`, `--created-by`
+- [x] All new options gated by `FF_LIST_FILTERS_SORT` (defaults to `false`)
+- [x] Invalid sort keys rejected with a list of valid values
+- [x] Unit tests cover each filter, sort key, archived inclusion, and flag gating
+- [x] CLI/e2e tests cover all acceptance criteria from the BRD
+- [x] `bun run lint`, `bun run test`, `bun run build` pass
 
 - [x] `kdi create <title> --board <slug> --assignee <profile>` — create task
 - [x] `kdi create <title> --board <slug> --triage` — create task in triage

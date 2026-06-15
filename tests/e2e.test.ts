@@ -2112,4 +2112,261 @@ describe("kdi e2e acceptance", () => {
     rmSync(tmp, { recursive: true, force: true });
   });
 
+  // ── KDI-030: list filters and sort CLI ──
+
+  it("kdi create --session stores session_id", () => {
+    const tmp = makeTempDir("list-session-create");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_LIST_FILTERS_SORT: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const taskId = runKdi(`create "session task" --board myproj --session sess-123`, env);
+    expect(taskId).toBeTruthy();
+
+    const showOutput = runKdi(`show ${taskId}`, env);
+    // Verify it was stored by listing with the session filter
+    const listOutput = runKdi(`list --board myproj --session sess-123`, env);
+    expect(listOutput).toContain("session task");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("kdi list --session filters by session_id", () => {
+    const tmp = makeTempDir("list-session-filter");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_LIST_FILTERS_SORT: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    runKdi(`create "sess-1-task" --board myproj --session sess-1`, env);
+    runKdi(`create "sess-2-task" --board myproj --session sess-2`, env);
+
+    const output1 = runKdi(`list --board myproj --session sess-1`, env);
+    expect(output1).toContain("sess-1-task");
+    expect(output1).not.toContain("sess-2-task");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("kdi list --mine filters by KDI_PROFILE", () => {
+    const tmp = makeTempDir("list-mine");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_LIST_FILTERS_SORT: "true", KDI_PROFILE: "alice" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    runKdi(`create "alice-task" --board myproj --assignee alice`, env);
+    runKdi(`create "bob-task" --board myproj --assignee bob`, env);
+
+    const output = runKdi(`list --board myproj --mine`, env);
+    expect(output).toContain("alice-task");
+    expect(output).not.toContain("bob-task");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("kdi list --mine and --assignee are mutually exclusive", () => {
+    const tmp = makeTempDir("list-mine-conflict");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_LIST_FILTERS_SORT: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    expect(() => runKdi(`list --board myproj --mine --assignee bob`, env)).toThrow();
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("kdi list --archived includes archived tasks", () => {
+    const tmp = makeTempDir("list-archived");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_LIST_FILTERS_SORT: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const activeId = runKdi(`create "active-task" --board myproj`, env);
+    const archivedId = runKdi(`create "archived-task" --board myproj`, env);
+    runKdi(`archive ${archivedId}`, env);
+
+    // Without --archived: only active tasks
+    const defaultOutput = runKdi(`list --board myproj`, env);
+    expect(defaultOutput).toContain("active-task");
+    expect(defaultOutput).not.toContain("archived-task");
+
+    // With --archived: both active and archived
+    const archivedOutput = runKdi(`list --board myproj --archived`, env);
+    expect(archivedOutput).toContain("active-task");
+    expect(archivedOutput).toContain("archived-task");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("kdi list --sort priority orders by priority DESC", () => {
+    const tmp = makeTempDir("list-sort-priority");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_LIST_FILTERS_SORT: "true", FF_PRIORITY_INTEGER: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    runKdi(`create "low" --board myproj --priority 1`, env);
+    runKdi(`create "high" --board myproj --priority 10`, env);
+    runKdi(`create "med" --board myproj --priority 5`, env);
+
+    const output = runKdi(`list --board myproj --sort priority`, env);
+    const lines = output.split("\n").filter((l) => l.trim() !== "");
+    expect(lines[0]).toContain("high");
+    expect(lines[1]).toContain("med");
+    expect(lines[2]).toContain("low");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("kdi list --sort title orders case-insensitively", () => {
+    const tmp = makeTempDir("list-sort-title");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_LIST_FILTERS_SORT: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    runKdi(`create "zebra" --board myproj`, env);
+    runKdi(`create "Apple" --board myproj`, env);
+
+    const output = runKdi(`list --board myproj --sort title`, env);
+    const lines = output.split("\n").filter((l) => l.trim() !== "");
+    expect(lines[0]).toContain("Apple");
+    expect(lines[1]).toContain("zebra");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("kdi list --sort with invalid key shows error", () => {
+    const tmp = makeTempDir("list-sort-invalid");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_LIST_FILTERS_SORT: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    expect(() => runKdi(`list --board myproj --sort invalid`, env)).toThrow();
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("kdi list new options are gated by flag", () => {
+    const tmp = makeTempDir("list-gated");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_LIST_FILTERS_SORT: "false" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+
+    // Each new option should be rejected when flag is disabled
+    expect(() => runKdi(`list --board myproj --mine`, env)).toThrow();
+    expect(() => runKdi(`list --board myproj --session sess-1`, env)).toThrow();
+    expect(() => runKdi(`list --board myproj --archived`, env)).toThrow();
+    expect(() => runKdi(`list --board myproj --sort priority`, env)).toThrow();
+    expect(() => runKdi(`list --board myproj --workflow-template-id wf1`, env)).toThrow();
+    expect(() => runKdi(`list --board myproj --step-key step1`, env)).toThrow();
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("kdi create --session is gated by flag", () => {
+    const tmp = makeTempDir("create-session-gated");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_LIST_FILTERS_SORT: "false" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    expect(() => runKdi(`create "task" --board myproj --session sess-1`, env)).toThrow();
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("kdi list --workflow-template-id filters by template", () => {
+    const tmp = makeTempDir("list-wf");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_LIST_FILTERS_SORT: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    // Use SQL to set workflow_template_id (CLI doesn't have --workflow-template-id on create)
+    const db = initDb(dbPath);
+    const taskId = runKdi(`create "wf-task" --board myproj`, env);
+    const boardId = runKdi(`boards show myproj`, env);
+    // Set directly in DB since create doesn't expose --workflow-template-id
+    runKdi(`create "other-task" --board myproj`, env);
+    db.run(`UPDATE tasks SET workflow_template_id = 'onboard' WHERE id = ?`, [parseInt(taskId)]);
+
+    const output = runKdi(`list --board myproj --workflow-template-id onboard`, env);
+    expect(output).toContain("wf-task");
+    expect(output).not.toContain("other-task");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("kdi list --step-key filters by step key", () => {
+    const tmp = makeTempDir("list-step");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_LIST_FILTERS_SORT: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    runKdi(`create "step-task" --board myproj`, env);
+    runKdi(`create "other-task" --board myproj`, env);
+    const db = initDb(dbPath);
+    db.run(`UPDATE tasks SET current_step_key = 'review' WHERE title = 'step-task'`);
+
+    const output = runKdi(`list --board myproj --step-key review`, env);
+    expect(output).toContain("step-task");
+    expect(output).not.toContain("other-task");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("kdi list filters compose with existing --status and --assignee", () => {
+    const tmp = makeTempDir("list-compose");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_LIST_FILTERS_SORT: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    runKdi(`create "alice-ready" --board myproj --assignee alice --initial-status ready`, env);
+    runKdi(`create "alice-todo" --board myproj --assignee alice`, env);
+    runKdi(`create "bob-ready" --board myproj --assignee bob --initial-status ready`, env);
+
+    const output = runKdi(`list --board myproj --status ready --assignee alice`, env);
+    expect(output).toContain("alice-ready");
+    expect(output).not.toContain("alice-todo");
+    expect(output).not.toContain("bob-ready");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
 });

@@ -7,7 +7,8 @@ export const TASK_COLUMNS =
   "id, board_id, title, body, assignee, status, priority, tenant, " +
   "workspace_kind, workspace, branch, result, summary, block_reason, schedule_reason, review_reason, " +
   "created_by, created_at, updated_at, started_at, archived_at, current_run_id, " +
-  "claim_lock, claim_expires, last_heartbeat_at, max_runtime_seconds, max_retries, consecutive_failures, idempotency_key, model_override, rate_limited_until, scheduled_at, skills";
+  "claim_lock, claim_expires, last_heartbeat_at, max_runtime_seconds, max_retries, consecutive_failures, idempotency_key, model_override, rate_limited_until, scheduled_at, skills, " +
+  "session_id, workflow_template_id, current_step_key";
 
 export interface Task {
   id: number;
@@ -43,6 +44,9 @@ export interface Task {
   idempotency_key: string | null;
   model_override: string | null;
   rate_limited_until: number | null;
+  session_id: string | null;
+  workflow_template_id: string | null;
+  current_step_key: string | null;
 }
 
 export type InitialTaskStatus = Exclude<Task["status"], "archived">;
@@ -66,6 +70,9 @@ export interface CreateTaskInput {
   skills?: string[];
   created_by?: string;
   model_override?: string;
+  session_id?: string;
+  workflow_template_id?: string;
+  current_step_key?: string;
 }
 
 export interface CompleteTaskInput {
@@ -79,12 +86,19 @@ export interface ReassignOptions {
   reason?: string;
 }
 
+export const VALID_SORT_KEYS = ["assignee", "created", "created-desc", "priority", "priority-desc", "status", "title", "updated"] as const;
+export type SortKey = typeof VALID_SORT_KEYS[number];
+
 export interface ListTasksFilter {
   board_id: number;
   status?: Task["status"];
   assignee?: string;
   tenant?: string;
   created_by?: string;
+  includeArchived?: boolean;
+  session_id?: string;
+  workflow_template_id?: string;
+  current_step_key?: string;
 }
 
 export function parseDuration(value: string): number {
@@ -167,8 +181,8 @@ export function createTask(input: CreateTaskInput): Task {
 
   const insert = db.transaction(() => {
     const result = db.run(
-      `INSERT INTO tasks (board_id, title, body, assignee, status, priority, tenant, workspace_kind, workspace, branch, idempotency_key, scheduled_at, created_by, max_runtime_seconds, max_retries, skills, model_override)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO tasks (board_id, title, body, assignee, status, priority, tenant, workspace_kind, workspace, branch, idempotency_key, scheduled_at, created_by, max_runtime_seconds, max_retries, skills, model_override, session_id, workflow_template_id, current_step_key)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         input.board_id,
         input.title,
@@ -187,6 +201,9 @@ export function createTask(input: CreateTaskInput): Task {
         input.max_retries ?? null,
         skillsJson,
         input.model_override ?? null,
+        input.session_id ?? null,
+        input.workflow_template_id ?? null,
+        input.current_step_key ?? null,
       ]
     );
     return Number(result.lastInsertRowid);
@@ -242,18 +259,25 @@ export function createTask(input: CreateTaskInput): Task {
     idempotency_key: input.idempotency_key ?? null,
     model_override: input.model_override ?? null,
     rate_limited_until: null,
+    session_id: input.session_id ?? null,
+    workflow_template_id: input.workflow_template_id ?? null,
+    current_step_key: input.current_step_key ?? null,
   };
   addEvent(task.id, "created");
   return task;
 }
 
-export function listTasks(filter: ListTasksFilter): Task[] {
+export function listTasks(filter: ListTasksFilter, sort?: string): Task[] {
   const db = getDb();
-  const conditions = ["archived_at IS NULL"];
+  const conditions: string[] = [];
   const params: any[] = [];
 
   conditions.push("board_id = ?");
   params.push(filter.board_id);
+
+  if (!filter.includeArchived) {
+    conditions.push("archived_at IS NULL");
+  }
 
   if (filter.status) {
     conditions.push("status = ?");
@@ -275,15 +299,54 @@ export function listTasks(filter: ListTasksFilter): Task[] {
     params.push(filter.created_by);
   }
 
+  if (filter.session_id) {
+    conditions.push("session_id = ?");
+    params.push(filter.session_id);
+  }
+
+  if (filter.workflow_template_id) {
+    conditions.push("workflow_template_id = ?");
+    params.push(filter.workflow_template_id);
+  }
+
+  if (filter.current_step_key) {
+    conditions.push("current_step_key = ?");
+    params.push(filter.current_step_key);
+  }
+
+  const orderBy = sort ? resolveSortOrder(sort) : "ORDER BY created_at DESC, id DESC";
+
   const query = `
     SELECT ${TASK_COLUMNS}
     FROM tasks
     WHERE ${conditions.join(" AND ")}
-    ORDER BY created_at DESC
+    ${orderBy}
   `;
 
   const tasks = db.query(query).all(...params) as Task[];
   return tasks.map(hydrateTask);
+}
+
+function resolveSortOrder(sort: string): string {
+  switch (sort) {
+    case "assignee":
+      return "ORDER BY assignee ASC NULLS LAST, id ASC";
+    case "created":
+      return "ORDER BY created_at ASC, id ASC";
+    case "created-desc":
+      return "ORDER BY created_at DESC, id DESC";
+    case "priority":
+    case "priority-desc":
+      return "ORDER BY priority DESC, created_at ASC";
+    case "status":
+      return "ORDER BY status ASC, id ASC";
+    case "title":
+      return "ORDER BY title COLLATE NOCASE ASC, id ASC";
+    case "updated":
+      return "ORDER BY updated_at DESC, id DESC";
+    default:
+      throw new Error(`Invalid sort key "${sort}". Valid: ${VALID_SORT_KEYS.join(", ")}`);
+  }
 }
 
 export function getAssigneeCounts(boardId: number): Record<string, number> {
