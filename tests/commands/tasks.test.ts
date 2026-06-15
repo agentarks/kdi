@@ -217,8 +217,11 @@ const KDI030_DB = "/tmp/kdi-commands-tasks-030-test.db";
 
 describe("KDI-030 list filters and sort", () => {
   beforeEach(() => {
+    clearOverrides();
     cleanupDb(KDI030_DB);
     process.env.KDI_DB = KDI030_DB;
+    delete process.env.KDI_PROFILE;
+    delete process.env.HERMES_PROFILE;
     initDb(KDI030_DB);
   });
 
