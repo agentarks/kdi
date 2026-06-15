@@ -232,7 +232,21 @@
   - `ff_comment_enhancements` / `FF_COMMENT_ENHANCEMENTS`
   - `ff_dispatch_controls` / `FF_DISPATCH_CONTROLS`
   - `ff_watch_filters` / `FF_WATCH_FILTERS`
-- [ ] Feature flags registered in `src/flags.ts`
+- [x] Feature flags registered in `src/flags.ts`
+
+## KDI-034: `kdi dispatch --failure-limit` — Done
+- [x] `FF_DISPATCH_CONTROLS` flag registered in `src/flags.ts` (defaults to `false`)
+- [x] `TickOptions.failureLimit` field added to `src/dispatcher.ts`
+- [x] Per-pass failure counting: board-missing, unknown-profile, worktree-creation, harness-execution, and crash failures increment counter
+- [x] Rate-limited tasks (exit 75), dependency skips, and lost CAS claims excluded from failure count
+- [x] When limit reached: `console.warn` + board log emitted; no additional workers spawned this pass
+- [x] `checkCrashedRuns()` returns crash count for failure tracking
+- [x] `kdi dispatch --failure-limit <n>` option gated behind `FF_DISPATCH_CONTROLS`
+- [x] Validation: positive integer required; `0`, negative, and non-integer rejected
+- [x] `--max` preserved unchanged and ungated regardless of flag
+- [x] Both limits combinatorial: whichever is reached first stops the pass
+- [x] Dispatcher integration tests cover all acceptance criteria
+- [x] `bun run lint`, `bun run test`, `bun run build` pass
 
 - [x] `kdi create <title> --board <slug> --assignee <profile>` — create task
 - [x] `kdi create <title> --board <slug> --triage` — create task in triage
