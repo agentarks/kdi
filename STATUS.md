@@ -232,7 +232,16 @@
   - `ff_comment_enhancements` / `FF_COMMENT_ENHANCEMENTS`
   - `ff_dispatch_controls` / `FF_DISPATCH_CONTROLS`
   - `ff_watch_filters` / `FF_WATCH_FILTERS`
-- [ ] Feature flags registered in `src/flags.ts`
+- [x] Feature flags registered in `src/flags.ts`
+
+## `kdi watch` Filters (KDI-035) — Done
+- [x] BRD drafted at `specs/brd-kdi-035-watch-filters.md`
+- [x] Feature flag `ff_watch_filters` / `FF_WATCH_FILTERS` registered in `src/flags.ts` and `specs/feature-flags.md`, defaults to `false`
+- [x] `kdi watch [--assignee <profile>] [--tenant <name>] [--kinds <kind1>,<kind2>] [--interval <seconds>]` implemented
+- [x] `--tenant` additionally gated by `FF_TENANT_NAMESPACE`
+- [x] `getRecentEvents` and `getEventsAfter` accept optional `WatchFilters`
+- [x] Unit/CLI tests cover filters, combinations, flag gating, and edge cases
+- [x] `bun run lint`, `bun run test`, `bun run build` pass
 
 - [x] `kdi create <title> --board <slug> --assignee <profile>` — create task
 - [x] `kdi create <title> --board <slug> --triage` — create task in triage
@@ -300,7 +309,7 @@
 ## Task Events (KDI-000b)
 - [x] `task_events` table with task_id, run_id, kind, payload, created_at
 - [x] `kdi tail <task_id>` — follow events live (poll 1s)
-- [x] `kdi watch` — board-wide event stream (poll 0.5s)
+- [x] `kdi watch` — board-wide event stream (poll 0.5s) with optional `--assignee`, `--tenant`, `--kinds`, and `--interval` filters (KDI-035)
 - [x] Event emissions: created, promoted, blocked, unblocked, completed, archived, claimed, finished
 
 ## CAS Claim System (KDI-000c)

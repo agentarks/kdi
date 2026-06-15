@@ -22,10 +22,10 @@ import {
 import { addComment, getComments } from "../models/comment";
 import { createAttachment, listAttachments } from "../models/taskAttachment";
 import { getRuns } from "../models/taskRun";
-import { getEvents, tailEvents, getRecentEvents, getEventsAfter } from "../models/taskEvent";
+import { getEvents, tailEvents, getRecentEvents, getEventsAfter, type WatchFilters } from "../models/taskEvent";
 import { atomicClaim, reclaimTask, heartbeat } from "../models/claim";
 import { getTaskLogPath } from "../observability";
-import { isEnabled, FF_SCHEDULED_STATUS, FF_REVIEW_STATUS, FF_COMPLETE_METADATA, FF_PRIORITY_INTEGER, FF_SKILLS_ARRAY, FF_MAX_RUNTIME, FF_MAX_RETRIES, FF_TENANT_NAMESPACE, FF_CREATED_BY, FF_MODEL_OVERRIDE, FF_DEFAULT_WORKDIR, FF_WORKER_LOG_CAPTURE, FF_ASSIGN_REASSIGN, FF_CRASH_GRACE_PERIOD, FF_HEARTBEAT, FF_RATE_LIMIT_EXIT_CODE, FF_TASK_ATTACHMENTS } from "../flags";
+import { isEnabled, FF_SCHEDULED_STATUS, FF_REVIEW_STATUS, FF_COMPLETE_METADATA, FF_PRIORITY_INTEGER, FF_SKILLS_ARRAY, FF_MAX_RUNTIME, FF_MAX_RETRIES, FF_TENANT_NAMESPACE, FF_CREATED_BY, FF_MODEL_OVERRIDE, FF_DEFAULT_WORKDIR, FF_WORKER_LOG_CAPTURE, FF_ASSIGN_REASSIGN, FF_CRASH_GRACE_PERIOD, FF_HEARTBEAT, FF_RATE_LIMIT_EXIT_CODE, FF_TASK_ATTACHMENTS, FF_WATCH_FILTERS } from "../flags";
 import { resolveBoard } from "../resolveBoard";
 
 const VALID_STATUSES = ["triage", "todo", "scheduled", "ready", "running", "done", "blocked", "review"] as const;
@@ -729,9 +729,59 @@ export const tailTaskCommand = new Command("tail")
 
 export const watchCommand = new Command("watch")
   .description("Watch board-wide events")
-  .action(async () => {
+  .option("--assignee <profile>", "Filter events by task assignee")
+  .option("--tenant <name>", "Filter events by task tenant")
+  .option("--kinds <list>", "Comma-separated event kinds to watch")
+  .option("--interval <seconds>", "Poll interval in seconds (default 0.5)", "0.5")
+  .action(async (options: { assignee?: string; tenant?: string; kinds?: string; interval?: string }) => {
     try {
-      const events = getRecentEvents(50);
+      const hasFilters = !!(options.assignee || options.tenant || options.kinds || options.interval !== "0.5");
+
+      if (hasFilters && !isEnabled(FF_WATCH_FILTERS)) {
+        throw new Error("Watch filters feature is not enabled.");
+      }
+
+      if (options.tenant && !isEnabled(FF_TENANT_NAMESPACE)) {
+        throw new Error("Tenant namespace feature is not enabled.");
+      }
+
+      // Validate assignee
+      if (options.assignee !== undefined && options.assignee.trim() === "") {
+        throw new Error("Assignee cannot be empty.");
+      }
+
+      // Validate tenant
+      if (options.tenant !== undefined && options.tenant.trim() === "") {
+        throw new Error("Tenant cannot be empty.");
+      }
+
+      // Validate kinds
+      const kindsList = options.kinds !== undefined
+        ? options.kinds.split(",").map((k) => k.trim()).filter((k) => k.length > 0)
+        : undefined;
+      if (options.kinds !== undefined && (!kindsList || kindsList.length === 0)) {
+        throw new Error("Kinds cannot be empty.");
+      }
+
+      // Validate interval
+      let intervalMs = 500;
+      if (options.interval !== undefined) {
+        const parsed = parseFloat(options.interval);
+        if (isNaN(parsed)) {
+          throw new Error("Interval must be a positive number.");
+        }
+        if (parsed < 0.1) {
+          throw new Error("Interval must be at least 0.1 seconds.");
+        }
+        intervalMs = parsed * 1000;
+      }
+
+      const filters: WatchFilters = {};
+      if (options.assignee) filters.assignee = options.assignee.trim();
+      if (options.tenant) filters.tenant = options.tenant.trim();
+      if (kindsList) filters.kinds = kindsList;
+
+      const events = getRecentEvents(50, filters);
       let maxId = 0;
       for (const event of events.slice().reverse()) {
         const ts = new Date(event.created_at * 1000).toISOString();
@@ -740,8 +790,8 @@ export const watchCommand = new Command("watch")
       }
 
       while (true) {
-        await new Promise((resolve) => setTimeout(resolve, 500));
-        const newEvents = getEventsAfter(maxId);
+        await new Promise((resolve) => setTimeout(resolve, intervalMs));
+        const newEvents = getEventsAfter(maxId, filters);
         for (const event of newEvents) {
           const ts = new Date(event.created_at * 1000).toISOString();
           console.log(`${event.task_id}\t${event.kind}\t${ts}`);
