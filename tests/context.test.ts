@@ -295,7 +295,7 @@ describe("context builder model", () => {
     const board = createBoard("ctx", "/tmp/ctx");
     const task = createTask({ board_id: board.id, title: "Task" });
     for (let i = 0; i < 55; i++) {
-      addComment(task.id, `comment ${i}`);
+      addComment({ task_id: task.id, text: `comment ${i}` });
     }
 
     const ctx = buildTaskContext(task.id, "ctx");
@@ -308,16 +308,19 @@ describe("context builder model", () => {
   it("caps comment text at 2000 characters", () => {
     const board = createBoard("ctx", "/tmp/ctx");
     const task = createTask({ board_id: board.id, title: "Task" });
-    addComment(task.id, "c".repeat(3000));
+    addComment({ task_id: task.id, text: "c".repeat(3000) });
 
     const ctx = buildTaskContext(task.id, "ctx");
     expect(ctx.comments[0].text.endsWith("\n[truncated]")).toBe(true);
   });
 
-  it("defaults comment author to user when column is absent", () => {
+  it("defaults comment author to user when author is NULL", () => {
     const board = createBoard("ctx", "/tmp/ctx");
     const task = createTask({ board_id: board.id, title: "Task" });
-    addComment(task.id, "hello");
+
+    // Simulate legacy comment with NULL author
+    const db = getDb();
+    db.run("INSERT INTO comments (task_id, text) VALUES (?, ?)", [task.id, "legacy"]);
 
     const ctx = buildTaskContext(task.id, "ctx");
     expect(ctx.comments[0].author).toBe("user");
@@ -326,10 +329,7 @@ describe("context builder model", () => {
   it("uses comments.author column when present", () => {
     const board = createBoard("ctx", "/tmp/ctx");
     const task = createTask({ board_id: board.id, title: "Task" });
-    addComment(task.id, "hello");
-    const db = getDb();
-    db.exec("ALTER TABLE comments ADD COLUMN author TEXT");
-    db.run("UPDATE comments SET author = ? WHERE task_id = ?", ["alice", task.id]);
+    addComment({ task_id: task.id, text: "hello", author: "alice" });
 
     const ctx = buildTaskContext(task.id, "ctx");
     expect(ctx.comments[0].author).toBe("alice");

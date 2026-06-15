@@ -59,6 +59,7 @@ stateDiagram-v2
 | `ff_list_filters_sort` | `FF_LIST_FILTERS_SORT` | CLI / task listing | Planned | `false` | KDI-030 | `kdi list` filters (`--mine`, `--session`, `--archived`, workflow/step-key) and sort options; `create --session`.
 | `ff_show_run_filtering` | `FF_SHOW_RUN_FILTERING` | CLI / task inspection | Planned | `false` | KDI-031 | `kdi show` run section and `--state-type`/`--state-name` run filtering.
 | `ff_bulk_operations` | `FF_BULK_OPERATIONS` | CLI / task lifecycle | Planned | `false` | KDI-032 | Bulk `block`/`promote`/`archive --rm`; `promote --force` and `--dry-run`.
+| `ff_comment_enhancements` | `FF_COMMENT_ENHANCEMENTS` | CLI / task metadata | InDev | `false` | KDI-033 | `kdi comment --author`/`--max-len` and author display in `kdi show`.
 | `ff_dispatch_controls` | `FF_DISPATCH_CONTROLS` | CLI / dispatcher | Planned | `false` | KDI-034 | `kdi dispatch --failure-limit` per-pass failure threshold.
 | `ff_watch_filters` | `FF_WATCH_FILTERS` | CLI / observability | Planned | `false` | KDI-035 | `kdi watch --assignee`/`--tenant`/`--kinds`/`--interval` filters.
 
@@ -504,6 +505,23 @@ stateDiagram-v2
   - `kdi watch --kinds <kind1>,<kind2>` filters the event stream by kind.
   - `kdi watch --interval <seconds>` overrides the default 0.5s poll interval.
 - **Rollback / deactivation:** Set `FF_WATCH_FILTERS=false` to reject the new watch filter options.
+- **Deprecation plan:** N/A
+
+### `ff_comment_enhancements` — InDev
+
+- **Owner:** kdi core team
+- **BRD:** [BRD-KDI-033](brd-kdi-033-comment-enhancements.md)
+- **Status transitions:**
+  - `Planned` → `InDev` when `kdi comment --author`/`--max-len` and author display in `kdi show` are implemented.
+  - `InDev` → `Active` when comment enhancements are safe to enable by default.
+- **Schema note:** Adds `author TEXT` column to `comments` table with migration.
+- **Activation criteria:**
+  - `kdi comment <task_id> <text> --author <name>` stores the author.
+  - Default author resolved from `KDI_PROFILE` → `HERMES_PROFILE` → `"user"`.
+  - `--max-len <n>` trims the stored comment to N characters.
+  - `kdi show` displays comment author with timestamp when flag enabled.
+  - Legacy NULL-author comments display `"user"` as fallback.
+- **Rollback / deactivation:** Set `FF_COMMENT_ENHANCEMENTS=false` to reject `--author`/`--max-len` and hide authors in `kdi show`.
 - **Deprecation plan:** N/A
 
 ### `ff_kanban_dispatch` — Planned

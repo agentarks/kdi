@@ -232,7 +232,19 @@
   - `ff_comment_enhancements` / `FF_COMMENT_ENHANCEMENTS`
   - `ff_dispatch_controls` / `FF_DISPATCH_CONTROLS`
   - `ff_watch_filters` / `FF_WATCH_FILTERS`
-- [ ] Feature flags registered in `src/flags.ts`
+- [x] Feature flags registered in `src/flags.ts`
+
+## KDI-033: `kdi comment` Enhancements — Done
+- [x] `author TEXT` column added to `comments` table (schema + migration)
+- [x] `kdi comment <task_id> <text> --author <name>` — attribute comment to a specific author
+- [x] Default author resolved from `KDI_PROFILE` → `HERMES_PROFILE` → `"user"`
+- [x] `kdi comment <task_id> <text> --max-len <n>` — trim stored comment to N characters
+- [x] `kdi show <task_id>` displays comment author with timestamp when flag enabled
+- [x] Legacy NULL-author comments display `"user"` as fallback
+- [x] Empty author and non-positive `--max-len` rejected with clear errors
+- [x] All new options gated by `FF_COMMENT_ENHANCEMENTS` (defaults to `false`)
+- [x] Unit tests cover author storage, max-len trimming, legacy compatibility, and flag gating
+- [x] `bun run lint`, `bun run test`, `bun run build` pass
 
 - [x] `kdi create <title> --board <slug> --assignee <profile>` — create task
 - [x] `kdi create <title> --board <slug> --triage` — create task in triage

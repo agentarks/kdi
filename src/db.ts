@@ -69,6 +69,7 @@ CREATE TABLE IF NOT EXISTS comments (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   task_id INTEGER NOT NULL REFERENCES tasks(id),
   text TEXT NOT NULL,
+  author TEXT,
   created_at INTEGER NOT NULL DEFAULT (unixepoch())
 );
 
@@ -467,6 +468,12 @@ export function initDb(path?: string): Database {
     dbInstance.exec("CREATE INDEX IF NOT EXISTS idx_tasks_scheduled_at ON tasks(status, scheduled_at)");
     dbInstance.exec("CREATE INDEX IF NOT EXISTS idx_tasks_tenant ON tasks(board_id, tenant)");
     dbInstance.exec("CREATE INDEX IF NOT EXISTS idx_runs_status ON task_runs(status)");
+
+    // Migrate: add author column to comments if missing
+    const commentsTableInfo = dbInstance.query("PRAGMA table_info(comments)").all() as any[];
+    if (!commentsTableInfo.some((col) => col.name === "author")) {
+      dbInstance.exec("ALTER TABLE comments ADD COLUMN author TEXT");
+    }
 
     // Migrate: add kanban_notify_subs table and indexes if missing
     const hasNotifySubs = dbInstance.query(
