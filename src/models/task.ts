@@ -2,6 +2,7 @@ import { getDb } from "../db";
 import { addEvent } from "./taskEvent";
 import { createRun, finishRun } from "./taskRun";
 import { reclaimTask } from "./claim";
+import { isBlockedByDependencies } from "./dependency";
 
 export const TASK_COLUMNS =
   "id, board_id, title, body, assignee, status, priority, tenant, " +
@@ -78,6 +79,19 @@ export interface ReassignOptions {
   reclaim?: boolean;
   reason?: string;
 }
+
+export interface PromoteTaskOptions {
+  force?: boolean;
+  dryRun?: boolean;
+}
+
+export type PromoteTaskResult =
+  | { status: "promoted"; task: Task }
+  | { status: "not_found" }
+  | { status: "archived" }
+  | { status: "wrong_status"; current: string }
+  | { status: "blocked_by_dependencies" }
+  | { status: "would_promote" };
 
 export interface ListTasksFilter {
   board_id: number;
@@ -626,6 +640,76 @@ export function reassignTask(id: number, profile: string | null, options: Reassi
   });
 
   return reassign();
+}
+
+export function promoteTaskAdvanced(id: number, options: PromoteTaskOptions = {}): PromoteTaskResult {
+  const db = getDb();
+  const row = db.query(
+    `SELECT ${TASK_COLUMNS} FROM tasks WHERE id = ?`
+  ).get(id) as Task | undefined;
+
+  if (!row) {
+    return { status: "not_found" };
+  }
+
+  const task = hydrateTask(row);
+  if (task.status === "archived") {
+    return { status: "archived" };
+  }
+
+  if (task.status !== "todo") {
+    return { status: "wrong_status", current: task.status };
+  }
+
+  if (isBlockedByDependencies(id) && !options.force) {
+    return { status: "blocked_by_dependencies" };
+  }
+
+  if (options.dryRun) {
+    return { status: "would_promote" };
+  }
+
+  const result = db.run(
+    `UPDATE tasks SET status = 'ready', updated_at = unixepoch() WHERE id = ? AND status = 'todo' AND archived_at IS NULL`,
+    [id]
+  );
+
+  if (result.changes === 0) {
+    throw new Error(`Task ${id} not found or not in 'todo' status`);
+  }
+
+  const updated = showTask(id);
+  if (!updated) {
+    throw new Error(`Task ${id} not found after promotion`);
+  }
+  addEvent(updated.id, "promoted");
+  return { status: "promoted", task: updated };
+}
+
+export function archiveTaskHard(id: number): void {
+  const db = getDb();
+
+  const task = db.query(
+    `SELECT ${TASK_COLUMNS} FROM tasks WHERE id = ?`
+  ).get(id) as Task | undefined;
+
+  if (!task) {
+    throw new Error(`Task ${id} not found.`);
+  }
+
+  const hydrated = hydrateTask(task);
+  if (hydrated.status !== "archived") {
+    throw new Error(`Task ${id} is not archived. Use 'kdi archive <id>' first to soft-archive, then 'kdi archive --rm <id>' to permanently delete.`);
+  }
+
+  db.transaction(() => {
+    db.run(`DELETE FROM task_events WHERE task_id = ?`, [id]);
+    db.run(`DELETE FROM task_runs WHERE task_id = ?`, [id]);
+    db.run(`DELETE FROM comments WHERE task_id = ?`, [id]);
+    db.run(`DELETE FROM task_attachments WHERE task_id = ?`, [id]);
+    db.run(`DELETE FROM dependencies WHERE parent_id = ? OR child_id = ?`, [id, id]);
+    db.run(`DELETE FROM tasks WHERE id = ?`, [id]);
+  })();
 }
 
 export function archiveTask(id: number): Task {

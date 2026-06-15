@@ -7,8 +7,9 @@ import { cleanupDb } from "../cleanupDb";
 import { createBoard } from "../../src/models/board";
 import { createTask } from "../../src/models/task";
 import { createRun } from "../../src/models/taskRun";
-import { listRunsCommand, attachTaskCommand, showTaskCommand } from "../../src/commands/tasks";
-import { setFlag, clearOverrides, FF_TASK_ATTACHMENTS } from "../../src/flags";
+import { listRunsCommand, attachTaskCommand, showTaskCommand, blockTaskCommand, promoteTaskCommand, archiveTaskCommand } from "../../src/commands/tasks";
+import { setFlag, clearOverrides, isEnabled, FF_TASK_ATTACHMENTS, FF_BULK_OPERATIONS } from "../../src/flags";
+import { addDependency } from "../../src/models/dependency";
 
 const TEST_DB = "/tmp/kdi-commands-tasks-test.db";
 const TEST_SLUGS = ["cmd-board", "attach-board", "show-board"];
@@ -210,5 +211,92 @@ describe("tasks commands", () => {
 
     expect(logs.some((l) => l.includes("Attachments:"))).toBe(false);
     expect(logs.some((l) => l.includes("artifact.log"))).toBe(false);
+  });
+});
+
+describe("bulk operations", () => {
+  beforeEach(() => {
+    cleanupDb(TEST_DB);
+    cleanupAttachments();
+    process.env.KDI_DB = TEST_DB;
+    initDb(TEST_DB);
+  });
+
+  afterEach(() => {
+    clearOverrides();
+    closeDb();
+    cleanupDb(TEST_DB);
+    cleanupAttachments();
+    delete process.env.KDI_DB;
+  });
+
+  it("flag is disabled by default", () => {
+    expect(isEnabled(FF_BULK_OPERATIONS)).toBe(false);
+  });
+
+  it("setFlag enables the flag", () => {
+    setFlag(FF_BULK_OPERATIONS, true);
+    expect(isEnabled(FF_BULK_OPERATIONS)).toBe(true);
+  });
+
+  it("setFlag false keeps flag disabled", () => {
+    setFlag(FF_BULK_OPERATIONS, false);
+    expect(isEnabled(FF_BULK_OPERATIONS)).toBe(false);
+  });
+
+  it("single promote uses old path when flag disabled", () => {
+    // The old promoteTask function skips dependency checks and
+    // is used when isBulk=false (single task, no force/dryRun)
+    const board = createBoard("cmd-board", "/tmp/cmd-board");
+    const parent = createTask({ board_id: board.id, title: "Parent" });
+    const child = createTask({ board_id: board.id, title: "Child" });
+    addDependency(parent.id, child.id);
+
+    // Old promote skips dependency check — should succeed
+    const { promoteTask } = require("../../src/models/task");
+    const result = promoteTask(child.id);
+    expect(result.status).toBe("ready");
+  });
+
+  it("promoteTaskAdvanced blocks by dependencies without force", () => {
+    // The new advanced function checks dependencies
+    const board = createBoard("cmd-board", "/tmp/cmd-board");
+    const parent = createTask({ board_id: board.id, title: "Parent" });
+    const child = createTask({ board_id: board.id, title: "Child" });
+    addDependency(parent.id, child.id);
+
+    const { promoteTaskAdvanced } = require("../../src/models/task");
+    const result = promoteTaskAdvanced(child.id);
+    expect(result.status).toBe("blocked_by_dependencies");
+  });
+
+  it("promoteTaskAdvanced with force bypasses dependencies", () => {
+    const board = createBoard("cmd-board", "/tmp/cmd-board");
+    const parent = createTask({ board_id: board.id, title: "Parent" });
+    const child = createTask({ board_id: board.id, title: "Child" });
+    addDependency(parent.id, child.id);
+
+    const { promoteTaskAdvanced } = require("../../src/models/task");
+    const result = promoteTaskAdvanced(child.id, { force: true });
+    expect(result.status).toBe("promoted");
+  });
+
+  it("promoteTaskAdvanced dryRun does not mutate", () => {
+    const board = createBoard("cmd-board", "/tmp/cmd-board");
+    const task = createTask({ board_id: board.id, title: "Dry run" });
+
+    const { promoteTaskAdvanced, showTask } = require("../../src/models/task");
+    const result = promoteTaskAdvanced(task.id, { dryRun: true });
+    expect(result.status).toBe("would_promote");
+    expect(showTask(task.id).status).toBe("todo");
+  });
+
+  it("archiveTaskHard cascade-deletes related rows", () => {
+    const board = createBoard("cmd-board", "/tmp/cmd-board");
+    const task = createTask({ board_id: board.id, title: "Delete me" });
+    const { archiveTask, archiveTaskHard, showTask } = require("../../src/models/task");
+    archiveTask(task.id);
+    archiveTaskHard(task.id);
+    expect(showTask(task.id)).toBeNull();
   });
 });

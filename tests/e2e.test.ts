@@ -2112,4 +2112,205 @@ describe("kdi e2e acceptance", () => {
     rmSync(tmp, { recursive: true, force: true });
   });
 
+  // --- Bulk operations (KDI-032) ---
+
+  it("bulk block with flag enabled", () => {
+    const tmp = makeTempDir("bulk-block");
+    const dbPath = join(tmp, "kdi.db");
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_BULK_OPERATIONS: "true" };
+
+    runKdi(`boards create myproj --workdir ${tmp}`, env);
+    const id1 = runKdi(`create "Task 1" --board myproj`, env);
+    const id2 = runKdi(`create "Task 2" --board myproj`, env);
+
+    const output = runKdi(`block ${id1} ${id2} --reason "testing bulk"`, env);
+    expect(output).toContain(`Blocked task ${id1}`);
+    expect(output).toContain(`Blocked task ${id2}`);
+    expect(output).toContain("Blocked 2/2 tasks");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("bulk block rejected when flag disabled", () => {
+    const tmp = makeTempDir("bulk-block-off");
+    const dbPath = join(tmp, "kdi.db");
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_BULK_OPERATIONS: "false" };
+
+    runKdi(`boards create myproj --workdir ${tmp}`, env);
+    const id1 = runKdi(`create "Task 1" --board myproj`, env);
+    const id2 = runKdi(`create "Task 2" --board myproj`, env);
+
+    expect(() => runKdi(`block ${id1} ${id2} --reason "testing"`, env)).toThrow(
+      /Bulk operations/
+    );
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("bulk promote with flag enabled", () => {
+    const tmp = makeTempDir("bulk-promote");
+    const dbPath = join(tmp, "kdi.db");
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_BULK_OPERATIONS: "true" };
+
+    runKdi(`boards create myproj --workdir ${tmp}`, env);
+    const id1 = runKdi(`create "Task 1" --board myproj`, env);
+    const id2 = runKdi(`create "Task 2" --board myproj`, env);
+
+    const output = runKdi(`promote ${id1} ${id2}`, env);
+    expect(output).toContain(`Promoted task ${id1} to ready`);
+    expect(output).toContain(`Promoted task ${id2} to ready`);
+    expect(output).toContain("Promoted 2/2 tasks");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("promote --force bypasses parent dependency", () => {
+    const tmp = makeTempDir("promote-force");
+    const dbPath = join(tmp, "kdi.db");
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_BULK_OPERATIONS: "true" };
+
+    runKdi(`boards create myproj --workdir ${tmp}`, env);
+    const parentId = runKdi(`create "Parent" --board myproj`, env);
+    const childId = runKdi(`create "Child" --board myproj`, env);
+
+    // Add dependency: parent -> child
+    initDb(dbPath);
+    addDependency(parseInt(parentId, 10), parseInt(childId, 10));
+    closeDb();
+
+    // Without force, promote should fail (dependency check with flag enabled)
+    try {
+      runKdi(`promote ${childId}`, env);
+      expect(false).toBe(true); // should not reach
+    } catch (err: any) {
+      const stderr = err.stderr || "";
+      expect(stderr).toContain("blocked_by_dependencies");
+    }
+
+    // With force, promote should succeed
+    const output = runKdi(`promote ${childId} --force`, env);
+    expect(output).toContain(`Promoted task ${childId} to ready`);
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("promote --dry-run prints verdicts without mutating", () => {
+    const tmp = makeTempDir("promote-dryrun");
+    const dbPath = join(tmp, "kdi.db");
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_BULK_OPERATIONS: "true" };
+
+    runKdi(`boards create myproj --workdir ${tmp}`, env);
+    const id1 = runKdi(`create "Task 1" --board myproj`, env);
+    const id2 = runKdi(`create "Task 2" --board myproj`, env);
+
+    // Complete id2 so it can't be promoted
+    runKdi(`complete ${id2} --result "done"`, env);
+
+    // dry-run exits non-zero when tasks are skipped; use runKdiAllowFailure
+    try {
+      runKdi(`promote ${id1} ${id2} --dry-run`, env);
+    } catch (err: any) {
+      // Expected: non-zero exit when a task is skipped
+      expect(err.message).toContain("Command failed");
+    }
+
+    // Verify id1 is still in todo (dry-run didn't mutate)
+    const showOutput = runKdi(`show ${id1}`, env);
+    expect(showOutput).toContain("Status: todo");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("promote --force is rejected when flag disabled", () => {
+    const tmp = makeTempDir("promote-force-off");
+    const dbPath = join(tmp, "kdi.db");
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_BULK_OPERATIONS: "false" };
+
+    runKdi(`boards create myproj --workdir ${tmp}`, env);
+    const id = runKdi(`create "Task" --board myproj`, env);
+
+    expect(() => runKdi(`promote ${id} --force`, env)).toThrow(/Bulk operations/);
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("archive --rm permanently deletes archived tasks", () => {
+    const tmp = makeTempDir("archive-rm");
+    const dbPath = join(tmp, "kdi.db");
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_BULK_OPERATIONS: "true" };
+
+    runKdi(`boards create myproj --workdir ${tmp}`, env);
+    const id1 = runKdi(`create "Delete 1" --board myproj`, env);
+    const id2 = runKdi(`create "Delete 2" --board myproj`, env);
+
+    // Soft-archive first
+    runKdi(`archive ${id1}`, env);
+    runKdi(`archive ${id2}`, env);
+
+    // Hard delete
+    const output = runKdi(`archive --rm ${id1} ${id2}`, env);
+    expect(output).toContain(`Permanently deleted task ${id1}`);
+    expect(output).toContain(`Permanently deleted task ${id2}`);
+
+    // Verify tasks are gone
+    expect(() => runKdi(`show ${id1}`, env)).toThrow();
+    expect(() => runKdi(`show ${id2}`, env)).toThrow();
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("archive --rm rejects non-archived tasks", () => {
+    const tmp = makeTempDir("archive-rm-live");
+    const dbPath = join(tmp, "kdi.db");
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_BULK_OPERATIONS: "true" };
+
+    runKdi(`boards create myproj --workdir ${tmp}`, env);
+    const id = runKdi(`create "Live task" --board myproj`, env);
+
+    expect(() => runKdi(`archive --rm ${id}`, env)).toThrow(/not archived/);
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("archive --rm rejected when flag disabled", () => {
+    const tmp = makeTempDir("archive-rm-off");
+    const dbPath = join(tmp, "kdi.db");
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_BULK_OPERATIONS: "false" };
+
+    runKdi(`boards create myproj --workdir ${tmp}`, env);
+    const id = runKdi(`create "Task" --board myproj`, env);
+    runKdi(`archive ${id}`, env);
+
+    expect(() => runKdi(`archive --rm ${id}`, env)).toThrow(/Bulk operations/);
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("single-task block/promote/archive work with flag disabled", () => {
+    const tmp = makeTempDir("single-ops");
+    const dbPath = join(tmp, "kdi.db");
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_BULK_OPERATIONS: "false" };
+
+    runKdi(`boards create myproj --workdir ${tmp}`, env);
+    const id = runKdi(`create "Task" --board myproj`, env);
+
+    // Block
+    const blockOut = runKdi(`block ${id} --reason "test"`, env);
+    expect(blockOut).toContain(`Blocked task ${id}`);
+
+    // Unblock
+    runKdi(`unblock ${id}`, env);
+
+    // Promote
+    const promoteOut = runKdi(`promote ${id}`, env);
+    expect(promoteOut).toContain(`Promoted task ${id} to ready`);
+
+    // Block again then archive
+    runKdi(`block ${id} --reason "archive prep"`, env);
+    const archiveOut = runKdi(`archive ${id}`, env);
+    expect(archiveOut).toContain(`Archived task ${id}`);
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
 });

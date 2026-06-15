@@ -232,7 +232,21 @@
   - `ff_comment_enhancements` / `FF_COMMENT_ENHANCEMENTS`
   - `ff_dispatch_controls` / `FF_DISPATCH_CONTROLS`
   - `ff_watch_filters` / `FF_WATCH_FILTERS`
-- [ ] Feature flags registered in `src/flags.ts`
+- [x] `ff_bulk_operations` / `FF_BULK_OPERATIONS` registered in `src/flags.ts`
+- [ ] `ff_list_filters_sort`, `ff_show_run_filtering`, `ff_comment_enhancements`, `ff_dispatch_controls`, `ff_watch_filters` registered in `src/flags.ts`
+
+### KDI-032: Bulk Operations — Done
+- [x] `FF_BULK_OPERATIONS` flag registered in `src/flags.ts`, defaults to `false`
+- [x] `kdi block <id1> <id2>... --reason <text>` — bulk block with skip reporting
+- [x] `kdi promote <id1> <id2>... [--force] [--dry-run]` — bulk promote
+- [x] `promote --force` bypasses parent dependency checks
+- [x] `promote --dry-run` prints per-task verdicts without mutating state
+- [x] `kdi archive --rm <id1> <id2>...` — permanently delete archived tasks
+- [x] Single-task promote uses dependency-aware `promoteTaskAdvanced` when flag enabled, old `promoteTask` when disabled
+- [x] `archiveTaskHard()` cascade-deletes events, runs, comments, attachments, dependencies
+- [x] Unit tests for `promoteTaskAdvanced` (9 cases) and `archiveTaskHard` (4 cases)
+- [x] E2e tests for all bulk commands and flag gating (10 cases)
+- [x] `bun run lint`, `bun run test`, `bun run build` pass (590 tests, 0 failures)
 
 - [x] `kdi create <title> --board <slug> --assignee <profile>` — create task
 - [x] `kdi create <title> --board <slug> --triage` — create task in triage
