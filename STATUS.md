@@ -217,7 +217,23 @@
 - [x] Unit/CLI tests for all CLI commands and notifier watcher
 - [x] `bun run lint`, `bun run test`, `bun run build` pass
 
-## Task Lifecycle
+## CLI Polish Specs (KDI-030 through KDI-035) — In Progress
+- [x] BRDs drafted:
+  - `specs/brd-kdi-030-list-filters-sort.md`
+  - `specs/brd-kdi-031-show-run-filtering.md`
+  - `specs/brd-kdi-032-bulk-operations.md`
+  - `specs/brd-kdi-033-comment-enhancements.md`
+  - `specs/brd-kdi-034-dispatch-controls.md`
+  - `specs/brd-kdi-035-watch-filters.md`
+- [x] Feature flags registered in `specs/feature-flags.md`:
+  - `ff_list_filters_sort` / `FF_LIST_FILTERS_SORT`
+  - `ff_show_run_filtering` / `FF_SHOW_RUN_FILTERING`
+  - `ff_bulk_operations` / `FF_BULK_OPERATIONS`
+  - `ff_comment_enhancements` / `FF_COMMENT_ENHANCEMENTS`
+  - `ff_dispatch_controls` / `FF_DISPATCH_CONTROLS`
+  - `ff_watch_filters` / `FF_WATCH_FILTERS`
+- [ ] Feature flags registered in `src/flags.ts`
+
 - [x] `kdi create <title> --board <slug> --assignee <profile>` — create task
 - [x] `kdi create <title> --board <slug> --triage` — create task in triage
 - [x] `kdi create <title> --board <slug> --idempotency-key <key>` — create idempotently; returns existing non-archived task id if matched

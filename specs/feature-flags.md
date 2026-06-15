@@ -56,6 +56,11 @@ stateDiagram-v2
 | `ff_diagnostics` | `FF_DIAGNOSTICS` | CLI / observability | InDev | `false` | KDI-020 | Board diagnostics command; health-check rules, severity filtering, per-task mode, and `--json` output. |
 | `ff_context_builder` | `FF_CONTEXT_BUILDER` | CLI / task context | InDev | `false` | KDI-023 | `kdi context` bounded worker context builder. |
 | `ff_notify_subs` | `FF_NOTIFY_SUBS` | CLI / notifier watcher | InDev | `false` | KDI-025 | Notification subscriptions; `notify-subscribe/list/unsubscribe` commands; notifier watcher in dispatcher tick.
+| `ff_list_filters_sort` | `FF_LIST_FILTERS_SORT` | CLI / task listing | Planned | `false` | KDI-030 | `kdi list` filters (`--mine`, `--session`, `--archived`, workflow/step-key) and sort options; `create --session`.
+| `ff_show_run_filtering` | `FF_SHOW_RUN_FILTERING` | CLI / task inspection | Planned | `false` | KDI-031 | `kdi show` run section and `--state-type`/`--state-name` run filtering.
+| `ff_bulk_operations` | `FF_BULK_OPERATIONS` | CLI / task lifecycle | Planned | `false` | KDI-032 | Bulk `block`/`promote`/`archive --rm`; `promote --force` and `--dry-run`.
+| `ff_dispatch_controls` | `FF_DISPATCH_CONTROLS` | CLI / dispatcher | Planned | `false` | KDI-034 | `kdi dispatch --failure-limit` per-pass failure threshold.
+| `ff_watch_filters` | `FF_WATCH_FILTERS` | CLI / observability | Planned | `false` | KDI-035 | `kdi watch --assignee`/`--tenant`/`--kinds`/`--interval` filters.
 
 ## Lifecycle Notes
 
@@ -426,6 +431,79 @@ stateDiagram-v2
   - Notifier watcher in dispatcher tick loop delivers events to active subscriptions when flag enabled.
   - `log` built-in notifier profile always available.
 - **Rollback / deactivation:** Set `FF_NOTIFY_SUBS=false` to reject notify commands and disable the notifier watcher.
+- **Deprecation plan:** N/A
+
+### `ff_list_filters_sort` — Planned
+
+- **Owner:** kdi core team
+- **BRD:** [BRD-KDI-030](brd-kdi-030-list-filters-sort.md)
+- **Status transitions:**
+  - `Planned` → `InDev` when `kdi list` filter/sort options and `create --session` are implemented.
+- **Schema note:** Adds `session_id`, `workflow_template_id`, and `current_step_key` TEXT columns to `tasks` with supporting indexes. The workflow columns are foundational for KDI-039; this flag gates only the list filters and `create --session`.
+- **Activation criteria:**
+  - `kdi list --mine` filters by the caller's current profile.
+  - `kdi list --session <id>` filters by originating session.
+  - `kdi list --archived` includes archived tasks.
+  - `kdi list --sort <key>` supports assignee, created, created-desc, priority, priority-desc, status, title, and updated.
+  - `kdi list --workflow-template-id <id>` and `--step-key <key>` filter by the corresponding columns.
+  - `kdi create --session <id>` stores the session id when the flag is enabled.
+- **Rollback / deactivation:** Set `FF_LIST_FILTERS_SORT=false` to reject the new list options and `create --session`.
+- **Deprecation plan:** N/A
+
+### `ff_show_run_filtering` — Planned
+
+- **Owner:** kdi core team
+- **BRD:** [BRD-KDI-031](brd-kdi-031-show-run-filtering.md)
+- **Status transitions:**
+  - `Planned` → `InDev` when `kdi show` run section and `--state-type`/`--state-name` filtering are implemented.
+- **Schema note:** No schema changes; reads from the existing `task_runs` table and `idx_task_runs_task_id` index.
+- **Activation criteria:**
+  - `kdi show <task_id>` displays a "Runs:" section when the flag is enabled.
+  - `kdi show --state-type {status,outcome} --state-name VALUE` filters displayed runs.
+  - `kdi runs <task_id>` continues to show all runs unfiltered.
+- **Rollback / deactivation:** Set `FF_SHOW_RUN_FILTERING=false` to hide the run section and reject the filter options.
+- **Deprecation plan:** N/A
+
+### `ff_bulk_operations` — Planned
+
+- **Owner:** kdi core team
+- **BRD:** [BRD-KDI-032](brd-kdi-032-bulk-operations.md)
+- **Status transitions:**
+  - `Planned` → `InDev` when bulk `block`/`promote`/`archive --rm`, `promote --force`, and `promote --dry-run` are implemented.
+- **Schema note:** No schema changes; reuses existing `tasks`, `task_events`, `task_runs`, `comments`, `dependencies`, and `task_attachments` tables.
+- **Activation criteria:**
+  - `kdi block <id>... --reason <text>` blocks multiple tasks.
+  - `kdi promote <id>...` promotes multiple todo tasks; `--force` bypasses parent dependencies; `--dry-run` prints verdicts without mutating state.
+  - `kdi archive --rm <id>...` permanently deletes already-archived tasks.
+- **Rollback / deactivation:** Set `FF_BULK_OPERATIONS=false` to reject bulk IDs, `--force`, `--dry-run`, and `--rm`.
+- **Deprecation plan:** N/A
+
+### `ff_dispatch_controls` — Planned
+
+- **Owner:** kdi core team
+- **BRD:** [BRD-KDI-034](brd-kdi-034-dispatch-controls.md)
+- **Status transitions:**
+  - `Planned` → `InDev` when `kdi dispatch --failure-limit` is implemented.
+- **Schema note:** No schema changes; uses existing `tasks` and `task_runs` columns.
+- **Activation criteria:**
+  - `kdi dispatch --failure-limit <n>` stops spawning additional workers after `<n>` distinct failures/crashes/spawn-failures in a single pass.
+  - `--max <n>` continues to work unchanged and ungated.
+- **Rollback / deactivation:** Set `FF_DISPATCH_CONTROLS=false` to reject `--failure-limit`.
+- **Deprecation plan:** N/A
+
+### `ff_watch_filters` — Planned
+
+- **Owner:** kdi core team
+- **BRD:** [BRD-KDI-035](brd-kdi-035-watch-filters.md)
+- **Status transitions:**
+  - `Planned` → `InDev` when `kdi watch` assignee/tenant/kinds/interval filters are implemented.
+- **Schema note:** No schema changes; reads from existing `task_events` and `tasks` tables.
+- **Activation criteria:**
+  - `kdi watch --assignee <profile>` streams events for tasks assigned to `<profile>`.
+  - `kdi watch --tenant <name>` streams events for tasks in tenant `<name>` (also requires `FF_TENANT_NAMESPACE`).
+  - `kdi watch --kinds <kind1>,<kind2>` filters the event stream by kind.
+  - `kdi watch --interval <seconds>` overrides the default 0.5s poll interval.
+- **Rollback / deactivation:** Set `FF_WATCH_FILTERS=false` to reject the new watch filter options.
 - **Deprecation plan:** N/A
 
 ### `ff_kanban_dispatch` — Planned
