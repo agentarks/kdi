@@ -234,6 +234,61 @@
   - `ff_watch_filters` / `FF_WATCH_FILTERS`
 - [ ] Feature flags registered in `src/flags.ts`
 
+## KDI-036: `kdi runs` Filtering — In Progress
+- [x] BRD drafted at `specs/brd-kdi-036-runs-filtering.md`
+- [ ] Feature flag `ff_runs_filtering` / `FF_RUNS_FILTERING` registered in
+      `src/flags.ts` and `specs/feature-flags.md`, defaults to `false`
+- [ ] `kdi runs <task_id> [--state-type {status|outcome} --state-name VALUE]`
+      implemented
+- [ ] CLI tests cover flag gating, filter matching, validation, and empty states
+- [ ] `bun run lint`, `bun run test`, `bun run build` pass
+
+## Dispatcher Presence Warning (KDI-037) — In Progress
+- [x] BRD drafted at `specs/brd-kdi-037-dispatcher-presence-warning.md`
+- [ ] Feature flag `ff_dispatcher_presence_warning` / `FF_DISPATCHER_PRESENCE_WARNING`
+      registered in `src/flags.ts` and `specs/feature-flags.md`, defaults to `false`
+- [ ] `kdi create <title> [--no-dispatcher-warning]` option implemented
+- [ ] Dispatcher writes per-board `dispatcher.pid` marker at startup and removes
+      it on clean shutdown
+- [ ] `kdi create` warns on stderr when no live dispatcher is detected for the
+      target board
+- [ ] Unit/CLI tests cover flag gating, live/dead/missing PID, and suppression
+      option
+- [ ] `bun run lint`, `bun run test`, `bun run build` pass
+
+## Goal Mode (KDI-038) — In Progress
+- [x] BRD drafted at `specs/brd-kdi-038-goal-mode.md`
+- [ ] Feature flag `ff_goal_mode` / `FF_GOAL_MODE` registered in
+      `src/flags.ts` and `specs/feature-flags.md`, defaults to `false`
+- [ ] Schema adds `goal_mode`, `goal_max_turns`, `goal_remaining_turns`, and
+      `goal_judge_profile` columns to `tasks` (with migration)
+- [ ] `kdi create --goal --goal-max-turns <n> --goal-judge <profile>` implemented
+- [ ] `kdi show` displays goal-mode fields when the flag is enabled
+- [ ] Dispatcher implements Ralph-style goal loop with judge profile verdicts
+- [ ] Unit/CLI tests cover create/show, turn helpers, and dispatcher goal loop
+- [ ] `bun run lint`, `bun run test`, `bun run build` pass
+
+## Workflow Templates (KDI-039) — In Progress
+- [x] BRD drafted at `specs/brd-kdi-039-workflow-templates.md`
+- [ ] Feature flag `ff_workflow_templates` / `FF_WORKFLOW_TEMPLATES` registered in
+      `src/flags.ts` and `specs/feature-flags.md`, defaults to `false`
+- [ ] `workflow_templates` table with board-scoped templates and ordered steps
+- [ ] `kdi workflows define <id> --name <name> --steps <json>` upserts a
+      template for the resolved board
+- [ ] `kdi workflows list [--board <slug>]` lists templates for the resolved board
+- [ ] `kdi create --workflow-template-id <id> [--step-key <key>]` creates a task
+      bound to a template (defaults to first step)
+- [ ] `kdi step <task_id> [--to <key>] [--reason <text>]` advances or jumps
+      workflow steps; terminal step transitions task to `done`
+- [ ] `kdi show` displays workflow template and current step when flag enabled
+- [ ] Dispatcher records `current_step_key` on `task_runs`, substitutes
+      `{{step_key}}` in profile commands, and sets `KDI_CURRENT_STEP_KEY`
+- [ ] `kdi runs <task_id>` displays `step=<key>` for runs that recorded one
+- [ ] `stepped` task event recorded on step transitions
+- [ ] Unit/CLI tests cover template CRUD, step advancement, validation errors,
+      flag gating, and dispatcher routing
+- [ ] `bun run lint`, `bun run test`, `bun run build` pass
+
 - [x] `kdi create <title> --board <slug> --assignee <profile>` — create task
 - [x] `kdi create <title> --board <slug> --triage` — create task in triage
 - [x] `kdi create <title> --board <slug> --idempotency-key <key>` — create idempotently; returns existing non-archived task id if matched
@@ -289,7 +344,8 @@
 ## Task Runs (KDI-000)
 - [x] `task_runs` table with per-attempt history (profile, step_key, status, claim_lock, worker_pid, started_at, ended_at, outcome, summary, metadata, error)
 - [x] Dispatcher creates a `task_runs` row on claim and finalizes it on finish/fail
-- [x] `kdi runs <task_id>` — show attempt history
+- [x] `kdi runs <task_id>` — show attempt history with optional
+      `--state-type`/`--state-name` filters (KDI-036)
 
 ## Task Runs Status (KDI-000e)
 - [x] `status` column on `task_runs`: `running | done | blocked | crashed | timed_out | failed | released`
@@ -327,6 +383,8 @@
 - [x] Profile validation on load
 
 ## Dispatcher — Accepted
+- [ ] Dispatcher writes per-board PID markers and `kdi create` warns when no
+      live dispatcher is detected (KDI-037)
 - [x] `kdi dispatch` — background polling daemon (tick function; long-running mode TBD)
 - [x] Poll interval configurable (default 5s)
 - [x] Claim ready tasks (CAS: ready → running)
