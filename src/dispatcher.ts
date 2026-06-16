@@ -36,6 +36,7 @@ export interface TickOptions {
   removeWorktree?: (repoDir: string, profile: string, taskId: string, worktreePath?: string) => RemoveWorktreeResult;
   maxSpawnsPerTick?: number;
   rateLimitCooldownSeconds?: number;
+  failureLimit?: number;
 }
 
 export interface TickResult {
@@ -278,9 +279,10 @@ function handleCrash(task: Task, reason: string, runId: number | null): void {
   }
 }
 
-function checkCrashedRuns(): void {
+function checkCrashedRuns(): number {
   const db = getDb();
   const now = Math.floor(Date.now() / 1000);
+  let crashes = 0;
 
   const runs = db.query(
     `SELECT id, task_id, worker_pid, spawned_at FROM task_runs WHERE status = 'running' AND worker_pid IS NOT NULL`
@@ -298,8 +300,11 @@ function checkCrashedRuns(): void {
 
     if (!isProcessAlive(run.worker_pid)) {
       handleCrash(task, `Worker process died after grace period (PID ${run.worker_pid})`, run.id);
+      crashes++;
     }
   }
+
+  return crashes;
 }
 
 function reapStaleClaims(): void {
@@ -373,14 +378,29 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
 
   reapStaleClaims();
   promoteScheduledTasks(Math.floor(Date.now() / 1000));
-  checkCrashedRuns();
+  const crashCount = checkCrashedRuns();
 
   const tasks = listReadyTasks();
   let processed = 0;
   let spawned = 0;
+  let failuresThisPass = crashCount;
+  const failureLimit = options.failureLimit;
 
   for (const task of tasks) {
     if (spawned >= maxSpawns) {
+      break;
+    }
+
+    if (failureLimit !== undefined && failuresThisPass >= failureLimit) {
+      const warning = `Dispatcher stopped spawning: failure limit of ${failureLimit} reached this pass.`;
+      console.warn(warning);
+      // Log to board if we can resolve a slug
+      if (tasks.length > 0) {
+        const firstBoardSlug = getBoardSlug(tasks[0].board_id);
+        if (firstBoardSlug) {
+          logToBoard(firstBoardSlug, warning);
+        }
+      }
       break;
     }
 
@@ -407,6 +427,7 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
     if (!workdir) {
       handleFailure(task, "", "Board not found or archived", runId);
       spawned++;
+      failuresThisPass++;
       continue;
     }
 
@@ -418,6 +439,7 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
     } catch {
       handleFailure(task, "", `Unknown profile: ${task.assignee ?? "opencode"}`, runId);
       spawned++;
+      failuresThisPass++;
       continue;
     }
 
@@ -429,6 +451,7 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
     } catch (err: any) {
       handleFailure(task, "", `Worktree creation failed: ${err.message}`, runId);
       spawned++;
+      failuresThisPass++;
       continue;
     }
 
@@ -472,6 +495,7 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
       } else {
         recordAgentError(profile.agent ?? profile.name);
         handleFailure(task, stdout, `Harness failed (exit ${exitCode}): ${stderr || "unknown error"}`, runId);
+        failuresThisPass++;
       }
 
       spawned++;
@@ -479,6 +503,7 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
       recordAgentError(profile.agent ?? profile.name);
       handleFailure(task, "", `Harness execution failed: ${err.message}`, runId);
       spawned++;
+      failuresThisPass++;
     } finally {
       try {
         doRemoveWorktree(workdir, profile.name, String(task.id), worktreePath);
