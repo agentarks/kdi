@@ -6,6 +6,8 @@ import {
   showTask,
   editTask,
   promoteTask,
+  promoteTaskAdvanced,
+  archiveTaskHard,
   blockTask,
   unblockTask,
   archiveTask,
@@ -19,6 +21,9 @@ import {
   reassignTask,
   type Task,
 } from "../src/models/task";
+import { addDependency } from "../src/models/dependency";
+import { addComment } from "../src/models/comment";
+import { createAttachment } from "../src/models/taskAttachment";
 import { createBoard } from "../src/models/board";
 import { getRuns, createRun } from "../src/models/taskRun";
 import { getEvents } from "../src/models/taskEvent";
@@ -1016,5 +1021,199 @@ describe("task model", () => {
     // Default DESC: newest first
     expect(tasks[0].id).toBe(t2.id);
     expect(tasks[1].id).toBe(t1.id);
+  });
+});
+
+describe("promoteTaskAdvanced", () => {
+  beforeEach(() => {
+    cleanupDb(TEST_DB);
+    initDb(TEST_DB);
+  });
+
+  afterEach(() => {
+    cleanupDb(TEST_DB);
+  });
+
+  it("promotes a todo task to ready", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Promote me" });
+
+    const result = promoteTaskAdvanced(task.id);
+    expect(result.status).toBe("promoted");
+    if (result.status === "promoted") {
+      expect(result.task.status).toBe("ready");
+    }
+
+    const fetched = showTask(task.id);
+    expect(fetched!.status).toBe("ready");
+  });
+
+  it("returns not_found for a missing task", () => {
+    const result = promoteTaskAdvanced(9999);
+    expect(result.status).toBe("not_found");
+  });
+
+  it("returns archived for an archived task", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Archived todo" });
+    archiveTask(task.id);
+
+    const result = promoteTaskAdvanced(task.id);
+    expect(result.status).toBe("archived");
+  });
+
+  it("returns wrong_status for a non-todo task", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Ready task" });
+    promoteTask(task.id);
+
+    const result = promoteTaskAdvanced(task.id);
+    expect(result.status).toBe("wrong_status");
+    if (result.status === "wrong_status") {
+      expect(result.current).toBe("ready");
+    }
+  });
+
+  it("returns blocked_by_dependencies when parent not done", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const parent = createTask({ board_id: board.id, title: "Parent" });
+    const child = createTask({ board_id: board.id, title: "Child" });
+    addDependency(parent.id, child.id);
+
+    const result = promoteTaskAdvanced(child.id);
+    expect(result.status).toBe("blocked_by_dependencies");
+  });
+
+  it("promotes with force when parent not done", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const parent = createTask({ board_id: board.id, title: "Parent" });
+    const child = createTask({ board_id: board.id, title: "Child" });
+    addDependency(parent.id, child.id);
+
+    const result = promoteTaskAdvanced(child.id, { force: true });
+    expect(result.status).toBe("promoted");
+  });
+
+  it("returns would_promote in dry-run mode", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Dry run me" });
+
+    const result = promoteTaskAdvanced(task.id, { dryRun: true });
+    expect(result.status).toBe("would_promote");
+
+    // Task should still be in todo
+    const fetched = showTask(task.id);
+    expect(fetched!.status).toBe("todo");
+  });
+
+  it("dry-run returns blocked_by_dependencies when parent not done", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const parent = createTask({ board_id: board.id, title: "Parent" });
+    const child = createTask({ board_id: board.id, title: "Child" });
+    addDependency(parent.id, child.id);
+
+    const result = promoteTaskAdvanced(child.id, { dryRun: true });
+    expect(result.status).toBe("blocked_by_dependencies");
+  });
+
+  it("dry-run with force returns would_promote even when parent not done", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const parent = createTask({ board_id: board.id, title: "Parent" });
+    const child = createTask({ board_id: board.id, title: "Child" });
+    addDependency(parent.id, child.id);
+
+    const result = promoteTaskAdvanced(child.id, { dryRun: true, force: true });
+    expect(result.status).toBe("would_promote");
+
+    // Task should still be in todo
+    const fetched = showTask(child.id);
+    expect(fetched!.status).toBe("todo");
+  });
+
+  it("emits promoted event on success", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Emit event" });
+
+    const result = promoteTaskAdvanced(task.id);
+    expect(result.status).toBe("promoted");
+
+    const events = getEvents(task.id);
+    expect(events.some((e) => e.kind === "promoted")).toBe(true);
+  });
+});
+
+describe("archiveTaskHard", () => {
+  beforeEach(() => {
+    cleanupDb(TEST_DB);
+    initDb(TEST_DB);
+  });
+
+  afterEach(() => {
+    cleanupDb(TEST_DB);
+  });
+
+  it("permanently deletes an archived task", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Delete me" });
+    archiveTask(task.id);
+
+    archiveTaskHard(task.id);
+
+    const fetched = showTask(task.id);
+    expect(fetched).toBeNull();
+  });
+
+  it("throws for a non-archived task", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Not archived" });
+
+    expect(() => archiveTaskHard(task.id)).toThrow(/not archived/);
+  });
+
+  it("throws for a missing task", () => {
+    expect(() => archiveTaskHard(9999)).toThrow(/not found/);
+  });
+
+  it("cascade-deletes related events, runs, comments, attachments, and dependencies", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Cascade delete" });
+
+    // Add a comment
+    addComment(task.id, "test comment");
+
+    // Promote and create a run
+    promoteTask(task.id);
+    const claim = atomicClaim(task.id, "test-profile");
+    expect(claim.success).toBe(true);
+    // Finish the run to create a terminal run
+    const { finishRun } = require("../src/models/taskRun");
+    finishRun(claim.runId!, "completed", null, null, null);
+
+    // Create dependency
+    const child = createTask({ board_id: board.id, title: "Child task" });
+    addDependency(task.id, child.id);
+
+    // Attach a file
+    const tmpFile = "/tmp/kdi-attachment-test.txt";
+    try {
+      const { writeFileSync } = require("node:fs");
+      writeFileSync(tmpFile, "test content");
+      createAttachment(task.id, tmpFile);
+    } catch {}
+
+    // Archive then hard delete
+    archiveTask(task.id);
+    archiveTaskHard(task.id);
+
+    // Verify task is gone
+    expect(showTask(task.id)).toBeNull();
+
+    // Verify child still exists (dependency was cascade-deleted, not the child)
+    const childFetched = showTask(child.id);
+    expect(childFetched).not.toBeNull();
+
+    // Clean up temp file
+    const { rmSync } = require("node:fs");
+    try { rmSync(tmpFile, { force: true }); } catch {}
   });
 });
