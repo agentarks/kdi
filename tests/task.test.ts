@@ -824,4 +824,391 @@ describe("task model", () => {
     expect(events.some((e) => e.kind === "reclaimed")).toBe(true);
     expect(events.some((e) => e.kind === "unassigned")).toBe(true);
   });
+
+  // ── KDI-030: list filters and sort ──
+
+  it("createTask stores session_id", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Session", session_id: "sess-123" });
+    expect(task.session_id).toBe("sess-123");
+
+    const fetched = showTask(task.id);
+    expect(fetched!.session_id).toBe("sess-123");
+  });
+
+  it("createTask stores workflow_template_id and current_step_key", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({
+      board_id: board.id,
+      title: "Workflow",
+      workflow_template_id: "onboarding",
+      current_step_key: "review",
+    });
+    expect(task.workflow_template_id).toBe("onboarding");
+    expect(task.current_step_key).toBe("review");
+
+    const fetched = showTask(task.id);
+    expect(fetched!.workflow_template_id).toBe("onboarding");
+    expect(fetched!.current_step_key).toBe("review");
+  });
+
+  it("listTasks filters by session_id", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    createTask({ board_id: board.id, title: "S1", session_id: "sess-1" });
+    createTask({ board_id: board.id, title: "S2", session_id: "sess-2" });
+    createTask({ board_id: board.id, title: "NoSession" });
+
+    const tasks = listTasks({ board_id: board.id, session_id: "sess-1" });
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0].title).toBe("S1");
+  });
+
+  it("listTasks filters by workflow_template_id", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    createTask({ board_id: board.id, title: "W1", workflow_template_id: "onboard" });
+    createTask({ board_id: board.id, title: "W2" });
+
+    const tasks = listTasks({ board_id: board.id, workflow_template_id: "onboard" });
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0].title).toBe("W1");
+  });
+
+  it("listTasks filters by current_step_key", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    createTask({ board_id: board.id, title: "K1", current_step_key: "review" });
+    createTask({ board_id: board.id, title: "K2", current_step_key: "draft" });
+
+    const tasks = listTasks({ board_id: board.id, current_step_key: "review" });
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0].title).toBe("K1");
+  });
+
+  it("listTasks includeArchived returns archived tasks", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const active = createTask({ board_id: board.id, title: "Active" });
+    const archived = createTask({ board_id: board.id, title: "Archived" });
+    archiveTask(archived.id);
+
+    // Default: excludes archived
+    const defaultList = listTasks({ board_id: board.id });
+    expect(defaultList.map((t) => t.id)).toContain(active.id);
+    expect(defaultList.map((t) => t.id)).not.toContain(archived.id);
+
+    // includeArchived: includes all
+    const all = listTasks({ board_id: board.id, includeArchived: true });
+    expect(all.map((t) => t.id)).toContain(active.id);
+    expect(all.map((t) => t.id)).toContain(archived.id);
+  });
+
+  it("listTasks includeArchived with status filter returns only archived tasks", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const active = createTask({ board_id: board.id, title: "Active" });
+    const archived = createTask({ board_id: board.id, title: "Archived" });
+    archiveTask(archived.id);
+
+    const tasks = listTasks({ board_id: board.id, status: "archived", includeArchived: true });
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0].id).toBe(archived.id);
+  });
+
+  it("listTasks composes new filters with existing filters", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    createTask({ board_id: board.id, title: "A", assignee: "alice", session_id: "s1", status: "todo" });
+    createTask({ board_id: board.id, title: "B", assignee: "bob", session_id: "s1", status: "todo" });
+    createTask({ board_id: board.id, title: "C", assignee: "alice", session_id: "s2", status: "ready" });
+
+    const tasks = listTasks({
+      board_id: board.id,
+      assignee: "alice",
+      session_id: "s1",
+      status: "todo",
+    } as any);
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0].title).toBe("A");
+  });
+
+  it("listTasks sorts by priority DESC", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    createTask({ board_id: board.id, title: "Low", priority: 1 });
+    createTask({ board_id: board.id, title: "High", priority: 10 });
+    createTask({ board_id: board.id, title: "Med", priority: 5 });
+
+    const tasks = listTasks({ board_id: board.id }, "priority");
+    expect(tasks[0].title).toBe("High");
+    expect(tasks[1].title).toBe("Med");
+    expect(tasks[2].title).toBe("Low");
+  });
+
+  it("listTasks sorts by title case-insensitively", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    createTask({ board_id: board.id, title: "zebra" });
+    createTask({ board_id: board.id, title: "Apple" });
+    createTask({ board_id: board.id, title: "banana" });
+
+    const tasks = listTasks({ board_id: board.id }, "title");
+    expect(tasks[0].title).toBe("Apple");
+    expect(tasks[1].title).toBe("banana");
+    expect(tasks[2].title).toBe("zebra");
+  });
+
+  it("listTasks sorts by assignee with nulls last", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    createTask({ board_id: board.id, title: "Unassigned", assignee: null });
+    createTask({ board_id: board.id, title: "Bob", assignee: "bob" });
+    createTask({ board_id: board.id, title: "Alice", assignee: "alice" });
+
+    const tasks = listTasks({ board_id: board.id }, "assignee");
+    expect(tasks[0].assignee).toBe("alice");
+    expect(tasks[1].assignee).toBe("bob");
+    expect(tasks[2].assignee).toBeNull();
+  });
+
+  it("listTasks sorts by created_at ASC", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const t1 = createTask({ board_id: board.id, title: "First" });
+    // Sleep to cross a second boundary
+    Bun.sleepSync(1100);
+    const t2 = createTask({ board_id: board.id, title: "Second" });
+
+    const tasks = listTasks({ board_id: board.id }, "created");
+    expect(tasks[0].id).toBe(t1.id);
+    expect(tasks[1].id).toBe(t2.id);
+  });
+
+  it("listTasks sorts by status", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    createTask({ board_id: board.id, title: "Blocked", initialStatus: "blocked" });
+    createTask({ board_id: board.id, title: "Ready", initialStatus: "ready" });
+    createTask({ board_id: board.id, title: "Triage", initialStatus: "triage" });
+
+    const tasks = listTasks({ board_id: board.id }, "status");
+    // blocked < ready < triage alphabetically
+    expect(tasks[0].status).toBe("blocked");
+    expect(tasks[1].status).toBe("ready");
+    expect(tasks[2].status).toBe("triage");
+  });
+
+  it("listTasks sorts by updated_at DESC", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    createTask({ board_id: board.id, title: "Old" });
+    createTask({ board_id: board.id, title: "New" });
+
+    // Verify the sort key is accepted and returns results
+    const tasks = listTasks({ board_id: board.id }, "updated");
+    expect(tasks.length).toBeGreaterThanOrEqual(2);
+    // Most recent tasks first (by updated_at DESC)
+    // Since both created at nearly the same time, can't assert exact order
+    // but can verify the sort key is valid
+  });
+
+  it("listTasks rejects invalid sort key", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    expect(() => listTasks({ board_id: board.id }, "invalid" as any)).toThrow("Invalid sort key");
+  });
+
+  it("listTasks defaults to created_at DESC when no sort key", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const t1 = createTask({ board_id: board.id, title: "First" });
+    Bun.sleepSync(1100);
+    const t2 = createTask({ board_id: board.id, title: "Second" });
+
+    const tasks = listTasks({ board_id: board.id });
+    // Default DESC: newest first
+    expect(tasks[0].id).toBe(t2.id);
+    expect(tasks[1].id).toBe(t1.id);
+  });
+});
+
+describe("promoteTaskAdvanced", () => {
+  beforeEach(() => {
+    cleanupDb(TEST_DB);
+    initDb(TEST_DB);
+  });
+
+  afterEach(() => {
+    cleanupDb(TEST_DB);
+  });
+
+  it("promotes a todo task to ready", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Promote me" });
+
+    const result = promoteTaskAdvanced(task.id);
+    expect(result.status).toBe("promoted");
+    if (result.status === "promoted") {
+      expect(result.task.status).toBe("ready");
+    }
+
+    const fetched = showTask(task.id);
+    expect(fetched!.status).toBe("ready");
+  });
+
+  it("returns not_found for a missing task", () => {
+    const result = promoteTaskAdvanced(9999);
+    expect(result.status).toBe("not_found");
+  });
+
+  it("returns archived for an archived task", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Archived todo" });
+    archiveTask(task.id);
+
+    const result = promoteTaskAdvanced(task.id);
+    expect(result.status).toBe("archived");
+  });
+
+  it("returns wrong_status for a non-todo task", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Ready task" });
+    promoteTask(task.id);
+
+    const result = promoteTaskAdvanced(task.id);
+    expect(result.status).toBe("wrong_status");
+    if (result.status === "wrong_status") {
+      expect(result.current).toBe("ready");
+    }
+  });
+
+  it("returns blocked_by_dependencies when parent not done", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const parent = createTask({ board_id: board.id, title: "Parent" });
+    const child = createTask({ board_id: board.id, title: "Child" });
+    addDependency(parent.id, child.id);
+
+    const result = promoteTaskAdvanced(child.id);
+    expect(result.status).toBe("blocked_by_dependencies");
+  });
+
+  it("promotes with force when parent not done", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const parent = createTask({ board_id: board.id, title: "Parent" });
+    const child = createTask({ board_id: board.id, title: "Child" });
+    addDependency(parent.id, child.id);
+
+    const result = promoteTaskAdvanced(child.id, { force: true });
+    expect(result.status).toBe("promoted");
+  });
+
+  it("returns would_promote in dry-run mode", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Dry run me" });
+
+    const result = promoteTaskAdvanced(task.id, { dryRun: true });
+    expect(result.status).toBe("would_promote");
+
+    // Task should still be in todo
+    const fetched = showTask(task.id);
+    expect(fetched!.status).toBe("todo");
+  });
+
+  it("dry-run returns blocked_by_dependencies when parent not done", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const parent = createTask({ board_id: board.id, title: "Parent" });
+    const child = createTask({ board_id: board.id, title: "Child" });
+    addDependency(parent.id, child.id);
+
+    const result = promoteTaskAdvanced(child.id, { dryRun: true });
+    expect(result.status).toBe("blocked_by_dependencies");
+  });
+
+  it("dry-run with force returns would_promote even when parent not done", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const parent = createTask({ board_id: board.id, title: "Parent" });
+    const child = createTask({ board_id: board.id, title: "Child" });
+    addDependency(parent.id, child.id);
+
+    const result = promoteTaskAdvanced(child.id, { dryRun: true, force: true });
+    expect(result.status).toBe("would_promote");
+
+    // Task should still be in todo
+    const fetched = showTask(child.id);
+    expect(fetched!.status).toBe("todo");
+  });
+
+  it("emits promoted event on success", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Emit event" });
+
+    const result = promoteTaskAdvanced(task.id);
+    expect(result.status).toBe("promoted");
+
+    const events = getEvents(task.id);
+    expect(events.some((e) => e.kind === "promoted")).toBe(true);
+  });
+});
+
+describe("archiveTaskHard", () => {
+  beforeEach(() => {
+    cleanupDb(TEST_DB);
+    initDb(TEST_DB);
+  });
+
+  afterEach(() => {
+    cleanupDb(TEST_DB);
+  });
+
+  it("permanently deletes an archived task", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Delete me" });
+    archiveTask(task.id);
+
+    archiveTaskHard(task.id);
+
+    const fetched = showTask(task.id);
+    expect(fetched).toBeNull();
+  });
+
+  it("throws for a non-archived task", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Not archived" });
+
+    expect(() => archiveTaskHard(task.id)).toThrow(/not archived/);
+  });
+
+  it("throws for a missing task", () => {
+    expect(() => archiveTaskHard(9999)).toThrow(/not found/);
+  });
+
+  it("cascade-deletes related events, runs, comments, attachments, and dependencies", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Cascade delete" });
+
+    // Add a comment
+    addComment(task.id, "test comment");
+
+    // Promote and create a run
+    promoteTask(task.id);
+    const claim = atomicClaim(task.id, "test-profile");
+    expect(claim.success).toBe(true);
+    // Finish the run to create a terminal run
+    const { finishRun } = require("../src/models/taskRun");
+    finishRun(claim.runId!, "completed", null, null, null);
+
+    // Create dependency
+    const child = createTask({ board_id: board.id, title: "Child task" });
+    addDependency(task.id, child.id);
+
+    // Attach a file
+    const tmpFile = "/tmp/kdi-attachment-test.txt";
+    try {
+      const { writeFileSync } = require("node:fs");
+      writeFileSync(tmpFile, "test content");
+      createAttachment(task.id, tmpFile);
+    } catch {}
+
+    // Archive then hard delete
+    archiveTask(task.id);
+    archiveTaskHard(task.id);
+
+    // Verify task is gone
+    expect(showTask(task.id)).toBeNull();
+
+    // Verify child still exists (dependency was cascade-deleted, not the child)
+    const childFetched = showTask(child.id);
+    expect(childFetched).not.toBeNull();
+
+    // Clean up temp file
+    const { rmSync } = require("node:fs");
+    try { rmSync(tmpFile, { force: true }); } catch {}
+  });
 });

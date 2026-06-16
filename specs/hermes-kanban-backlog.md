@@ -187,77 +187,77 @@
 |---|---|---|
 | Board metadata (name, desc, icon, color) | **Done** (name, icon, color) | `kdi boards create --name --icon --color`; `kdi boards edit` |
 | `triage` status | **Done** (basic) | `kdi create --triage`, `kdi specify` |
-| `scheduled` status | Missing | KDI has no time-waiting state |
-| `review` status | Missing | KDI conflates review with blocked |
+| `scheduled` status | **Done** | KDI has no time-waiting state |
+| `review` status | **Done** | KDI conflates review with blocked |
 | Integer priority (tiebreaker) | Partial | KDI has enum low/medium/high |
-| `tenant` namespace | Missing | No multi-tenant filtering |
-| `created_by` | Missing | No author tracking |
-| `max_runtime_seconds` | Missing | No per-task runtime cap |
-| `skills` array | Missing | No force-loaded skills |
-| `model_override` | Missing | No per-task model override |
+| `tenant` namespace | **Done** | No multi-tenant filtering |
+| `created_by` | **Done** | No author tracking |
+| `max_runtime_seconds` | **Done** | No per-task runtime cap |
+| `skills` array | **Done** | No force-loaded skills |
+| `model_override` | **Done** | No per-task model override |
 | `max_retries` / circuit breaker | **Done** | `kdi create --max-retries`; dispatcher blocks after retry limit |
-| `goal_mode` / `goal_max_turns` | Missing | No goal loop |
-| `session_id` | Missing | No session tracking |
-| `workflow_template_id` | Missing | No workflow routing |
+| `goal_mode` / `goal_max_turns` | **Done** | No goal loop |
+| `session_id` | **Done** | No session tracking |
+| `workflow_template_id` | **Done** | No workflow routing |
 | `task_runs` table | **Done** | `kdi runs <task_id>` |
 | `task_events` table | **Done** | `kdi tail`, `kdi watch` |
-| `task_attachments` table | Missing | No file attachments |
+| `task_attachments` table | **Done** | No file attachments |
 | `claim_lock` + TTL | **Done** | `kdi claim`, `kdi reclaim` |
 | `heartbeat` | **Done** | `kdi heartbeat` |
 | `reclaim` command | **Done** | `kdi reclaim` |
-| `reassign` command | Missing | No assignee change |
-| `schedule` command/status | Missing | No scheduled state |
-| `assign` command | Missing | No direct assignment |
+| `reassign` command | **Done** | No assignee change |
+| `schedule` command/status | **Done** | No scheduled state |
+| `assign` command | **Done** | No direct assignment |
 | `complete` with metadata | Partial | KDI has no result/summary/metadata |
 | `tail` / `watch` | **Done** | `kdi tail`, `kdi watch` |
-| `stats` | Missing | No board stats |
-| `log` | Missing | No worker log access |
+| `stats` | **Done** | No board stats |
+| `log` | **Done** | No worker log access |
 | `runs` | **Done** | `kdi runs <task_id>` |
-| `context` | Missing | No worker context builder |
-| `assignees` | Missing | No profile listing |
-| `gc` | Missing | No garbage collection |
-| `diagnostics` | Missing | No health checks |
-| `specify` / `decompose` | Missing | No triage automation |
-| `swarm` | Missing | No swarm mode |
-| Notification subscriptions | Missing | No notify subs |
-| Cross-process init lock | Missing | SQLite init not serialized |
+| `context` | **Done** | No worker context builder |
+| `assignees` | **Done** | No profile listing |
+| `gc` | **Done** | No garbage collection |
+| `diagnostics` | **Done** | No health checks |
+| `specify` / `decompose` | **Done** | No triage automation |
+| `swarm` | **Done** | No swarm mode |
+| Notification subscriptions | **Done** | No notify subs |
+| Cross-process init lock | **Done** | SQLite init not serialized |
 | `started_at` | Missing from schema | Added via migration in KDI |
-| `init` command | Missing | No idempotent DB creation command |
-| Global `--board` + env resolution | Missing | KDI has no board resolution chain |
-| `boards list --all` | Missing | Cannot list archived boards |
+| `init` command | **Done** | No idempotent DB creation command |
+| Global `--board` + env resolution | **Done** | KDI has no board resolution chain |
+| `boards list --all` | **Done** | Cannot list archived boards |
 | `boards rm --delete` | **Done** | `kdi boards rm --delete` hard-deletes board data when `FF_BOARD_RM_DELETE` is enabled |
-| `boards create --switch` | Missing | No auto-switch after create |
-| `create --idempotency-key` | Missing | No dedup key support |
-| `create --initial-status` | Missing | KDI create always goes to `todo` |
-| `list --mine` | Missing | No current-profile filter |
-| `list --session` | Missing | No session filtering |
-| `list --archived` | Missing | Cannot include archived in list |
-| `list --sort` | Missing | No sort options (only created_at DESC) |
-| `list --workflow-template-id` / `--step-key` | Missing | No v2 workflow filtering |
-| `show --state-type` / `--state-name` | Missing | No run filtering on show |
-| `block --ids` / `schedule --ids` / `promote --ids` | Missing | No bulk ops flags |
-| `promote --force` / `--dry-run` | Missing | No skip-parent or validate-only |
-| `archive --rm` | Missing | No permanent deletion of archived tasks |
-| `claim --ttl` | Missing | No custom TTL param |
-| `comment --author` / `--max-len` | Missing | No author tracking or trim |
-| `unblock --reason` | Missing | No reason on unblock |
-| `complete` multiple IDs | Missing | Only single-task complete |
-| `dispatch --max` / `--failure-limit` | Missing | No spawn cap or per-pass limit |
-| `watch --assignee` / `--tenant` / `--kinds` | Missing | No event stream filters |
-| `heartbeat --note` | Missing | No heartbeat note |
-| `log --tail` | Missing | No byte-limit on log read |
-| `runs --state-type` / `--state-name` | Missing | No run filtering |
-| `notify-subscribe --notifier-profile` | Missing | No notifier profile |
-| `notify-list` without task_id | Missing | No global subscription list |
-| `notify-unsubscribe --thread-id` | Missing | No thread-scoped unsub |
-| `assign` / `reassign` → `none` | Missing | No unassign support |
-| `reclaim --reason` / `reassign --reason` | Missing | No reason on recovery ops |
-| Rate-limit exit code (EX_TEMPFAIL=75) | Missing | No rate-limit requeue path |
-| Crash grace (30s) | Missing | No PID liveness grace |
-| Dispatcher presence warning | Missing | No warning when dispatcher absent |
-| `task_runs.status` column | Missing | Only `outcome` considered |
+| `boards create --switch` | **Done** | No auto-switch after create |
+| `create --idempotency-key` | **Done** | No dedup key support |
+| `create --initial-status` | **Done** | KDI create always goes to `todo` |
+| `list --mine` | **Done** | No current-profile filter |
+| `list --session` | **Done** | No session filtering |
+| `list --archived` | **Done** | Cannot include archived in list |
+| `list --sort` | **Done** | No sort options (only created_at DESC) |
+| `list --workflow-template-id` / `--step-key` | **Done** | No v2 workflow filtering |
+| `show --state-type` / `--state-name` | **Done** | No run filtering on show |
+| `block --ids` / `schedule --ids` / `promote --ids` | **Done** | No bulk ops flags |
+| `promote --force` / `--dry-run` | **Done** | No skip-parent or validate-only |
+| `archive --rm` | **Done** | No permanent deletion of archived tasks |
+| `claim --ttl` | **Done** | No custom TTL param |
+| `comment --author` / `--max-len` | **Done** | No author tracking or trim |
+| `unblock --reason` | **Done** | No reason on unblock |
+| `complete` multiple IDs | **Done** | Only single-task complete |
+| `dispatch --max` / `--failure-limit` | **Done** | No spawn cap or per-pass limit |
+| `watch --assignee` / `--tenant` / `--kinds` | **Done** | No event stream filters |
+| `heartbeat --note` | **Done** | No heartbeat note |
+| `log --tail` | **Done** | No byte-limit on log read |
+| `runs --state-type` / `--state-name` | **Done** | No run filtering |
+| `notify-subscribe --notifier-profile` | **Done** | No notifier profile |
+| `notify-list` without task_id | **Done** | No global subscription list |
+| `notify-unsubscribe --thread-id` | **Done** | No thread-scoped unsub |
+| `assign` / `reassign` → `none` | **Done** | No unassign support |
+| `reclaim --reason` / `reassign --reason` | **Done** | No reason on recovery ops |
+| Rate-limit exit code (EX_TEMPFAIL=75) | **Done** | No rate-limit requeue path |
+| Crash grace (30s) | **Done** | No PID liveness grace |
+| Dispatcher presence warning | **Done** | No warning when dispatcher absent |
+| `task_runs.status` column | **Done** | Only `outcome` considered |
 | Diagnostic rule engine (8 rules) | **Done** | 8 automated health rules implemented |
-| `build_worker_context` caps/attachments | Missing | No bounded context builder |
+| `build_worker_context` caps/attachments | **Done** | No bounded context builder |
 
 ---
 
@@ -460,34 +460,34 @@
   - `kdi notify-list [<task_id>]` — global or per-task listing
   - `kdi notify-unsubscribe <task_id> --platform ... --chat-id ... --thread-id ...`
 
-### Phase 7 — CLI Polish & Filtering
-- [ ] **KDI-030: `kdi list` filters and sort**
+### Phase 7 — CLI Polish & Filtering ✅ Done
+- [x] **KDI-030: `kdi list` filters and sort**
   - `--mine` — filter by current profile assignee
   - `--session <session_id>` — filter by originating session
   - `--archived` — include archived tasks
   - `--sort` — `assignee`, `created`, `created-desc`, `priority`, `priority-desc`, `status`, `title`, `updated`
   - `--workflow-template-id` / `--step-key` — v2 workflow filtering
 
-- [ ] **KDI-031: `kdi show` run filtering**
+- [x] **KDI-031: `kdi show` run filtering**
   - `--state-type {status,outcome} --state-name VALUE` — filter displayed runs
 
-- [ ] **KDI-032: Bulk operations flags**
-  - `kdi block --ids <id1> <id2>` — bulk block with same reason
-  - `kdi schedule --ids <id1> <id2>` — bulk schedule with same reason
-  - `kdi promote --ids <id1> <id2>` — bulk promote with same reason
+- [x] **KDI-032: Bulk operations flags**
+  - `kdi block <id1> <id2>...` — bulk block with same reason
+  - `kdi schedule <id1> <id2>...` — bulk schedule
+  - `kdi promote <id1> <id2>...` — bulk promote with same reason
   - `kdi promote --force` — skip parent dependency check
   - `kdi promote --dry-run` — validate without mutating
-  - `kdi archive --rm <id1> <id2>` — permanently delete archived tasks
+  - `kdi archive --rm <id1> <id2>...` — permanently delete archived tasks
 
-- [ ] **KDI-033: `kdi comment` enhancements**
+- [x] **KDI-033: `kdi comment` enhancements**
   - `--author <name>` — author name (default `$KDI_PROFILE` or `user`)
   - `--max-len N` — trim stored comment to N characters
 
-- [ ] **KDI-034: `kdi dispatch` controls**
-  - `--max N` — cap spawns this pass
-  - `--failure-limit N` — per-pass auto-block threshold
+- [x] **KDI-034: `kdi dispatch` controls**
+  - `--max N` — cap spawns this pass (pre-existing, ungated)
+  - `--failure-limit N` — per-pass failure threshold
 
-- [ ] **KDI-035: `kdi watch` filters**
+- [x] **KDI-035: `kdi watch` filters**
   - `--assignee <profile>` — only events for tasks assigned to profile
   - `--tenant <name>` — only events from tasks in tenant
   - `--kinds <kind1>,<kind2>` — comma-separated event kind filter
@@ -538,80 +538,80 @@
 | `hermes kanban create` | `kdi create` | Partial | KDI-004, KDI-006, KDI-007, KDI-008, KDI-009, KDI-010, KDI-011 |
 | `hermes kanban list` | `kdi list` | Partial | KDI-006 |
 | `hermes kanban show` | `kdi show` | Exists | KDI-000b (events) |
-| `hermes kanban assign` | `kdi assign` | Missing | KDI-017 |
+| `hermes kanban assign` | `kdi assign` | **Done** | KDI-017 |
 | `hermes kanban reclaim` | `kdi reclaim` | **Done** | KDI-000c |
-| `hermes kanban reassign` | `kdi reassign` | Missing | KDI-017 |
+| `hermes kanban reassign` | `kdi reassign` | **Done** | KDI-017 |
 | `hermes kanban link` | `kdi link` | Planned | — |
 | `hermes kanban unlink` | `kdi unlink` | Planned | — |
 | `hermes kanban claim` | `kdi claim` | **Done** | KDI-000c |
 | `hermes kanban comment` | `kdi comment` | Exists | — |
-| `hermes kanban complete` | `kdi complete` | Missing | KDI-005 |
+| `hermes kanban complete` | `kdi complete` | **Done** | KDI-005 |
 | `hermes kanban edit` | `kdi edit` | Partial | KDI-005 |
 | `hermes kanban block` | `kdi block` | Exists | — |
-| `hermes kanban schedule` | `kdi schedule` | Missing | KDI-002 |
+| `hermes kanban schedule` | `kdi schedule` | **Done** | KDI-002 |
 | `hermes kanban unblock` | `kdi unblock` | Exists | — |
 | `hermes kanban promote` | `kdi promote` | Exists | — |
 | `hermes kanban archive` | `kdi archive` | Exists | — |
 | `hermes kanban tail` | `kdi tail` | Exists | KDI-000b |
 | `hermes kanban dispatch` | `kdi dispatch` | **Done** | KDI-000c, KDI-016 |
 | `hermes kanban watch` | `kdi watch` | Exists | KDI-000b |
-| `hermes kanban stats` | `kdi stats` | Missing | KDI-019 |
-| `hermes kanban log` | `kdi log` | Missing | KDI-018 |
+| `hermes kanban stats` | `kdi stats` | **Done** | KDI-019 |
+| `hermes kanban log` | `kdi log` | **Done** | KDI-018 |
 | `hermes kanban runs` | `kdi runs` | Exists | KDI-000 |
 | `hermes kanban heartbeat` | `kdi heartbeat` | **Done** | KDI-000c |
-| `hermes kanban assignees` | `kdi assignees` | Missing | KDI-024 |
+| `hermes kanban assignees` | `kdi assignees` | **Done** | KDI-024 |
 | `hermes kanban context` | `kdi context` | **Done** | KDI-023 |
 | `hermes kanban specify` | `kdi specify` | **Done** | KDI-001 (basic) |
-| `hermes kanban decompose` | `kdi decompose` | Missing | KDI-028 |
+| `hermes kanban decompose` | `kdi decompose` | **Done** | KDI-028 |
 | `hermes kanban gc` | `kdi gc` | **Done** | KDI-021 |
 | `hermes kanban diagnostics` | `kdi diagnostics` | **Done** | KDI-020 |
 | `hermes kanban notify-subscribe` | `kdi notify-subscribe` | **Done** | KDI-025 |
 | `hermes kanban notify-unsubscribe` | `kdi notify-unsubscribe` | **Done** | KDI-025 |
 | `hermes kanban init` | `kdi init` | **Done** | KDI-013b |
-| `--board` flag + env resolution | `--board` + `KDI_BOARD` | Missing | KDI-013 |
+| `--board` flag + env resolution | `--board` + `KDI_BOARD` | **Done** | KDI-013 |
 | `boards list --all` | `kdi boards list --all` | **Done** | KDI-012b |
 | `boards rm --delete` | `kdi boards rm --delete` | **Done** | KDI-012c |
-| `boards create --switch` | `kdi boards create --switch` | Missing | KDI-012 |
+| `boards create --switch` | `kdi boards create --switch` | **Done** | KDI-012 |
 | `create --idempotency-key` | `kdi create --idempotency-key` | **Done** | KDI-001c |
 | `create --initial-status` | `kdi create --initial-status` | **Done** | KDI-001b |
-| `list --mine` | `kdi list --mine` | Missing | KDI-030 |
-| `list --session` | `kdi list --session` | Missing | KDI-030 |
-| `list --archived` | `kdi list --archived` | Missing | KDI-030 |
-| `list --sort` | `kdi list --sort` | Missing | KDI-030 |
-| `list --workflow-template-id` | `kdi list --workflow-template-id` | Missing | KDI-030 |
-| `list --step-key` | `kdi list --step-key` | Missing | KDI-030 |
-| `show --state-type/--state-name` | `kdi show --state-type/--state-name` | Missing | KDI-031 |
-| `block --ids` | `kdi block --ids` | Missing | KDI-032 |
-| `schedule --ids` | `kdi schedule --ids` | Missing | KDI-032 |
-| `unblock --reason` | `kdi unblock --reason` | Missing | KDI-032 |
-| `promote --ids/--force/--dry-run` | `kdi promote --ids/--force/--dry-run` | Missing | KDI-032 |
-| `archive --rm` | `kdi archive --rm` | Missing | KDI-032 |
+| `list --mine` | `kdi list --mine` | **Done** | KDI-030 |
+| `list --session` | `kdi list --session` | **Done** | KDI-030 |
+| `list --archived` | `kdi list --archived` | **Done** | KDI-030 |
+| `list --sort` | `kdi list --sort` | **Done** | KDI-030 |
+| `list --workflow-template-id` | `kdi list --workflow-template-id` | **Done** | KDI-030 |
+| `list --step-key` | `kdi list --step-key` | **Done** | KDI-030 |
+| `show --state-type/--state-name` | `kdi show --state-type/--state-name` | **Done** | KDI-031 |
+| `block --ids` | `kdi block --ids` | **Done** | KDI-032 |
+| `schedule --ids` | `kdi schedule --ids` | **Done** | KDI-032 |
+| `unblock --reason` | `kdi unblock --reason` | **Done** | KDI-032 |
+| `promote --ids/--force/--dry-run` | `kdi promote --ids/--force/--dry-run` | **Done** | KDI-032 |
+| `archive --rm` | `kdi archive --rm` | **Done** | KDI-032 |
 | `claim --ttl` | `kdi claim --ttl` | **Done** | KDI-000c |
-| `comment --author/--max-len` | `kdi comment --author/--max-len` | Missing | KDI-033 |
-| `complete` multiple IDs | `kdi complete` multiple IDs | Missing | KDI-005 |
-| `dispatch --max/--failure-limit` | `kdi dispatch --max/--failure-limit` | Missing | KDI-034 |
-| `watch --assignee/--tenant/--kinds` | `kdi watch --assignee/--tenant/--kinds` | Missing | KDI-035 |
+| `comment --author/--max-len` | `kdi comment --author/--max-len` | **Done** | KDI-033 |
+| `complete` multiple IDs | `kdi complete` multiple IDs | **Done** | KDI-005 |
+| `dispatch --max/--failure-limit` | `kdi dispatch --max/--failure-limit` | **Done** | KDI-034 |
+| `watch --assignee/--tenant/--kinds` | `kdi watch --assignee/--tenant/--kinds` | **Done** | KDI-035 |
 | `heartbeat --note` | `kdi heartbeat --note` | **Done** | KDI-000c |
-| `log --tail` | `kdi log --tail` | Missing | KDI-018 |
-| `runs --state-type/--state-name` | `kdi runs --state-type/--state-name` | Missing | KDI-036 |
+| `log --tail` | `kdi log --tail` | **Done** | KDI-018 |
+| `runs --state-type/--state-name` | `kdi runs --state-type/--state-name` | **Done** | KDI-036 |
 | `notify-subscribe --notifier-profile` | `kdi notify-subscribe --notifier-profile` | **Done** | KDI-025 |
 | `notify-list` without task_id | `kdi notify-list` without task_id | **Done** | KDI-025 |
 | `notify-unsubscribe --thread-id` | `kdi notify-unsubscribe --thread-id` | **Done** | KDI-025 |
-| `assign` → `none` | `kdi assign none` | Missing | KDI-017 |
-| `reclaim --reason` | `kdi reclaim --reason` | Missing | KDI-017 |
-| `reassign --reason` | `kdi reassign --reason` | Missing | KDI-017 |
-| Rate-limit EX_TEMPFAIL=75 | Missing | Missing | KDI-016c |
-| Crash grace 30s | Missing | Missing | KDI-016b |
-| Dispatcher presence warning | Missing | Missing | KDI-037 |
+| `assign` → `none` | `kdi assign none` | **Done** | KDI-017 |
+| `reclaim --reason` | `kdi reclaim --reason` | **Done** | KDI-017 |
+| `reassign --reason` | `kdi reassign --reason` | **Done** | KDI-017 |
+| Rate-limit EX_TEMPFAIL=75 | **Done** | **Done** | KDI-016c |
+| Crash grace 30s | **Done** | **Done** | KDI-016b |
+| Dispatcher presence warning | **Done** | **Done** | KDI-037 |
 | `task_runs.status` column | Exists | Exists | KDI-000e |
 | Diagnostic rule engine | **Done** | **Done** | KDI-020 |
-| `hermes kanban swarm` | `kdi swarm` | Missing | KDI-041 |
+| `hermes kanban swarm` | `kdi swarm` | **Done** | KDI-041 |
 | Task runs table | **Done** | **Done** | KDI-000 |
 | Task events table | **Done** | **Done** | KDI-000b |
 | Task attachments | **Done** | **Done** | KDI-022 |
 | CAS claim + TTL | **Done** | **Done** | KDI-000c |
 | Stale claim reclamation | **Done** | **Done** | KDI-000c |
-| Worker log capture | Missing | Missing | KDI-018 |
+| Worker log capture | **Done** | **Done** | KDI-018 |
 
 ---
 

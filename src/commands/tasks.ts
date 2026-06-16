@@ -7,9 +7,12 @@ import {
   showTask,
   editTask,
   promoteTask,
+  promoteTaskAdvanced,
+  PromoteTaskResult,
   blockTask,
   unblockTask,
   archiveTask,
+  archiveTaskHard,
   specifyTask,
   completeTask,
   reviewTask,
@@ -18,14 +21,15 @@ import {
   assignTask,
   unassignTask,
   reassignTask,
+  VALID_SORT_KEYS,
 } from "../models/task";
 import { addComment, getComments } from "../models/comment";
 import { createAttachment, listAttachments } from "../models/taskAttachment";
-import { getRuns } from "../models/taskRun";
-import { getEvents, tailEvents, getRecentEvents, getEventsAfter } from "../models/taskEvent";
+import { getRuns, getRunsFiltered } from "../models/taskRun";
+import { getEvents, tailEvents, getRecentEvents, getEventsAfter, type WatchFilters } from "../models/taskEvent";
 import { atomicClaim, reclaimTask, heartbeat } from "../models/claim";
 import { getTaskLogPath } from "../observability";
-import { isEnabled, FF_SCHEDULED_STATUS, FF_REVIEW_STATUS, FF_COMPLETE_METADATA, FF_PRIORITY_INTEGER, FF_SKILLS_ARRAY, FF_MAX_RUNTIME, FF_MAX_RETRIES, FF_TENANT_NAMESPACE, FF_CREATED_BY, FF_MODEL_OVERRIDE, FF_DEFAULT_WORKDIR, FF_WORKER_LOG_CAPTURE, FF_ASSIGN_REASSIGN, FF_CRASH_GRACE_PERIOD, FF_HEARTBEAT, FF_RATE_LIMIT_EXIT_CODE, FF_TASK_ATTACHMENTS } from "../flags";
+import { isEnabled, FF_SCHEDULED_STATUS, FF_REVIEW_STATUS, FF_COMPLETE_METADATA, FF_PRIORITY_INTEGER, FF_SKILLS_ARRAY, FF_MAX_RUNTIME, FF_MAX_RETRIES, FF_TENANT_NAMESPACE, FF_CREATED_BY, FF_MODEL_OVERRIDE, FF_DEFAULT_WORKDIR, FF_WORKER_LOG_CAPTURE, FF_ASSIGN_REASSIGN, FF_CRASH_GRACE_PERIOD, FF_HEARTBEAT, FF_RATE_LIMIT_EXIT_CODE, FF_TASK_ATTACHMENTS, FF_LIST_FILTERS_SORT, FF_SHOW_RUN_FILTERING, FF_BULK_OPERATIONS, FF_COMMENT_ENHANCEMENTS, FF_WATCH_FILTERS } from "../flags";
 import { resolveBoard } from "../resolveBoard";
 
 const VALID_STATUSES = ["triage", "todo", "scheduled", "ready", "running", "done", "blocked", "review"] as const;
@@ -71,6 +75,10 @@ function resolveCreator(optionsCreatedBy?: string): string {
   return "unknown";
 }
 
+function resolveCurrentProfile(): string {
+  return process.env.KDI_PROFILE || process.env.HERMES_PROFILE || "user";
+}
+
 function parseTimestamp(raw: string): number {
   if (/^\d+$/.test(raw)) {
     return parseInt(raw, 10);
@@ -96,6 +104,30 @@ function validateSkillName(name: string): void {
   }
 }
 
+function printVerdict(id: number, verdict: PromoteTaskResult): void {
+  switch (verdict.status) {
+    case "would_promote":
+      console.log(`${id}: would_promote`);
+      break;
+    case "not_found":
+      console.error(`${id}: skipped: not_found`);
+      break;
+    case "archived":
+      console.error(`${id}: skipped: archived`);
+      break;
+    case "wrong_status":
+      console.error(`${id}: skipped: wrong_status (current: ${verdict.current})`);
+      break;
+    case "blocked_by_dependencies":
+      console.error(`${id}: skipped: blocked_by_dependencies`);
+      break;
+    case "promoted":
+      // handled by the caller with the full success message
+      console.log(`${id}: promoted`);
+      break;
+  }
+}
+
 export const createTaskCommand = new Command("create")
   .description("Create a new task")
   .argument("<title>", "Task title")
@@ -114,7 +146,8 @@ export const createTaskCommand = new Command("create")
   .option("--model <model>", "Model override for the harness")
   .option("--created-by <actor>", "Actor that created the task")
   .option("--workspace <path>", "Workspace path for this task. Feature-flagged.")
-  .action((title: string, options: { board?: string; assignee?: string; body?: string; triage?: boolean; initialStatus?: string; at?: string; priority?: string; idempotencyKey?: string; maxRuntime?: string; maxRetries?: string; tenant?: string; skill: string[]; createdBy?: string; model?: string; workspace?: string }) => {
+  .option("--session <session_id>", "Originating session ID. Feature-flagged.")
+  .action((title: string, options: { board?: string; assignee?: string; body?: string; triage?: boolean; initialStatus?: string; at?: string; priority?: string; idempotencyKey?: string; maxRuntime?: string; maxRetries?: string; tenant?: string; skill: string[]; createdBy?: string; model?: string; workspace?: string; session?: string }) => {
     try {
       if (!title || title.trim() === "") {
         throw new Error("Title is required.");
@@ -239,6 +272,15 @@ export const createTaskCommand = new Command("create")
         workspace = board.default_workdir;
       }
 
+      if (options.session !== undefined) {
+        if (!isEnabled(FF_LIST_FILTERS_SORT)) {
+          throw new Error("List filters and sort feature is not enabled.");
+        }
+        if (options.session.trim() === "") {
+          throw new Error("Session ID cannot be empty.");
+        }
+      }
+
       const task = createTask({
         board_id: board.id,
         title,
@@ -256,6 +298,7 @@ export const createTaskCommand = new Command("create")
         created_by: createdBy,
         model_override: options.model,
         workspace,
+        session_id: options.session,
       });
       console.log(task.id);
     } catch (err: any) {
@@ -271,10 +314,25 @@ export const listTasksCommand = new Command("list")
   .option("--assignee <profile>", "Filter by assignee")
   .option("--tenant <name>", "Filter by tenant namespace")
   .option("--created-by <actor>", "Filter by creator")
-  .action((options: { board?: string; status?: string; assignee?: string; tenant?: string; createdBy?: string }) => {
+  .option("--mine", "Show only tasks assigned to your current profile")
+  .option("--session <session_id>", "Filter by originating session ID")
+  .option("--archived", "Include archived tasks")
+  .option("--sort <key>", "Sort order (assignee, created, created-desc, priority, priority-desc, status, title, updated)")
+  .option("--workflow-template-id <id>", "Filter by workflow template ID")
+  .option("--step-key <key>", "Filter by current step key")
+  .action((options: { board?: string; status?: string; assignee?: string; tenant?: string; createdBy?: string; mine?: boolean; session?: string; archived?: boolean; sort?: string; workflowTemplateId?: string; stepKey?: string }) => {
     try {
+      // Gate new options behind FF_LIST_FILTERS_SORT
+      const hasNewOption = options.mine || options.session !== undefined || options.archived || options.sort !== undefined || options.workflowTemplateId !== undefined || options.stepKey !== undefined;
+      if (hasNewOption && !isEnabled(FF_LIST_FILTERS_SORT)) {
+        throw new Error("List filters and sort feature is not enabled.");
+      }
+
       if (options.status && !isValidStatus(options.status)) {
-        throw new Error(`Invalid status "${options.status}". Valid: ${VALID_STATUSES.join(", ")}`);
+        // Allow --status archived when --archived is also passed with FF_LIST_FILTERS_SORT
+        if (!(options.status === "archived" && isEnabled(FF_LIST_FILTERS_SORT) && options.archived)) {
+          throw new Error(`Invalid status "${options.status}". Valid: ${VALID_STATUSES.join(", ")}`);
+        }
       }
       if (options.tenant !== undefined) {
         if (!isEnabled(FF_TENANT_NAMESPACE)) {
@@ -287,9 +345,39 @@ export const listTasksCommand = new Command("list")
       if (options.createdBy !== undefined && !isEnabled(FF_CREATED_BY)) {
         throw new Error("Created-by tracking is not enabled.");
       }
+
+      // --mine and --assignee are mutually exclusive
+      if (options.mine && options.assignee) {
+        throw new Error("--mine and --assignee cannot be used together.");
+      }
+
+      // Resolve assignee from --mine or --assignee
+      let assignee = options.assignee;
+      if (options.mine) {
+        assignee = resolveCurrentProfile();
+      }
+
+      // Validate sort key
+      if (options.sort !== undefined) {
+        const validKeys: readonly string[] = VALID_SORT_KEYS;
+        if (!validKeys.includes(options.sort)) {
+          throw new Error(`Invalid sort key "${options.sort}". Valid: ${validKeys.join(", ")}`);
+        }
+      }
+
       const boardSlug = resolveBoard(options.board);
       const boardId = getBoardIdBySlug(boardSlug);
-      const tasks = listTasks({ board_id: boardId, status: options.status as any, assignee: options.assignee, tenant: options.tenant, created_by: options.createdBy });
+      const tasks = listTasks({
+        board_id: boardId,
+        status: options.status as any,
+        assignee,
+        tenant: options.tenant,
+        created_by: options.createdBy,
+        includeArchived: options.archived,
+        session_id: options.session,
+        workflow_template_id: options.workflowTemplateId,
+        current_step_key: options.stepKey,
+      }, options.sort);
       if (tasks.length === 0) {
         console.log("No tasks.");
         return;
@@ -306,7 +394,9 @@ export const listTasksCommand = new Command("list")
 export const showTaskCommand = new Command("show")
   .description("Show task details")
   .argument("<task_id>", "Task ID")
-  .action((taskId: string) => {
+  .option("--state-type <type>", "Run state type to filter by (status|outcome)")
+  .option("--state-name <value>", "Run state name to filter by")
+  .action((taskId: string, options: { stateType?: string; stateName?: string }) => {
     try {
       const id = parseTaskId(taskId);
       const task = showTask(id);
@@ -314,6 +404,26 @@ export const showTaskCommand = new Command("show")
         console.error(`Task ${id} not found.`);
         process.exit(1);
       }
+
+      const hasStateType = options.stateType !== undefined;
+      const hasStateName = options.stateName !== undefined;
+
+      if (!isEnabled(FF_SHOW_RUN_FILTERING)) {
+        if (hasStateType || hasStateName) {
+          throw new Error("Run filtering feature is not enabled.");
+        }
+      } else {
+        if (hasStateType !== hasStateName) {
+          throw new Error("--state-type and --state-name must both be provided or both omitted.");
+        }
+        if (hasStateType) {
+          const validTypes = ["status", "outcome"];
+          if (!validTypes.includes(options.stateType!)) {
+            throw new Error(`Invalid state type "${options.stateType}". Valid: ${validTypes.join(", ")}.`);
+          }
+        }
+      }
+
       console.log(`ID: ${task.id}`);
       console.log(`Title: ${task.title}`);
       console.log(`Status: ${task.status}`);
@@ -347,9 +457,16 @@ export const showTaskCommand = new Command("show")
 
       const comments = getComments(id);
       if (comments.length > 0) {
+        const showAuthor = isEnabled(FF_COMMENT_ENHANCEMENTS);
         console.log("Comments:");
         for (const comment of comments) {
-          console.log(`  [${new Date(comment.created_at * 1000).toISOString()}] ${comment.text}`);
+          if (showAuthor) {
+            const displayAuthor = comment.author ?? "user";
+            console.log(`  [${new Date(comment.created_at * 1000).toISOString()}]  ${displayAuthor}:`);
+            console.log(`  ${comment.text}`);
+          } else {
+            console.log(`  [${new Date(comment.created_at * 1000).toISOString()}] ${comment.text}`);
+          }
         }
       }
 
@@ -359,6 +476,32 @@ export const showTaskCommand = new Command("show")
           console.log("Attachments:");
           for (const attachment of attachments) {
             console.log(`  - ${attachment.filename} (${attachment.size} bytes) ${attachment.stored_path}`);
+          }
+        }
+      }
+
+      if (isEnabled(FF_SHOW_RUN_FILTERING)) {
+        const runs = hasStateType
+          ? getRunsFiltered(id, { stateType: options.stateType!, stateName: options.stateName! })
+          : getRuns(id);
+        if (runs.length === 0) {
+          console.log(hasStateType ? "No runs match the filter." : "No runs found for this task.");
+        } else {
+          console.log("Runs:");
+          for (const run of runs) {
+            const started = new Date(run.started_at * 1000).toISOString();
+            const ended = run.ended_at ? new Date(run.ended_at * 1000).toISOString() : null;
+            let line = `  #${run.id}: status=${run.status}`;
+            if (run.outcome) line += ` outcome=${run.outcome}`;
+            if (run.profile) line += ` profile=${run.profile}`;
+            line += ` started=${started}`;
+            if (isEnabled(FF_CRASH_GRACE_PERIOD) && run.spawned_at) {
+              line += ` spawned=${new Date(run.spawned_at * 1000).toISOString()}`;
+            }
+            if (ended) line += ` ended=${ended}`;
+            if (run.summary) line += ` summary="${run.summary}"`;
+            if (run.error) line += ` error="${run.error}"`;
+            console.log(line);
           }
         }
       }
@@ -390,13 +533,44 @@ export const commentTaskCommand = new Command("comment")
   .description("Add a comment to a task")
   .argument("<task_id>", "Task ID")
   .argument("<text>", "Comment text")
-  .action((taskId: string, text: string) => {
+  .option("--author <name>", "Comment author")
+  .option("--max-len <n>", "Maximum comment length")
+  .action((taskId: string, text: string, options: { author?: string; maxLen?: string }) => {
     try {
+      if (options.author !== undefined && !isEnabled(FF_COMMENT_ENHANCEMENTS)) {
+        throw new Error("Comment enhancements feature is not enabled.");
+      }
+      if (options.maxLen !== undefined && !isEnabled(FF_COMMENT_ENHANCEMENTS)) {
+        throw new Error("Comment enhancements feature is not enabled.");
+      }
+
       const id = parseTaskId(taskId);
       if (!text || text.trim() === "") {
         throw new Error("Comment text is required.");
       }
-      const comment = addComment(id, text);
+
+      let author: string | undefined;
+      if (isEnabled(FF_COMMENT_ENHANCEMENTS)) {
+        if (options.author !== undefined) {
+          if (options.author.trim() === "") {
+            throw new Error("Author cannot be empty.");
+          }
+          author = options.author.trim();
+        } else {
+          author = Bun.env.KDI_PROFILE ?? Bun.env.HERMES_PROFILE ?? "user";
+        }
+      }
+
+      let maxLen: number | undefined;
+      if (options.maxLen !== undefined) {
+        const parsed = Number(options.maxLen);
+        if (isNaN(parsed) || !Number.isInteger(parsed) || parsed <= 0) {
+          throw new Error(`Max length must be a positive integer, got "${options.maxLen}"`);
+        }
+        maxLen = parsed;
+      }
+
+      const comment = addComment({ task_id: id, text, author, max_len: maxLen });
       console.log(`Added comment ${comment.id} to task ${id}.`);
     } catch (err: any) {
       console.error(`Error: ${err.message}`);
@@ -423,13 +597,73 @@ export const attachTaskCommand = new Command("attach")
   });
 
 export const promoteTaskCommand = new Command("promote")
-  .description("Promote a task from todo to ready")
-  .argument("<task_id>", "Task ID")
-  .action((taskId: string) => {
+  .description("Promote task(s) from todo to ready")
+  .argument("[task_ids...]", "One or more task IDs")
+  .option("--force", "Promote even if parent dependencies are not done")
+  .option("--dry-run", "Validate promotion without mutating state")
+  .action((taskIds: string[], options: { force?: boolean; dryRun?: boolean }) => {
     try {
-      const id = parseTaskId(taskId);
-      const task = promoteTask(id);
-      console.log(`Promoted task ${task.id} to ready.`);
+      if (taskIds.length === 0) {
+        throw new Error("At least one task ID is required.");
+      }
+
+      const isBulk = taskIds.length > 1 || options.force || options.dryRun;
+      if (isBulk && !isEnabled(FF_BULK_OPERATIONS)) {
+        throw new Error("Bulk operations feature is not enabled.");
+      }
+
+      const ids = taskIds.map(parseTaskId);
+
+      if (options.dryRun) {
+        let allOk = true;
+        for (const id of ids) {
+          const verdict = promoteTaskAdvanced(id, { force: options.force, dryRun: true });
+          printVerdict(id, verdict);
+          if (verdict.status !== "would_promote") {
+            allOk = false;
+          }
+        }
+        if (!allOk) process.exit(1);
+        return;
+      }
+
+      // Single-task promote without force/dry-run when flag is disabled
+      // uses the existing simple promote (backward compat). When the flag
+      // is enabled, always use promoteTaskAdvanced for dependency checks.
+      if (!isBulk) {
+        const id = ids[0];
+        if (!isEnabled(FF_BULK_OPERATIONS)) {
+          const task = promoteTask(id);
+          console.log(`Promoted task ${task.id} to ready.`);
+          return;
+        }
+        // Flag enabled: use advanced promote for dependency checks
+        const result = promoteTaskAdvanced(id);
+        if (result.status === "promoted") {
+          console.log(`Promoted task ${result.task.id} to ready.`);
+        } else {
+          printVerdict(id, result);
+          process.exit(1);
+        }
+        return;
+      }
+
+      let skipped = 0;
+      for (const id of ids) {
+        const result = promoteTaskAdvanced(id, { force: options.force });
+        if (result.status === "promoted") {
+          console.log(`Promoted task ${result.task.id} to ready.`);
+        } else {
+          printVerdict(id, result);
+          skipped++;
+        }
+      }
+
+      const promoted = ids.length - skipped;
+      if (ids.length > 1) {
+        console.log(`Promoted ${promoted}/${ids.length} tasks.`);
+      }
+      if (skipped > 0) process.exit(1);
     } catch (err: any) {
       console.error(`Error: ${err.message}`);
       process.exit(1);
@@ -493,17 +727,56 @@ export const reassignTaskCommand = new Command("reassign")
   });
 
 export const blockTaskCommand = new Command("block")
-  .description("Block a task")
-  .argument("<task_id>", "Task ID")
+  .description("Block one or more tasks")
+  .argument("[task_ids...]", "One or more task IDs")
   .requiredOption("--reason <text>", "Block reason")
-  .action((taskId: string, options: { reason: string }) => {
+  .action((taskIds: string[], options: { reason: string }) => {
     try {
-      const id = parseTaskId(taskId);
+      if (taskIds.length === 0) {
+        throw new Error("At least one task ID is required.");
+      }
+
+      if (taskIds.length > 1 && !isEnabled(FF_BULK_OPERATIONS)) {
+        throw new Error("Bulk operations feature is not enabled.");
+      }
+
       if (!options.reason || options.reason.trim() === "") {
         throw new Error("Block reason is required.");
       }
-      const task = blockTask(id, options.reason);
-      console.log(`Blocked task ${task.id}.`);
+
+      const ids = taskIds.map(parseTaskId);
+      let skipped = 0;
+      for (const id of ids) {
+        try {
+          const task = showTask(id);
+          if (!task) {
+            console.error(`Skipped task ${id}: not found`);
+            skipped++;
+            continue;
+          }
+          if (task.status === "blocked") {
+            console.error(`Skipped task ${id}: already blocked`);
+            skipped++;
+            continue;
+          }
+          if (task.archived_at !== null) {
+            console.error(`Skipped task ${id}: already archived`);
+            skipped++;
+            continue;
+          }
+          const blocked = blockTask(id, options.reason);
+          console.log(`Blocked task ${blocked.id}.`);
+        } catch (err: any) {
+          console.error(`Skipped task ${id}: ${err.message}`);
+          skipped++;
+        }
+      }
+
+      if (ids.length > 1) {
+        const blocked = ids.length - skipped;
+        console.log(`Blocked ${blocked}/${ids.length} tasks.`);
+      }
+      if (skipped > 0) process.exit(1);
     } catch (err: any) {
       console.error(`Error: ${err.message}`);
       process.exit(1);
@@ -553,14 +826,21 @@ export const scheduleTaskCommand = new Command("schedule")
       }
       const ids = taskIds.map(parseTaskId);
       const scheduled: number[] = [];
+      let skipped = 0;
       for (const id of ids) {
-        const task = scheduleTask(id, scheduledAt, options.reason);
-        console.log(`Scheduled task ${task.id} for ${new Date(scheduledAt * 1000).toISOString()}.`);
-        scheduled.push(task.id);
+        try {
+          const task = scheduleTask(id, scheduledAt, options.reason);
+          console.log(`Scheduled task ${task.id} for ${new Date(scheduledAt * 1000).toISOString()}.`);
+          scheduled.push(task.id);
+        } catch (err: any) {
+          console.error(`Skipped task ${id}: ${err.message}`);
+          skipped++;
+        }
       }
       if (scheduled.length > 1) {
         console.log(`Scheduled ${scheduled.length} tasks.`);
       }
+      if (skipped > 0) process.exit(1);
     } catch (err: any) {
       console.error(`Error: ${err.message}`);
       process.exit(1);
@@ -629,11 +909,45 @@ export const specifyTaskCommand = new Command("specify")
   });
 
 export const archiveTaskCommand = new Command("archive")
-  .description("Archive a task")
-  .argument("<task_id>", "Task ID")
-  .action((taskId: string) => {
+  .description("Archive a task, or permanently delete archived task(s) with --rm")
+  .argument("[task_ids...]", "Task ID(s)")
+  .option("--rm", "Permanently delete already-archived task(s)")
+  .action((taskIds: string[], options: { rm?: boolean }) => {
     try {
-      const id = parseTaskId(taskId);
+      if (options.rm) {
+        if (!isEnabled(FF_BULK_OPERATIONS)) {
+          throw new Error("Bulk operations feature is not enabled.");
+        }
+        if (taskIds.length === 0) {
+          throw new Error("At least one task ID is required.");
+        }
+        const ids = taskIds.map(parseTaskId);
+        let skipped = 0;
+        for (const id of ids) {
+          try {
+            archiveTaskHard(id);
+            console.log(`Permanently deleted task ${id}.`);
+          } catch (err: any) {
+            console.error(`Skipped task ${id}: ${err.message}`);
+            skipped++;
+          }
+        }
+        if (ids.length > 1) {
+          const deleted = ids.length - skipped;
+          console.log(`Deleted ${deleted}/${ids.length} tasks.`);
+        }
+        if (skipped > 0) process.exit(1);
+        return;
+      }
+
+      if (taskIds.length === 0) {
+        throw new Error("At least one task ID is required.");
+      }
+      if (taskIds.length > 1) {
+        throw new Error("Archive only supports a single task ID (use --rm for bulk deletion of archived tasks).");
+      }
+
+      const id = parseTaskId(taskIds[0]);
       const task = archiveTask(id);
       console.log(`Archived task ${task.id}.`);
     } catch (err: any) {
@@ -729,9 +1043,59 @@ export const tailTaskCommand = new Command("tail")
 
 export const watchCommand = new Command("watch")
   .description("Watch board-wide events")
-  .action(async () => {
+  .option("--assignee <profile>", "Filter events by task assignee")
+  .option("--tenant <name>", "Filter events by task tenant")
+  .option("--kinds <list>", "Comma-separated event kinds to watch")
+  .option("--interval <seconds>", "Poll interval in seconds (default 0.5)", "0.5")
+  .action(async (options: { assignee?: string; tenant?: string; kinds?: string; interval?: string }) => {
     try {
-      const events = getRecentEvents(50);
+      const hasFilters = !!(options.assignee || options.tenant || options.kinds || options.interval !== "0.5");
+
+      if (hasFilters && !isEnabled(FF_WATCH_FILTERS)) {
+        throw new Error("Watch filters feature is not enabled.");
+      }
+
+      if (options.tenant && !isEnabled(FF_TENANT_NAMESPACE)) {
+        throw new Error("Tenant namespace feature is not enabled.");
+      }
+
+      // Validate assignee
+      if (options.assignee !== undefined && options.assignee.trim() === "") {
+        throw new Error("Assignee cannot be empty.");
+      }
+
+      // Validate tenant
+      if (options.tenant !== undefined && options.tenant.trim() === "") {
+        throw new Error("Tenant cannot be empty.");
+      }
+
+      // Validate kinds
+      const kindsList = options.kinds !== undefined
+        ? options.kinds.split(",").map((k) => k.trim()).filter((k) => k.length > 0)
+        : undefined;
+      if (options.kinds !== undefined && (!kindsList || kindsList.length === 0)) {
+        throw new Error("Kinds cannot be empty.");
+      }
+
+      // Validate interval
+      let intervalMs = 500;
+      if (options.interval !== undefined) {
+        const parsed = parseFloat(options.interval);
+        if (isNaN(parsed)) {
+          throw new Error("Interval must be a positive number.");
+        }
+        if (parsed < 0.1) {
+          throw new Error("Interval must be at least 0.1 seconds.");
+        }
+        intervalMs = parsed * 1000;
+      }
+
+      const filters: WatchFilters = {};
+      if (options.assignee) filters.assignee = options.assignee.trim();
+      if (options.tenant) filters.tenant = options.tenant.trim();
+      if (kindsList) filters.kinds = kindsList;
+
+      const events = getRecentEvents(50, filters);
       let maxId = 0;
       for (const event of events.slice().reverse()) {
         const ts = new Date(event.created_at * 1000).toISOString();
@@ -740,8 +1104,8 @@ export const watchCommand = new Command("watch")
       }
 
       while (true) {
-        await new Promise((resolve) => setTimeout(resolve, 500));
-        const newEvents = getEventsAfter(maxId);
+        await new Promise((resolve) => setTimeout(resolve, intervalMs));
+        const newEvents = getEventsAfter(maxId, filters);
         for (const event of newEvents) {
           const ts = new Date(event.created_at * 1000).toISOString();
           console.log(`${event.task_id}\t${event.kind}\t${ts}`);
