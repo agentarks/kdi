@@ -60,7 +60,7 @@ stateDiagram-v2
 | `ff_show_run_filtering` | `FF_SHOW_RUN_FILTERING` | CLI / task inspection | InDev | `false` | KDI-031 | `kdi show` run section and `--state-type`/`--state-name` run filtering.
 | `ff_bulk_operations` | `FF_BULK_OPERATIONS` | CLI / task lifecycle | Planned | `false` | KDI-032 | Bulk `block`/`promote`/`archive --rm`; `promote --force` and `--dry-run`.
 | `ff_comment_enhancements` | `FF_COMMENT_ENHANCEMENTS` | CLI / task metadata | InDev | `false` | KDI-033 | `kdi comment --author`/`--max-len` and author display in `kdi show`.
-| `ff_dispatch_controls` | `FF_DISPATCH_CONTROLS` | CLI / dispatcher | Planned | `false` | KDI-034 | `kdi dispatch --failure-limit` per-pass failure threshold.
+| `ff_dispatch_controls` | `FF_DISPATCH_CONTROLS` | CLI / dispatcher | InDev | `false` | KDI-034 | `kdi dispatch --failure-limit` per-pass failure threshold.
 | `ff_watch_filters` | `FF_WATCH_FILTERS` | CLI / observability | InDev | `false` | KDI-035 | `kdi watch --assignee`/`--tenant`/`--kinds`/`--interval` filters.
 
 ## Lifecycle Notes
@@ -479,7 +479,7 @@ stateDiagram-v2
 - **Rollback / deactivation:** Set `FF_BULK_OPERATIONS=false` to reject bulk IDs, `--force`, `--dry-run`, and `--rm`.
 - **Deprecation plan:** N/A
 
-### `ff_dispatch_controls` — Planned
+### `ff_dispatch_controls` — InDev
 
 - **Owner:** kdi core team
 - **BRD:** [BRD-KDI-034](brd-kdi-034-dispatch-controls.md)

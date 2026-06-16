@@ -8,7 +8,7 @@ import { createBoard } from "../../src/models/board";
 import { createTask, archiveTask, type Task } from "../../src/models/task";
 import { createRun } from "../../src/models/taskRun";
 import { listRunsCommand, attachTaskCommand, showTaskCommand, createTaskCommand, listTasksCommand } from "../../src/commands/tasks";
-import { setFlag, clearOverrides, FF_TASK_ATTACHMENTS, FF_LIST_FILTERS_SORT } from "../../src/flags";
+import { setFlag, clearOverrides, FF_TASK_ATTACHMENTS, FF_LIST_FILTERS_SORT, FF_COMMENT_ENHANCEMENTS, FF_WATCH_FILTERS } from "../../src/flags";
 
 const TEST_DB = "/tmp/kdi-commands-tasks-test.db";
 const TEST_SLUGS = ["cmd-board", "attach-board", "show-board"];

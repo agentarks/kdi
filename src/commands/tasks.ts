@@ -26,10 +26,10 @@ import {
 import { addComment, getComments } from "../models/comment";
 import { createAttachment, listAttachments } from "../models/taskAttachment";
 import { getRuns, getRunsFiltered } from "../models/taskRun";
-import { getEvents, tailEvents, getRecentEvents, getEventsAfter } from "../models/taskEvent";
+import { getEvents, tailEvents, getRecentEvents, getEventsAfter, type WatchFilters } from "../models/taskEvent";
 import { atomicClaim, reclaimTask, heartbeat } from "../models/claim";
 import { getTaskLogPath } from "../observability";
-import { isEnabled, FF_SCHEDULED_STATUS, FF_REVIEW_STATUS, FF_COMPLETE_METADATA, FF_PRIORITY_INTEGER, FF_SKILLS_ARRAY, FF_MAX_RUNTIME, FF_MAX_RETRIES, FF_TENANT_NAMESPACE, FF_CREATED_BY, FF_MODEL_OVERRIDE, FF_DEFAULT_WORKDIR, FF_WORKER_LOG_CAPTURE, FF_ASSIGN_REASSIGN, FF_CRASH_GRACE_PERIOD, FF_HEARTBEAT, FF_RATE_LIMIT_EXIT_CODE, FF_TASK_ATTACHMENTS, FF_LIST_FILTERS_SORT, FF_SHOW_RUN_FILTERING, FF_BULK_OPERATIONS } from "../flags";
+import { isEnabled, FF_SCHEDULED_STATUS, FF_REVIEW_STATUS, FF_COMPLETE_METADATA, FF_PRIORITY_INTEGER, FF_SKILLS_ARRAY, FF_MAX_RUNTIME, FF_MAX_RETRIES, FF_TENANT_NAMESPACE, FF_CREATED_BY, FF_MODEL_OVERRIDE, FF_DEFAULT_WORKDIR, FF_WORKER_LOG_CAPTURE, FF_ASSIGN_REASSIGN, FF_CRASH_GRACE_PERIOD, FF_HEARTBEAT, FF_RATE_LIMIT_EXIT_CODE, FF_TASK_ATTACHMENTS, FF_LIST_FILTERS_SORT, FF_SHOW_RUN_FILTERING, FF_BULK_OPERATIONS, FF_COMMENT_ENHANCEMENTS, FF_WATCH_FILTERS } from "../flags";
 import { resolveBoard } from "../resolveBoard";
 
 const VALID_STATUSES = ["triage", "todo", "scheduled", "ready", "running", "done", "blocked", "review"] as const;

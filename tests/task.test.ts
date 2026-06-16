@@ -6,8 +6,6 @@ import {
   showTask,
   editTask,
   promoteTask,
-  promoteTaskAdvanced,
-  archiveTaskHard,
   blockTask,
   unblockTask,
   archiveTask,
@@ -21,9 +19,6 @@ import {
   reassignTask,
   type Task,
 } from "../src/models/task";
-import { addDependency } from "../src/models/dependency";
-import { addComment } from "../src/models/comment";
-import { createAttachment } from "../src/models/taskAttachment";
 import { createBoard } from "../src/models/board";
 import { getRuns, createRun } from "../src/models/taskRun";
 import { getEvents } from "../src/models/taskEvent";
