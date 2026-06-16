@@ -60,7 +60,7 @@ stateDiagram-v2
 | `ff_show_run_filtering` | `FF_SHOW_RUN_FILTERING` | CLI / task inspection | Planned | `false` | KDI-031 | `kdi show` run section and `--state-type`/`--state-name` run filtering.
 | `ff_bulk_operations` | `FF_BULK_OPERATIONS` | CLI / task lifecycle | Planned | `false` | KDI-032 | Bulk `block`/`promote`/`archive --rm`; `promote --force` and `--dry-run`.
 | `ff_dispatch_controls` | `FF_DISPATCH_CONTROLS` | CLI / dispatcher | Planned | `false` | KDI-034 | `kdi dispatch --failure-limit` per-pass failure threshold.
-| `ff_watch_filters` | `FF_WATCH_FILTERS` | CLI / observability | Planned | `false` | KDI-035 | `kdi watch --assignee`/`--tenant`/`--kinds`/`--interval` filters.
+| `ff_watch_filters` | `FF_WATCH_FILTERS` | CLI / observability | InDev | `false` | KDI-035 | `kdi watch --assignee`/`--tenant`/`--kinds`/`--interval` filters.
 
 ## Lifecycle Notes
 
@@ -491,7 +491,7 @@ stateDiagram-v2
 - **Rollback / deactivation:** Set `FF_DISPATCH_CONTROLS=false` to reject `--failure-limit`.
 - **Deprecation plan:** N/A
 
-### `ff_watch_filters` — Planned
+### `ff_watch_filters` — InDev
 
 - **Owner:** kdi core team
 - **BRD:** [BRD-KDI-035](brd-kdi-035-watch-filters.md)

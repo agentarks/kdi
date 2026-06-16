@@ -184,6 +184,23 @@ describe("taskEvent model", () => {
       }
     });
 
+    it("getRecentEvents combines assignee + tenant filters (AND)", () => {
+      const board = createBoard("alpha", "/tmp/alpha");
+      const t1 = createTask({ board_id: board.id, title: "T1", assignee: "alice", tenant: "team-a" });
+      const t2 = createTask({ board_id: board.id, title: "T2", assignee: "alice", tenant: "team-b" });
+      const t3 = createTask({ board_id: board.id, title: "T3", assignee: "bob", tenant: "team-a" });
+      addEvent(t1.id, "created");
+      addEvent(t2.id, "created");
+      addEvent(t3.id, "created");
+
+      // Only t1 matches both assignee="alice" AND tenant="team-a"
+      const events = getRecentEvents(10, { assignee: "alice", tenant: "team-a" });
+      expect(events.length).toBeGreaterThanOrEqual(1);
+      for (const e of events) {
+        expect(e.task_id).toBe(t1.id);
+      }
+    });
+
     it("getEventsAfter filters by assignee", () => {
       const board = createBoard("alpha", "/tmp/alpha");
       const t1 = createTask({ board_id: board.id, title: "T1", assignee: "alice" });
