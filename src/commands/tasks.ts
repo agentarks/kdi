@@ -22,11 +22,11 @@ import {
 } from "../models/task";
 import { addComment, getComments } from "../models/comment";
 import { createAttachment, listAttachments } from "../models/taskAttachment";
-import { getRuns } from "../models/taskRun";
+import { getRuns, getRunsFiltered } from "../models/taskRun";
 import { getEvents, tailEvents, getRecentEvents, getEventsAfter } from "../models/taskEvent";
 import { atomicClaim, reclaimTask, heartbeat } from "../models/claim";
 import { getTaskLogPath } from "../observability";
-import { isEnabled, FF_SCHEDULED_STATUS, FF_REVIEW_STATUS, FF_COMPLETE_METADATA, FF_PRIORITY_INTEGER, FF_SKILLS_ARRAY, FF_MAX_RUNTIME, FF_MAX_RETRIES, FF_TENANT_NAMESPACE, FF_CREATED_BY, FF_MODEL_OVERRIDE, FF_DEFAULT_WORKDIR, FF_WORKER_LOG_CAPTURE, FF_ASSIGN_REASSIGN, FF_CRASH_GRACE_PERIOD, FF_HEARTBEAT, FF_RATE_LIMIT_EXIT_CODE, FF_TASK_ATTACHMENTS, FF_LIST_FILTERS_SORT } from "../flags";
+import { isEnabled, FF_SCHEDULED_STATUS, FF_REVIEW_STATUS, FF_COMPLETE_METADATA, FF_PRIORITY_INTEGER, FF_SKILLS_ARRAY, FF_MAX_RUNTIME, FF_MAX_RETRIES, FF_TENANT_NAMESPACE, FF_CREATED_BY, FF_MODEL_OVERRIDE, FF_DEFAULT_WORKDIR, FF_WORKER_LOG_CAPTURE, FF_ASSIGN_REASSIGN, FF_CRASH_GRACE_PERIOD, FF_HEARTBEAT, FF_RATE_LIMIT_EXIT_CODE, FF_TASK_ATTACHMENTS, FF_LIST_FILTERS_SORT, FF_SHOW_RUN_FILTERING } from "../flags";
 import { resolveBoard } from "../resolveBoard";
 
 const VALID_STATUSES = ["triage", "todo", "scheduled", "ready", "running", "done", "blocked", "review"] as const;
@@ -367,7 +367,9 @@ export const listTasksCommand = new Command("list")
 export const showTaskCommand = new Command("show")
   .description("Show task details")
   .argument("<task_id>", "Task ID")
-  .action((taskId: string) => {
+  .option("--state-type <type>", "Run state type to filter by (status|outcome)")
+  .option("--state-name <value>", "Run state name to filter by")
+  .action((taskId: string, options: { stateType?: string; stateName?: string }) => {
     try {
       const id = parseTaskId(taskId);
       const task = showTask(id);
@@ -375,6 +377,26 @@ export const showTaskCommand = new Command("show")
         console.error(`Task ${id} not found.`);
         process.exit(1);
       }
+
+      const hasStateType = options.stateType !== undefined;
+      const hasStateName = options.stateName !== undefined;
+
+      if (!isEnabled(FF_SHOW_RUN_FILTERING)) {
+        if (hasStateType || hasStateName) {
+          throw new Error("Run filtering feature is not enabled.");
+        }
+      } else {
+        if (hasStateType !== hasStateName) {
+          throw new Error("--state-type and --state-name must both be provided or both omitted.");
+        }
+        if (hasStateType) {
+          const validTypes = ["status", "outcome"];
+          if (!validTypes.includes(options.stateType!)) {
+            throw new Error(`Invalid state type "${options.stateType}". Valid: ${validTypes.join(", ")}.`);
+          }
+        }
+      }
+
       console.log(`ID: ${task.id}`);
       console.log(`Title: ${task.title}`);
       console.log(`Status: ${task.status}`);
@@ -420,6 +442,32 @@ export const showTaskCommand = new Command("show")
           console.log("Attachments:");
           for (const attachment of attachments) {
             console.log(`  - ${attachment.filename} (${attachment.size} bytes) ${attachment.stored_path}`);
+          }
+        }
+      }
+
+      if (isEnabled(FF_SHOW_RUN_FILTERING)) {
+        const runs = hasStateType
+          ? getRunsFiltered(id, { stateType: options.stateType!, stateName: options.stateName! })
+          : getRuns(id);
+        if (runs.length === 0) {
+          console.log(hasStateType ? "No runs match the filter." : "No runs found for this task.");
+        } else {
+          console.log("Runs:");
+          for (const run of runs) {
+            const started = new Date(run.started_at * 1000).toISOString();
+            const ended = run.ended_at ? new Date(run.ended_at * 1000).toISOString() : null;
+            let line = `  #${run.id}: status=${run.status}`;
+            if (run.outcome) line += ` outcome=${run.outcome}`;
+            if (run.profile) line += ` profile=${run.profile}`;
+            line += ` started=${started}`;
+            if (isEnabled(FF_CRASH_GRACE_PERIOD) && run.spawned_at) {
+              line += ` spawned=${new Date(run.spawned_at * 1000).toISOString()}`;
+            }
+            if (ended) line += ` ended=${ended}`;
+            if (run.summary) line += ` summary="${run.summary}"`;
+            if (run.error) line += ` error="${run.error}"`;
+            console.log(line);
           }
         }
       }

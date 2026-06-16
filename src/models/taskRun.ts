@@ -107,6 +107,25 @@ export function getRuns(taskId: number): TaskRun[] {
   ).all(taskId) as TaskRun[];
 }
 
+export interface RunFilter {
+  stateType: string;
+  stateName: string;
+}
+
+export function getRunsFiltered(taskId: number, filter: RunFilter): TaskRun[] {
+  const validTypes = ["status", "outcome"];
+  if (!validTypes.includes(filter.stateType)) {
+    throw new Error(`Invalid state type "${filter.stateType}". Valid: ${validTypes.join(", ")}.`);
+  }
+  const db = getDb();
+  return db.query(
+    `SELECT ${TASK_RUN_COLUMNS}
+     FROM task_runs
+     WHERE task_id = ? AND ${filter.stateType} = ?
+     ORDER BY started_at DESC`
+  ).all(taskId, filter.stateName) as TaskRun[];
+}
+
 export function getRun(id: number): TaskRun | null {
   const db = getDb();
   const run = db.query(

@@ -57,7 +57,7 @@ stateDiagram-v2
 | `ff_context_builder` | `FF_CONTEXT_BUILDER` | CLI / task context | InDev | `false` | KDI-023 | `kdi context` bounded worker context builder. |
 | `ff_notify_subs` | `FF_NOTIFY_SUBS` | CLI / notifier watcher | InDev | `false` | KDI-025 | Notification subscriptions; `notify-subscribe/list/unsubscribe` commands; notifier watcher in dispatcher tick.
 | `ff_list_filters_sort` | `FF_LIST_FILTERS_SORT` | CLI / task listing | InDev | `false` | KDI-030 | `kdi list` filters (`--mine`, `--session`, `--archived`, workflow/step-key) and sort options; `create --session`.
-| `ff_show_run_filtering` | `FF_SHOW_RUN_FILTERING` | CLI / task inspection | Planned | `false` | KDI-031 | `kdi show` run section and `--state-type`/`--state-name` run filtering.
+| `ff_show_run_filtering` | `FF_SHOW_RUN_FILTERING` | CLI / task inspection | InDev | `false` | KDI-031 | `kdi show` run section and `--state-type`/`--state-name` run filtering.
 | `ff_bulk_operations` | `FF_BULK_OPERATIONS` | CLI / task lifecycle | Planned | `false` | KDI-032 | Bulk `block`/`promote`/`archive --rm`; `promote --force` and `--dry-run`.
 | `ff_dispatch_controls` | `FF_DISPATCH_CONTROLS` | CLI / dispatcher | Planned | `false` | KDI-034 | `kdi dispatch --failure-limit` per-pass failure threshold.
 | `ff_watch_filters` | `FF_WATCH_FILTERS` | CLI / observability | Planned | `false` | KDI-035 | `kdi watch --assignee`/`--tenant`/`--kinds`/`--interval` filters.

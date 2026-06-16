@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { initDb, closeDb } from "../src/db";
 import { createBoard } from "../src/models/board";
 import { createTask } from "../src/models/task";
-import { createRun, getRuns, getRun, updateRun, finishRun } from "../src/models/taskRun";
+import { createRun, getRuns, getRun, updateRun, finishRun, getRunsFiltered } from "../src/models/taskRun";
 import { cleanupDb } from "./cleanupDb";
 
 const TEST_DB = "/tmp/kdi-taskrun-test.db";
@@ -158,5 +158,54 @@ describe("taskRun model", () => {
     const runReclaimed = createRun({ task_id: task.id, status: "running", started_at: 1005 });
     finishRun(runReclaimed.id, "reclaimed");
     expect(getRun(runReclaimed.id)!.status).toBe("released");
+  });
+
+  it("getRunsFiltered returns runs matching status filter", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Filter by status" });
+
+    const run1 = createRun({ task_id: task.id, status: "running", started_at: 1000 });
+    const run2 = createRun({ task_id: task.id, status: "running", started_at: 2000 });
+    finishRun(run2.id, "completed");
+    const run3 = createRun({ task_id: task.id, status: "running", started_at: 3000 });
+    finishRun(run3.id, "crashed", null, null, "boom");
+
+    const filtered = getRunsFiltered(task.id, { stateType: "status", stateName: "crashed" });
+    expect(filtered).toHaveLength(1);
+    expect(filtered[0].id).toBe(run3.id);
+    expect(filtered[0].status).toBe("crashed");
+  });
+
+  it("getRunsFiltered returns runs matching outcome filter", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Filter by outcome" });
+
+    const run1 = createRun({ task_id: task.id, status: "running", started_at: 1000 });
+    finishRun(run1.id, "completed");
+    const run2 = createRun({ task_id: task.id, status: "running", started_at: 2000 });
+    finishRun(run2.id, "crashed", null, null, "boom");
+
+    const filtered = getRunsFiltered(task.id, { stateType: "outcome", stateName: "completed" });
+    expect(filtered).toHaveLength(1);
+    expect(filtered[0].id).toBe(run1.id);
+    expect(filtered[0].outcome).toBe("completed");
+  });
+
+  it("getRunsFiltered returns empty when no runs match", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "No match" });
+    createRun({ task_id: task.id, status: "running", started_at: 1000 });
+
+    const filtered = getRunsFiltered(task.id, { stateType: "status", stateName: "done" });
+    expect(filtered).toHaveLength(0);
+  });
+
+  it("getRunsFiltered rejects invalid state type", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Invalid type" });
+
+    expect(() =>
+      getRunsFiltered(task.id, { stateType: "invalid", stateName: "done" })
+    ).toThrow(/Invalid state type/);
   });
 });
