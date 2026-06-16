@@ -192,6 +192,213 @@ describe("tasks commands", () => {
     expect(logs.some((l) => l.includes("artifact.log") && l.includes("8 bytes"))).toBe(true);
   });
 
+  // KDI-035: watch filters CLI tests
+  describe("watch command filters", () => {
+    it("rejects --assignee when FF_WATCH_FILTERS is disabled", async () => {
+      setFlag(FF_WATCH_FILTERS, false);
+
+      let errorMsg = "";
+      const originalError = console.error;
+      console.error = (...args: unknown[]) => { errorMsg = args.map(String).join(" "); };
+
+      let exitCode = 0;
+      const originalExit = process.exit;
+      process.exit = ((code?: number) => { exitCode = code ?? 0; throw new Error(`exit:${code}`); }) as typeof process.exit;
+
+      try {
+        await watchCommand.parseAsync(["--assignee", "alice"], { from: "user" });
+      } catch {}
+      finally {
+        console.error = originalError;
+        process.exit = originalExit;
+      }
+
+      expect(exitCode).toBe(1);
+      expect(errorMsg).toContain("Watch filters feature is not enabled");
+    });
+
+    it("rejects --tenant when FF_WATCH_FILTERS is disabled", async () => {
+      setFlag(FF_WATCH_FILTERS, false);
+
+      let errorMsg = "";
+      const originalError = console.error;
+      console.error = (...args: unknown[]) => { errorMsg = args.map(String).join(" "); };
+
+      let exitCode = 0;
+      const originalExit = process.exit;
+      process.exit = ((code?: number) => { exitCode = code ?? 0; throw new Error(`exit:${code}`); }) as typeof process.exit;
+
+      try {
+        await watchCommand.parseAsync(["--tenant", "team-a"], { from: "user" });
+      } catch {}
+      finally {
+        console.error = originalError;
+        process.exit = originalExit;
+      }
+
+      expect(exitCode).toBe(1);
+      expect(errorMsg).toContain("Watch filters feature is not enabled");
+    });
+
+    it("rejects --kinds when FF_WATCH_FILTERS is disabled", async () => {
+      setFlag(FF_WATCH_FILTERS, false);
+
+      let errorMsg = "";
+      const originalError = console.error;
+      console.error = (...args: unknown[]) => { errorMsg = args.map(String).join(" "); };
+
+      let exitCode = 0;
+      const originalExit = process.exit;
+      process.exit = ((code?: number) => { exitCode = code ?? 0; throw new Error(`exit:${code}`); }) as typeof process.exit;
+
+      try {
+        await watchCommand.parseAsync(["--kinds", "created,completed"], { from: "user" });
+      } catch {}
+      finally {
+        console.error = originalError;
+        process.exit = originalExit;
+      }
+
+      expect(exitCode).toBe(1);
+      expect(errorMsg).toContain("Watch filters feature is not enabled");
+    });
+
+    it("rejects --interval when FF_WATCH_FILTERS is disabled", async () => {
+      setFlag(FF_WATCH_FILTERS, false);
+
+      let errorMsg = "";
+      const originalError = console.error;
+      console.error = (...args: unknown[]) => { errorMsg = args.map(String).join(" "); };
+
+      let exitCode = 0;
+      const originalExit = process.exit;
+      process.exit = ((code?: number) => { exitCode = code ?? 0; throw new Error(`exit:${code}`); }) as typeof process.exit;
+
+      try {
+        await watchCommand.parseAsync(["--interval", "1"], { from: "user" });
+      } catch {}
+      finally {
+        console.error = originalError;
+        process.exit = originalExit;
+      }
+
+      expect(exitCode).toBe(1);
+      expect(errorMsg).toContain("Watch filters feature is not enabled");
+    });
+
+    it("rejects --tenant when FF_TENANT_NAMESPACE is disabled (even with FF_WATCH_FILTERS on)", async () => {
+      setFlag(FF_WATCH_FILTERS, true);
+      setFlag(FF_TENANT_NAMESPACE, false);
+
+      let errorMsg = "";
+      const originalError = console.error;
+      console.error = (...args: unknown[]) => { errorMsg = args.map(String).join(" "); };
+
+      let exitCode = 0;
+      const originalExit = process.exit;
+      process.exit = ((code?: number) => { exitCode = code ?? 0; throw new Error(`exit:${code}`); }) as typeof process.exit;
+
+      try {
+        await watchCommand.parseAsync(["--tenant", "team-a"], { from: "user" });
+      } catch {}
+      finally {
+        console.error = originalError;
+        process.exit = originalExit;
+      }
+
+      expect(exitCode).toBe(1);
+      expect(errorMsg).toContain("Tenant namespace feature is not enabled");
+    });
+
+    it("rejects empty --assignee", async () => {
+      setFlag(FF_WATCH_FILTERS, true);
+
+      let errorMsg = "";
+      const originalError = console.error;
+      console.error = (...args: unknown[]) => { errorMsg = args.map(String).join(" "); };
+
+      let exitCode = 0;
+      const originalExit = process.exit;
+      process.exit = ((code?: number) => { exitCode = code ?? 0; throw new Error(`exit:${code}`); }) as typeof process.exit;
+
+      try {
+        await watchCommand.parseAsync(["--assignee", ""], { from: "user" });
+      } catch {}
+      finally {
+        console.error = originalError;
+        process.exit = originalExit;
+      }
+
+      expect(exitCode).toBe(1);
+    });
+
+    it("rejects empty --kinds", async () => {
+      setFlag(FF_WATCH_FILTERS, true);
+
+      let errorMsg = "";
+      const originalError = console.error;
+      console.error = (...args: unknown[]) => { errorMsg = args.map(String).join(" "); };
+
+      let exitCode = 0;
+      const originalExit = process.exit;
+      process.exit = ((code?: number) => { exitCode = code ?? 0; throw new Error(`exit:${code}`); }) as typeof process.exit;
+
+      try {
+        await watchCommand.parseAsync(["--kinds", ""], { from: "user" });
+      } catch {}
+      finally {
+        console.error = originalError;
+        process.exit = originalExit;
+      }
+
+      expect(exitCode).toBe(1);
+    });
+
+    it("rejects --interval below 0.1", async () => {
+      setFlag(FF_WATCH_FILTERS, true);
+
+      let errorMsg = "";
+      const originalError = console.error;
+      console.error = (...args: unknown[]) => { errorMsg = args.map(String).join(" "); };
+
+      let exitCode = 0;
+      const originalExit = process.exit;
+      process.exit = ((code?: number) => { exitCode = code ?? 0; throw new Error(`exit:${code}`); }) as typeof process.exit;
+
+      try {
+        await watchCommand.parseAsync(["--interval", "0.05"], { from: "user" });
+      } catch {}
+      finally {
+        console.error = originalError;
+        process.exit = originalExit;
+      }
+
+      expect(exitCode).toBe(1);
+    });
+
+    it("rejects non-numeric --interval", async () => {
+      setFlag(FF_WATCH_FILTERS, true);
+
+      let errorMsg = "";
+      const originalError = console.error;
+      console.error = (...args: unknown[]) => { errorMsg = args.map(String).join(" "); };
+
+      let exitCode = 0;
+      const originalExit = process.exit;
+      process.exit = ((code?: number) => { exitCode = code ?? 0; throw new Error(`exit:${code}`); }) as typeof process.exit;
+
+      try {
+        await watchCommand.parseAsync(["--interval", "abc"], { from: "user" });
+      } catch {}
+      finally {
+        console.error = originalError;
+        process.exit = originalExit;
+      }
+
+      expect(exitCode).toBe(1);
+    });
+  });
+
   it("show command hides attachments when flag is disabled", async () => {
     setFlag(FF_TASK_ATTACHMENTS, false);
 
