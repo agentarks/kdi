@@ -2254,6 +2254,28 @@ describe("kdi e2e acceptance", () => {
     rmSync(tmp, { recursive: true, force: true });
   });
 
+  it("kdi list --sort updated orders by updated_at DESC", () => {
+    const tmp = makeTempDir("list-sort-updated");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_LIST_FILTERS_SORT: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    runKdi(`create "first" --board myproj`, env);
+    runKdi(`create "second" --board myproj`, env);
+    // Promote the second task to change its updated_at
+    runKdi(`promote 2`, env);
+
+    const output = runKdi(`list --board myproj --sort updated`, env);
+    const lines = output.split("\n").filter((l) => l.trim() !== "");
+    // The promoted (second) task should appear first since it was updated most recently
+    expect(lines[0]).toContain("second");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
   it("kdi list --sort with invalid key shows error", () => {
     const tmp = makeTempDir("list-sort-invalid");
     const dbPath = join(tmp, "kdi.db");
@@ -2264,6 +2286,27 @@ describe("kdi e2e acceptance", () => {
 
     runKdi(`boards create myproj --workdir ${repoDir}`, env);
     expect(() => runKdi(`list --board myproj --sort invalid`, env)).toThrow();
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("kdi list --status archived --archived returns archived tasks", () => {
+    const tmp = makeTempDir("list-status-archived");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_LIST_FILTERS_SORT: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    runKdi(`create "active-task" --board myproj`, env);
+    runKdi(`create "archived-task" --board myproj`, env);
+    // Soft-archive the second task
+    runKdi(`archive 2`, env);
+
+    const output = runKdi(`list --board myproj --status archived --archived`, env);
+    expect(output).toContain("archived-task");
+    expect(output).not.toContain("active-task");
 
     rmSync(tmp, { recursive: true, force: true });
   });

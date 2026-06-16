@@ -302,7 +302,10 @@ export const listTasksCommand = new Command("list")
       }
 
       if (options.status && !isValidStatus(options.status)) {
-        throw new Error(`Invalid status "${options.status}". Valid: ${VALID_STATUSES.join(", ")}`);
+        // Allow --status archived when --archived is also passed with FF_LIST_FILTERS_SORT
+        if (!(options.status === "archived" && isEnabled(FF_LIST_FILTERS_SORT) && options.archived)) {
+          throw new Error(`Invalid status "${options.status}". Valid: ${VALID_STATUSES.join(", ")}`);
+        }
       }
       if (options.tenant !== undefined) {
         if (!isEnabled(FF_TENANT_NAMESPACE)) {
