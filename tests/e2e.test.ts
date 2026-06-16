@@ -2412,4 +2412,217 @@ describe("kdi e2e acceptance", () => {
     rmSync(tmp, { recursive: true, force: true });
   });
 
+  // ── KDI-031: show run filtering CLI ──
+
+  it("show displays Runs section when FF_SHOW_RUN_FILTERING is enabled", async () => {
+    const tmp = makeTempDir("show-runs");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_SHOW_RUN_FILTERING: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const taskId = runKdi(`create "show runs" --board myproj`, env);
+
+    initDb(dbPath);
+    const { createRun } = await import("../src/models/taskRun");
+    createRun({ task_id: parseInt(taskId, 10), status: "running", profile: "opencode", started_at: 1000 });
+    closeDb();
+
+    const output = runKdi(`show ${taskId}`, env);
+    expect(output).toContain("Runs:");
+    expect(output).toContain("status=running");
+    expect(output).toContain("profile=opencode");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("show filters runs by --state-type status and --state-name", async () => {
+    const tmp = makeTempDir("show-filter-status");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_SHOW_RUN_FILTERING: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const taskId = runKdi(`create "filter status" --board myproj`, env);
+
+    initDb(dbPath);
+    const { createRun, finishRun } = await import("../src/models/taskRun");
+    const run1 = createRun({ task_id: parseInt(taskId, 10), status: "running", started_at: 1000 });
+    finishRun(run1.id, "completed");
+    const run2 = createRun({ task_id: parseInt(taskId, 10), status: "running", started_at: 2000 });
+    finishRun(run2.id, "crashed", null, null, "boom");
+    closeDb();
+
+    const output = runKdi(`show ${taskId} --state-type status --state-name crashed`, env);
+    expect(output).toContain("Runs:");
+    expect(output).toContain("status=crashed");
+    expect(output).not.toContain("status=done");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("show filters runs by --state-type outcome and --state-name", async () => {
+    const tmp = makeTempDir("show-filter-outcome");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_SHOW_RUN_FILTERING: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const taskId = runKdi(`create "filter outcome" --board myproj`, env);
+
+    initDb(dbPath);
+    const { createRun, finishRun } = await import("../src/models/taskRun");
+    const run1 = createRun({ task_id: parseInt(taskId, 10), status: "running", started_at: 1000 });
+    finishRun(run1.id, "completed");
+    const run2 = createRun({ task_id: parseInt(taskId, 10), status: "running", started_at: 2000 });
+    finishRun(run2.id, "crashed", null, null, "boom");
+    closeDb();
+
+    const output = runKdi(`show ${taskId} --state-type outcome --state-name completed`, env);
+    expect(output).toContain("Runs:");
+    expect(output).toContain("outcome=completed");
+    expect(output).not.toContain("outcome=crashed");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it('show prints "No runs match the filter." when filter matches nothing', async () => {
+    const tmp = makeTempDir("show-no-match");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_SHOW_RUN_FILTERING: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const taskId = runKdi(`create "no match" --board myproj`, env);
+
+    initDb(dbPath);
+    const { createRun } = await import("../src/models/taskRun");
+    createRun({ task_id: parseInt(taskId, 10), status: "running", started_at: 1000 });
+    closeDb();
+
+    const output = runKdi(`show ${taskId} --state-type status --state-name done`, env);
+    expect(output).toContain("No runs match the filter.");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it('show prints "No runs found for this task." when task has no runs', () => {
+    const tmp = makeTempDir("show-no-runs");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_SHOW_RUN_FILTERING: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const taskId = runKdi(`create "no runs" --board myproj`, env);
+
+    const output = runKdi(`show ${taskId}`, env);
+    expect(output).toContain("No runs found for this task.");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("show rejects --state-type without --state-name", () => {
+    const tmp = makeTempDir("show-no-name");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_SHOW_RUN_FILTERING: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const taskId = runKdi(`create "incomplete filter" --board myproj`, env);
+
+    expect(() => runKdi(`show ${taskId} --state-type status`, env)).toThrow(
+      /--state-type and --state-name must both be provided/
+    );
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("show rejects --state-name without --state-type", () => {
+    const tmp = makeTempDir("show-no-type");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_SHOW_RUN_FILTERING: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const taskId = runKdi(`create "incomplete filter 2" --board myproj`, env);
+
+    expect(() => runKdi(`show ${taskId} --state-name crashed`, env)).toThrow(
+      /--state-type and --state-name must both be provided/
+    );
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("show rejects invalid --state-type", () => {
+    const tmp = makeTempDir("show-invalid-type");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_SHOW_RUN_FILTERING: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const taskId = runKdi(`create "invalid type" --board myproj`, env);
+
+    expect(() => runKdi(`show ${taskId} --state-type foo --state-name bar`, env)).toThrow(
+      /Invalid state type/
+    );
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("show rejects filter options when FF_SHOW_RUN_FILTERING is disabled", () => {
+    const tmp = makeTempDir("show-flag-off");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_SHOW_RUN_FILTERING: "false" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const taskId = runKdi(`create "flag off" --board myproj`, env);
+
+    expect(() => runKdi(`show ${taskId} --state-type status --state-name crashed`, env)).toThrow(
+      /Run filtering feature is not enabled/
+    );
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("show does not display Runs section when FF_SHOW_RUN_FILTERING is disabled", async () => {
+    const tmp = makeTempDir("show-no-runs-section");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_SHOW_RUN_FILTERING: "false" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const taskId = runKdi(`create "no runs section" --board myproj`, env);
+
+    initDb(dbPath);
+    const { createRun } = await import("../src/models/taskRun");
+    createRun({ task_id: parseInt(taskId, 10), status: "running", profile: "opencode", started_at: 1000 });
+    closeDb();
+
+    const output = runKdi(`show ${taskId}`, env);
+    expect(output).not.toContain("Runs:");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
 });
