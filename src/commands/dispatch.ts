@@ -3,6 +3,18 @@ import { startDispatcher } from "../dispatcher";
 import { isEnabled, FF_RATE_LIMIT_EXIT_CODE, FF_DISPATCH_CONTROLS } from "../flags";
 import { parseDuration } from "../models/task";
 
+export function parseFailureLimit(raw: string): number {
+  const trimmed = raw.trim();
+  if (!/^\d+$/.test(trimmed)) {
+    throw new Error(`Invalid --failure-limit. Must be a positive integer, got "${raw}"`);
+  }
+  const parsed = parseInt(trimmed, 10);
+  if (parsed <= 0) {
+    throw new Error(`Invalid --failure-limit. Must be a positive integer, got "${raw}"`);
+  }
+  return parsed;
+}
+
 export const dispatchCommand = new Command("dispatch")
   .description("Dispatch ready tasks to agents")
   .option("--interval <ms>", "Poll interval in milliseconds", "5000")
@@ -38,12 +50,7 @@ export const dispatchCommand = new Command("dispatch")
         console.error("Dispatch controls feature is not enabled.");
         process.exit(1);
       }
-      const parsed = parseInt(options.failureLimit, 10);
-      if (isNaN(parsed) || !Number.isInteger(parsed) || parsed <= 0) {
-        console.error("Invalid --failure-limit. Must be a positive integer.");
-        process.exit(1);
-      }
-      failureLimit = parsed;
+      failureLimit = parseFailureLimit(options.failureLimit);
     }
 
     console.log(`Starting dispatcher with ${interval}ms interval...`);

@@ -10,6 +10,7 @@ import { setFlag, clearOverrides, FF_RATE_LIMIT_EXIT_CODE, FF_NOTIFY_SUBS, FF_DI
 import { subscribe } from "../src/models/notifySub";
 import { atomicClaim, heartbeat } from "../src/models/claim";
 import { tick, startDispatcher } from "../src/dispatcher";
+import { parseFailureLimit } from "../src/commands/dispatch";
 import { getEvents } from "../src/models/taskEvent";
 import { getRuns, updateRun } from "../src/models/taskRun";
 import { cleanupDb } from "./cleanupDb";
@@ -1240,6 +1241,28 @@ describe("dispatcher", () => {
   describe("failure limit", () => {
     beforeEach(() => {
       setFlag(FF_DISPATCH_CONTROLS, true);
+    });
+
+    describe("parseFailureLimit", () => {
+      it("returns parsed value for valid input", () => {
+        expect(parseFailureLimit("3")).toBe(3);
+      });
+
+      it("rejects zero", () => {
+        expect(() => parseFailureLimit("0")).toThrow(/positive integer/);
+      });
+
+      it("rejects negative", () => {
+        expect(() => parseFailureLimit("-2")).toThrow(/positive integer/);
+      });
+
+      it("rejects non-numeric", () => {
+        expect(() => parseFailureLimit("xyz")).toThrow(/positive integer/);
+      });
+
+      it("rejects fractional", () => {
+        expect(() => parseFailureLimit("1.5")).toThrow(/positive integer/);
+      });
     });
 
     it("stops spawning after N distinct failures and emits warning", async () => {
