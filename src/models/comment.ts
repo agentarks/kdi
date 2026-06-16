@@ -23,6 +23,12 @@ export function addComment(input: AddCommentInput): Comment {
     throw new Error("Author cannot be empty.");
   }
 
+  if (input.max_len !== undefined) {
+    if (!Number.isInteger(input.max_len) || input.max_len <= 0) {
+      throw new Error("Max length must be a positive integer.");
+    }
+  }
+
   let text = input.text;
   if (input.max_len !== undefined) {
     text = text.slice(0, input.max_len);

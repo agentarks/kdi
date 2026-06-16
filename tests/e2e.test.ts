@@ -2112,4 +2112,161 @@ describe("kdi e2e acceptance", () => {
     rmSync(tmp, { recursive: true, force: true });
   });
 
+  // ── KDI-033: comment enhancements CLI ──
+
+  it("FF_COMMENT_ENHANCEMENTS=false rejects --author", () => {
+    const tmp = makeTempDir("comment-author-off");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_COMMENT_ENHANCEMENTS: "false" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const id = runKdi(`create "Task" --board myproj`, env);
+
+    expect(() => runKdi(`comment ${id} "hello" --author alice`, env)).toThrow(/Comment enhancements feature is not enabled/);
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("FF_COMMENT_ENHANCEMENTS=false rejects --max-len", () => {
+    const tmp = makeTempDir("comment-maxlen-off");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_COMMENT_ENHANCEMENTS: "false" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const id = runKdi(`create "Task" --board myproj`, env);
+
+    expect(() => runKdi(`comment ${id} "hello" --max-len 5`, env)).toThrow(/Comment enhancements feature is not enabled/);
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("FF_COMMENT_ENHANCEMENTS=true with KDI_PROFILE resolves default author", () => {
+    const tmp = makeTempDir("comment-author-profile");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_COMMENT_ENHANCEMENTS: "true", KDI_PROFILE: "alice" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const id = runKdi(`create "Task" --board myproj`, env);
+    runKdi(`comment ${id} "alice comment"`, env);
+
+    const showOutput = runKdi(`show ${id}`, env);
+    expect(showOutput).toContain("alice:");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("FF_COMMENT_ENHANCEMENTS=true with no profile stores user", () => {
+    const tmp = makeTempDir("comment-default-user");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_COMMENT_ENHANCEMENTS: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const id = runKdi(`create "Task" --board myproj`, env);
+    runKdi(`comment ${id} "default comment"`, env);
+
+    const showOutput = runKdi(`show ${id}`, env);
+    expect(showOutput).toContain("user:");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("comment --author empty string is rejected", () => {
+    const tmp = makeTempDir("comment-author-empty");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_COMMENT_ENHANCEMENTS: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const id = runKdi(`create "Task" --board myproj`, env);
+
+    expect(() => runKdi(`comment ${id} "text" --author ""`, env)).toThrow(/Author cannot be empty/);
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("comment --max-len 0 is rejected", () => {
+    const tmp = makeTempDir("comment-maxlen-0");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_COMMENT_ENHANCEMENTS: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const id = runKdi(`create "Task" --board myproj`, env);
+
+    expect(() => runKdi(`comment ${id} "text" --max-len 0`, env)).toThrow(/positive integer/);
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("comment --max-len -1 is rejected", () => {
+    const tmp = makeTempDir("comment-maxlen-neg");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_COMMENT_ENHANCEMENTS: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const id = runKdi(`create "Task" --board myproj`, env);
+
+    expect(() => runKdi(`comment ${id} "text" --max-len -1`, env)).toThrow(/positive integer/);
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("comment --max-len abc is rejected", () => {
+    const tmp = makeTempDir("comment-maxlen-abc");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_COMMENT_ENHANCEMENTS: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const id = runKdi(`create "Task" --board myproj`, env);
+
+    expect(() => runKdi(`comment ${id} "text" --max-len abc`, env)).toThrow(/positive integer/);
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("kdi show displays author when flag enabled, not when disabled", () => {
+    const tmp = makeTempDir("comment-show-author");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+
+    const enabledEnv = { KDI_DB: dbPath, HOME: tmp, FF_COMMENT_ENHANCEMENTS: "true" };
+    const disabledEnv = { KDI_DB: dbPath, HOME: tmp, FF_COMMENT_ENHANCEMENTS: "false" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, enabledEnv);
+    const id = runKdi(`create "Task" --board myproj`, enabledEnv);
+    runKdi(`comment ${id} "my comment" --author bob`, enabledEnv);
+
+    const enabledOutput = runKdi(`show ${id}`, enabledEnv);
+    expect(enabledOutput).toContain("bob:");
+
+    const disabledOutput = runKdi(`show ${id}`, disabledEnv);
+    expect(disabledOutput).not.toContain("bob:");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
 });

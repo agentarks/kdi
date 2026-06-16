@@ -347,9 +347,10 @@ export const showTaskCommand = new Command("show")
 
       const comments = getComments(id);
       if (comments.length > 0) {
+        const showAuthor = isEnabled(FF_COMMENT_ENHANCEMENTS);
         console.log("Comments:");
         for (const comment of comments) {
-          if (isEnabled(FF_COMMENT_ENHANCEMENTS)) {
+          if (showAuthor) {
             const displayAuthor = comment.author ?? "user";
             console.log(`  [${new Date(comment.created_at * 1000).toISOString()}]  ${displayAuthor}:`);
             console.log(`  ${comment.text}`);
