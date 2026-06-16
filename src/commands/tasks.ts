@@ -7,9 +7,12 @@ import {
   showTask,
   editTask,
   promoteTask,
+  promoteTaskAdvanced,
+  PromoteTaskResult,
   blockTask,
   unblockTask,
   archiveTask,
+  archiveTaskHard,
   specifyTask,
   completeTask,
   reviewTask,
@@ -26,7 +29,7 @@ import { getRuns, getRunsFiltered } from "../models/taskRun";
 import { getEvents, tailEvents, getRecentEvents, getEventsAfter } from "../models/taskEvent";
 import { atomicClaim, reclaimTask, heartbeat } from "../models/claim";
 import { getTaskLogPath } from "../observability";
-import { isEnabled, FF_SCHEDULED_STATUS, FF_REVIEW_STATUS, FF_COMPLETE_METADATA, FF_PRIORITY_INTEGER, FF_SKILLS_ARRAY, FF_MAX_RUNTIME, FF_MAX_RETRIES, FF_TENANT_NAMESPACE, FF_CREATED_BY, FF_MODEL_OVERRIDE, FF_DEFAULT_WORKDIR, FF_WORKER_LOG_CAPTURE, FF_ASSIGN_REASSIGN, FF_CRASH_GRACE_PERIOD, FF_HEARTBEAT, FF_RATE_LIMIT_EXIT_CODE, FF_TASK_ATTACHMENTS, FF_LIST_FILTERS_SORT, FF_SHOW_RUN_FILTERING } from "../flags";
+import { isEnabled, FF_SCHEDULED_STATUS, FF_REVIEW_STATUS, FF_COMPLETE_METADATA, FF_PRIORITY_INTEGER, FF_SKILLS_ARRAY, FF_MAX_RUNTIME, FF_MAX_RETRIES, FF_TENANT_NAMESPACE, FF_CREATED_BY, FF_MODEL_OVERRIDE, FF_DEFAULT_WORKDIR, FF_WORKER_LOG_CAPTURE, FF_ASSIGN_REASSIGN, FF_CRASH_GRACE_PERIOD, FF_HEARTBEAT, FF_RATE_LIMIT_EXIT_CODE, FF_TASK_ATTACHMENTS, FF_LIST_FILTERS_SORT, FF_SHOW_RUN_FILTERING, FF_BULK_OPERATIONS } from "../flags";
 import { resolveBoard } from "../resolveBoard";
 
 const VALID_STATUSES = ["triage", "todo", "scheduled", "ready", "running", "done", "blocked", "review"] as const;
@@ -98,6 +101,30 @@ function validateSkillName(name: string): void {
     throw new Error(
       `Invalid skill name "${name}". Skill names may only contain letters, numbers, underscores, and hyphens.`
     );
+  }
+}
+
+function printVerdict(id: number, verdict: PromoteTaskResult): void {
+  switch (verdict.status) {
+    case "would_promote":
+      console.log(`${id}: would_promote`);
+      break;
+    case "not_found":
+      console.error(`${id}: skipped: not_found`);
+      break;
+    case "archived":
+      console.error(`${id}: skipped: archived`);
+      break;
+    case "wrong_status":
+      console.error(`${id}: skipped: wrong_status (current: ${verdict.current})`);
+      break;
+    case "blocked_by_dependencies":
+      console.error(`${id}: skipped: blocked_by_dependencies`);
+      break;
+    case "promoted":
+      // handled by the caller with the full success message
+      console.log(`${id}: promoted`);
+      break;
   }
 }
 
@@ -532,13 +559,73 @@ export const attachTaskCommand = new Command("attach")
   });
 
 export const promoteTaskCommand = new Command("promote")
-  .description("Promote a task from todo to ready")
-  .argument("<task_id>", "Task ID")
-  .action((taskId: string) => {
+  .description("Promote task(s) from todo to ready")
+  .argument("[task_ids...]", "One or more task IDs")
+  .option("--force", "Promote even if parent dependencies are not done")
+  .option("--dry-run", "Validate promotion without mutating state")
+  .action((taskIds: string[], options: { force?: boolean; dryRun?: boolean }) => {
     try {
-      const id = parseTaskId(taskId);
-      const task = promoteTask(id);
-      console.log(`Promoted task ${task.id} to ready.`);
+      if (taskIds.length === 0) {
+        throw new Error("At least one task ID is required.");
+      }
+
+      const isBulk = taskIds.length > 1 || options.force || options.dryRun;
+      if (isBulk && !isEnabled(FF_BULK_OPERATIONS)) {
+        throw new Error("Bulk operations feature is not enabled.");
+      }
+
+      const ids = taskIds.map(parseTaskId);
+
+      if (options.dryRun) {
+        let allOk = true;
+        for (const id of ids) {
+          const verdict = promoteTaskAdvanced(id, { force: options.force, dryRun: true });
+          printVerdict(id, verdict);
+          if (verdict.status !== "would_promote") {
+            allOk = false;
+          }
+        }
+        if (!allOk) process.exit(1);
+        return;
+      }
+
+      // Single-task promote without force/dry-run when flag is disabled
+      // uses the existing simple promote (backward compat). When the flag
+      // is enabled, always use promoteTaskAdvanced for dependency checks.
+      if (!isBulk) {
+        const id = ids[0];
+        if (!isEnabled(FF_BULK_OPERATIONS)) {
+          const task = promoteTask(id);
+          console.log(`Promoted task ${task.id} to ready.`);
+          return;
+        }
+        // Flag enabled: use advanced promote for dependency checks
+        const result = promoteTaskAdvanced(id);
+        if (result.status === "promoted") {
+          console.log(`Promoted task ${result.task.id} to ready.`);
+        } else {
+          printVerdict(id, result);
+          process.exit(1);
+        }
+        return;
+      }
+
+      let skipped = 0;
+      for (const id of ids) {
+        const result = promoteTaskAdvanced(id, { force: options.force });
+        if (result.status === "promoted") {
+          console.log(`Promoted task ${result.task.id} to ready.`);
+        } else {
+          printVerdict(id, result);
+          skipped++;
+        }
+      }
+
+      const promoted = ids.length - skipped;
+      if (ids.length > 1) {
+        console.log(`Promoted ${promoted}/${ids.length} tasks.`);
+      }
+      if (skipped > 0) process.exit(1);
     } catch (err: any) {
       console.error(`Error: ${err.message}`);
       process.exit(1);
@@ -602,17 +689,56 @@ export const reassignTaskCommand = new Command("reassign")
   });
 
 export const blockTaskCommand = new Command("block")
-  .description("Block a task")
-  .argument("<task_id>", "Task ID")
+  .description("Block one or more tasks")
+  .argument("[task_ids...]", "One or more task IDs")
   .requiredOption("--reason <text>", "Block reason")
-  .action((taskId: string, options: { reason: string }) => {
+  .action((taskIds: string[], options: { reason: string }) => {
     try {
-      const id = parseTaskId(taskId);
+      if (taskIds.length === 0) {
+        throw new Error("At least one task ID is required.");
+      }
+
+      if (taskIds.length > 1 && !isEnabled(FF_BULK_OPERATIONS)) {
+        throw new Error("Bulk operations feature is not enabled.");
+      }
+
       if (!options.reason || options.reason.trim() === "") {
         throw new Error("Block reason is required.");
       }
-      const task = blockTask(id, options.reason);
-      console.log(`Blocked task ${task.id}.`);
+
+      const ids = taskIds.map(parseTaskId);
+      let skipped = 0;
+      for (const id of ids) {
+        try {
+          const task = showTask(id);
+          if (!task) {
+            console.error(`Skipped task ${id}: not found`);
+            skipped++;
+            continue;
+          }
+          if (task.status === "blocked") {
+            console.error(`Skipped task ${id}: already blocked`);
+            skipped++;
+            continue;
+          }
+          if (task.archived_at !== null) {
+            console.error(`Skipped task ${id}: already archived`);
+            skipped++;
+            continue;
+          }
+          const blocked = blockTask(id, options.reason);
+          console.log(`Blocked task ${blocked.id}.`);
+        } catch (err: any) {
+          console.error(`Skipped task ${id}: ${err.message}`);
+          skipped++;
+        }
+      }
+
+      if (ids.length > 1) {
+        const blocked = ids.length - skipped;
+        console.log(`Blocked ${blocked}/${ids.length} tasks.`);
+      }
+      if (skipped > 0) process.exit(1);
     } catch (err: any) {
       console.error(`Error: ${err.message}`);
       process.exit(1);
@@ -662,14 +788,21 @@ export const scheduleTaskCommand = new Command("schedule")
       }
       const ids = taskIds.map(parseTaskId);
       const scheduled: number[] = [];
+      let skipped = 0;
       for (const id of ids) {
-        const task = scheduleTask(id, scheduledAt, options.reason);
-        console.log(`Scheduled task ${task.id} for ${new Date(scheduledAt * 1000).toISOString()}.`);
-        scheduled.push(task.id);
+        try {
+          const task = scheduleTask(id, scheduledAt, options.reason);
+          console.log(`Scheduled task ${task.id} for ${new Date(scheduledAt * 1000).toISOString()}.`);
+          scheduled.push(task.id);
+        } catch (err: any) {
+          console.error(`Skipped task ${id}: ${err.message}`);
+          skipped++;
+        }
       }
       if (scheduled.length > 1) {
         console.log(`Scheduled ${scheduled.length} tasks.`);
       }
+      if (skipped > 0) process.exit(1);
     } catch (err: any) {
       console.error(`Error: ${err.message}`);
       process.exit(1);
@@ -738,11 +871,45 @@ export const specifyTaskCommand = new Command("specify")
   });
 
 export const archiveTaskCommand = new Command("archive")
-  .description("Archive a task")
-  .argument("<task_id>", "Task ID")
-  .action((taskId: string) => {
+  .description("Archive a task, or permanently delete archived task(s) with --rm")
+  .argument("[task_ids...]", "Task ID(s)")
+  .option("--rm", "Permanently delete already-archived task(s)")
+  .action((taskIds: string[], options: { rm?: boolean }) => {
     try {
-      const id = parseTaskId(taskId);
+      if (options.rm) {
+        if (!isEnabled(FF_BULK_OPERATIONS)) {
+          throw new Error("Bulk operations feature is not enabled.");
+        }
+        if (taskIds.length === 0) {
+          throw new Error("At least one task ID is required.");
+        }
+        const ids = taskIds.map(parseTaskId);
+        let skipped = 0;
+        for (const id of ids) {
+          try {
+            archiveTaskHard(id);
+            console.log(`Permanently deleted task ${id}.`);
+          } catch (err: any) {
+            console.error(`Skipped task ${id}: ${err.message}`);
+            skipped++;
+          }
+        }
+        if (ids.length > 1) {
+          const deleted = ids.length - skipped;
+          console.log(`Deleted ${deleted}/${ids.length} tasks.`);
+        }
+        if (skipped > 0) process.exit(1);
+        return;
+      }
+
+      if (taskIds.length === 0) {
+        throw new Error("At least one task ID is required.");
+      }
+      if (taskIds.length > 1) {
+        throw new Error("Archive only supports a single task ID (use --rm for bulk deletion of archived tasks).");
+      }
+
+      const id = parseTaskId(taskIds[0]);
       const task = archiveTask(id);
       console.log(`Archived task ${task.id}.`);
     } catch (err: any) {
