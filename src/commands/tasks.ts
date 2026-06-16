@@ -457,9 +457,16 @@ export const showTaskCommand = new Command("show")
 
       const comments = getComments(id);
       if (comments.length > 0) {
+        const showAuthor = isEnabled(FF_COMMENT_ENHANCEMENTS);
         console.log("Comments:");
         for (const comment of comments) {
-          console.log(`  [${new Date(comment.created_at * 1000).toISOString()}] ${comment.text}`);
+          if (showAuthor) {
+            const displayAuthor = comment.author ?? "user";
+            console.log(`  [${new Date(comment.created_at * 1000).toISOString()}]  ${displayAuthor}:`);
+            console.log(`  ${comment.text}`);
+          } else {
+            console.log(`  [${new Date(comment.created_at * 1000).toISOString()}] ${comment.text}`);
+          }
         }
       }
 
@@ -526,13 +533,44 @@ export const commentTaskCommand = new Command("comment")
   .description("Add a comment to a task")
   .argument("<task_id>", "Task ID")
   .argument("<text>", "Comment text")
-  .action((taskId: string, text: string) => {
+  .option("--author <name>", "Comment author")
+  .option("--max-len <n>", "Maximum comment length")
+  .action((taskId: string, text: string, options: { author?: string; maxLen?: string }) => {
     try {
+      if (options.author !== undefined && !isEnabled(FF_COMMENT_ENHANCEMENTS)) {
+        throw new Error("Comment enhancements feature is not enabled.");
+      }
+      if (options.maxLen !== undefined && !isEnabled(FF_COMMENT_ENHANCEMENTS)) {
+        throw new Error("Comment enhancements feature is not enabled.");
+      }
+
       const id = parseTaskId(taskId);
       if (!text || text.trim() === "") {
         throw new Error("Comment text is required.");
       }
-      const comment = addComment(id, text);
+
+      let author: string | undefined;
+      if (isEnabled(FF_COMMENT_ENHANCEMENTS)) {
+        if (options.author !== undefined) {
+          if (options.author.trim() === "") {
+            throw new Error("Author cannot be empty.");
+          }
+          author = options.author.trim();
+        } else {
+          author = Bun.env.KDI_PROFILE ?? Bun.env.HERMES_PROFILE ?? "user";
+        }
+      }
+
+      let maxLen: number | undefined;
+      if (options.maxLen !== undefined) {
+        const parsed = Number(options.maxLen);
+        if (isNaN(parsed) || !Number.isInteger(parsed) || parsed <= 0) {
+          throw new Error(`Max length must be a positive integer, got "${options.maxLen}"`);
+        }
+        maxLen = parsed;
+      }
+
+      const comment = addComment({ task_id: id, text, author, max_len: maxLen });
       console.log(`Added comment ${comment.id} to task ${id}.`);
     } catch (err: any) {
       console.error(`Error: ${err.message}`);
