@@ -9,6 +9,8 @@ import {
   getRecentEvents,
   getEventsAfter,
 } from "../src/models/taskEvent";
+import { setFlag, clearOverrides } from "../src/flags";
+import { FF_TENANT_NAMESPACE } from "../src/flags";
 import { cleanupDb } from "./cleanupDb";
 
 const TEST_DB = "/tmp/kdi-task-event-test.db";
@@ -105,5 +107,125 @@ describe("taskEvent model", () => {
     expect(events).toHaveLength(2);
     expect(events[0].kind).toBe("blocked");
     expect(events[1].kind).toBe("unblocked");
+  });
+
+  // KDI-035: watch filters
+  describe("watch filters", () => {
+    it("getRecentEvents returns unfiltered events when no filters are passed", () => {
+      const board = createBoard("alpha", "/tmp/alpha");
+      const task = createTask({ board_id: board.id, title: "Test" });
+      addEvent(task.id, "created");
+
+      const events = getRecentEvents(10, {});
+      expect(events.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it("getRecentEvents filters by assignee", () => {
+      const board = createBoard("alpha", "/tmp/alpha");
+      const t1 = createTask({ board_id: board.id, title: "T1", assignee: "alice" });
+      const t2 = createTask({ board_id: board.id, title: "T2", assignee: "bob" });
+      addEvent(t1.id, "promoted");
+      addEvent(t2.id, "blocked");
+
+      const events = getRecentEvents(10, { assignee: "alice" });
+      expect(events.length).toBeGreaterThanOrEqual(1);
+      for (const e of events) {
+        expect(e.task_id).toBe(t1.id);
+      }
+    });
+
+    it("getRecentEvents filters by tenant (when FF_TENANT_NAMESPACE enabled)", () => {
+      setFlag(FF_TENANT_NAMESPACE, true);
+      try {
+        const board = createBoard("alpha", "/tmp/alpha");
+        const t1 = createTask({ board_id: board.id, title: "T1", tenant: "team-a" });
+        const t2 = createTask({ board_id: board.id, title: "T2", tenant: "team-b" });
+        addEvent(t1.id, "promoted");
+        addEvent(t2.id, "blocked");
+
+        const events = getRecentEvents(10, { tenant: "team-a" });
+        expect(events.length).toBeGreaterThanOrEqual(1);
+        for (const e of events) {
+          expect(e.task_id).toBe(t1.id);
+        }
+      } finally {
+        clearOverrides();
+      }
+    });
+
+    it("getRecentEvents filters by kinds", () => {
+      const board = createBoard("alpha", "/tmp/alpha");
+      const task = createTask({ board_id: board.id, title: "Test" });
+      addEvent(task.id, "created");
+      addEvent(task.id, "promoted");
+      addEvent(task.id, "blocked");
+
+      const events = getRecentEvents(10, { kinds: ["created", "promoted"] });
+      expect(events.length).toBeGreaterThanOrEqual(1);
+      for (const e of events) {
+        expect(["created", "promoted"]).toContain(e.kind);
+      }
+    });
+
+    it("getRecentEvents combines assignee + kinds filters (AND)", () => {
+      const board = createBoard("alpha", "/tmp/alpha");
+      const t1 = createTask({ board_id: board.id, title: "T1", assignee: "alice" });
+      const t2 = createTask({ board_id: board.id, title: "T2", assignee: "bob" });
+      addEvent(t1.id, "created");
+      addEvent(t1.id, "promoted");
+      addEvent(t2.id, "created");
+
+      const events = getRecentEvents(10, { assignee: "alice", kinds: ["promoted"] });
+      expect(events.length).toBeGreaterThanOrEqual(1);
+      for (const e of events) {
+        expect(e.kind).toBe("promoted");
+        // We can't easily check assignee from the event directly, but the
+        // filter ensures only alice's tasks are returned
+      }
+    });
+
+    it("getRecentEvents combines assignee + tenant filters (AND)", () => {
+      const board = createBoard("alpha", "/tmp/alpha");
+      const t1 = createTask({ board_id: board.id, title: "T1", assignee: "alice", tenant: "team-a" });
+      const t2 = createTask({ board_id: board.id, title: "T2", assignee: "alice", tenant: "team-b" });
+      const t3 = createTask({ board_id: board.id, title: "T3", assignee: "bob", tenant: "team-a" });
+      addEvent(t1.id, "created");
+      addEvent(t2.id, "created");
+      addEvent(t3.id, "created");
+
+      // Only t1 matches both assignee="alice" AND tenant="team-a"
+      const events = getRecentEvents(10, { assignee: "alice", tenant: "team-a" });
+      expect(events.length).toBeGreaterThanOrEqual(1);
+      for (const e of events) {
+        expect(e.task_id).toBe(t1.id);
+      }
+    });
+
+    it("getEventsAfter filters by assignee", () => {
+      const board = createBoard("alpha", "/tmp/alpha");
+      const t1 = createTask({ board_id: board.id, title: "T1", assignee: "alice" });
+      const t2 = createTask({ board_id: board.id, title: "T2", assignee: "bob" });
+      const e1 = addEvent(t1.id, "created");
+      addEvent(t2.id, "created");
+      addEvent(t1.id, "promoted");
+
+      const events = getEventsAfter(e1.id, { assignee: "alice" });
+      expect(events.length).toBeGreaterThanOrEqual(1);
+      for (const e of events) {
+        expect(e.task_id).toBe(t1.id);
+      }
+    });
+
+    it("getEventsAfter filters by kinds", () => {
+      const board = createBoard("alpha", "/tmp/alpha");
+      const task = createTask({ board_id: board.id, title: "Test" });
+      const first = addEvent(task.id, "created");
+      addEvent(task.id, "promoted");
+      addEvent(task.id, "blocked");
+
+      const events = getEventsAfter(first.id, { kinds: ["blocked"] });
+      expect(events.length).toBe(1);
+      expect(events[0].kind).toBe("blocked");
+    });
   });
 });

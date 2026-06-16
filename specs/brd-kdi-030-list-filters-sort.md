@@ -37,9 +37,9 @@ Functional Requirements
   helper) and the resolved profile is passed to `listTasks` as `assignee`.
   Passing both `--mine` and `--assignee <profile>` is an error.
 - `--archived` removes the default `archived_at IS NULL` filter and includes
-  archived tasks. `--status archived` remains rejected by the existing
-  `VALID_STATUSES` validation; `--archived` is the only way to surface
-  archived rows.
+  archived tasks. `--status archived` is only allowed when `--archived` is
+  also passed and `FF_LIST_FILTERS_SORT` is enabled; otherwise it is rejected
+  by the existing `VALID_STATUSES` validation.
 - `--sort <key>` orders results before printing. Valid keys:
   - `assignee` — assignee ASC, NULLs last, then id ASC
   - `created` — created_at ASC, then id ASC

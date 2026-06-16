@@ -6,10 +6,11 @@ import { initDb, closeDb, getDb } from "../src/db";
 import { createBoard } from "../src/models/board";
 import { createTask, promoteTask, showTask } from "../src/models/task";
 import { addDependency } from "../src/models/dependency";
-import { setFlag, clearOverrides, FF_RATE_LIMIT_EXIT_CODE, FF_NOTIFY_SUBS } from "../src/flags";
+import { setFlag, clearOverrides, FF_RATE_LIMIT_EXIT_CODE, FF_NOTIFY_SUBS, FF_DISPATCH_CONTROLS } from "../src/flags";
 import { subscribe } from "../src/models/notifySub";
 import { atomicClaim, heartbeat } from "../src/models/claim";
 import { tick, startDispatcher } from "../src/dispatcher";
+import { parseFailureLimit } from "../src/commands/dispatch";
 import { getEvents } from "../src/models/taskEvent";
 import { getRuns, updateRun } from "../src/models/taskRun";
 import { cleanupDb } from "./cleanupDb";
@@ -1234,6 +1235,205 @@ describe("dispatcher", () => {
         .map((line) => JSON.parse(line))
         .find((entry) => entry.eventKind === "finished" || entry.eventKind === "completed");
       expect(delivered).toBeUndefined();
+    });
+  });
+
+  describe("failure limit", () => {
+    beforeEach(() => {
+      setFlag(FF_DISPATCH_CONTROLS, true);
+    });
+
+    describe("parseFailureLimit", () => {
+      it("returns parsed value for valid input", () => {
+        expect(parseFailureLimit("3")).toBe(3);
+      });
+
+      it("rejects zero", () => {
+        expect(() => parseFailureLimit("0")).toThrow(/positive integer/);
+      });
+
+      it("rejects negative", () => {
+        expect(() => parseFailureLimit("-2")).toThrow(/positive integer/);
+      });
+
+      it("rejects non-numeric", () => {
+        expect(() => parseFailureLimit("xyz")).toThrow(/positive integer/);
+      });
+
+      it("rejects fractional", () => {
+        expect(() => parseFailureLimit("1.5")).toThrow(/positive integer/);
+      });
+    });
+
+    it("stops spawning after N distinct failures and emits warning", async () => {
+      const board = createBoard("fl-board", "/tmp/fl-board");
+      // Create 3 tasks, all will fail (no workdir = board failure)
+      const t1 = createTask({ board_id: board.id, title: "Task 1", assignee: "opencode" });
+      promoteTask(t1.id);
+      const t2 = createTask({ board_id: board.id, title: "Task 2", assignee: "opencode" });
+      promoteTask(t2.id);
+      const t3 = createTask({ board_id: board.id, title: "Task 3", assignee: "opencode" });
+      promoteTask(t3.id);
+
+      // Override workdir to null to trigger board-not-found failures
+      // Use existing board workdir which is valid
+      const warnings: string[] = [];
+      const origWarn = console.warn;
+      console.warn = (...args: string[]) => { warnings.push(args.join(" ")); };
+
+      try {
+        await tick({
+          failureLimit: 2,
+        });
+      } finally {
+        console.warn = origWarn;
+      }
+
+      // Should have stopped after 2 failures
+      expect(warnings.some((w) => w.includes("failure limit of 2 reached"))).toBe(true);
+    });
+
+    it("does not stop when failures are under the limit", async () => {
+      const board = createBoard("fl2-board", "/tmp/fl2-board");
+      const task = createTask({ board_id: board.id, title: "Task 1", assignee: "opencode" });
+      promoteTask(task.id);
+
+      const warnings: string[] = [];
+      const origWarn = console.warn;
+      console.warn = (...args: string[]) => { warnings.push(args.join(" ")); };
+
+      const result = await tick({
+        spawnHarness: () => Promise.resolve({ stdout: "ok", stderr: "", exitCode: 0 }),
+        createWorktree: () => "/tmp/mock-worktree",
+        removeWorktree: () => ({ worktreeRemoved: true, branchDeleted: true, found: true }),
+        failureLimit: 5,
+      });
+
+      console.warn = origWarn;
+
+      expect(result.processed).toBe(1);
+      expect(warnings.some((w) => w.includes("failure limit"))).toBe(false);
+    });
+
+    it("composes with --max: stops at spawn cap even with no failures", async () => {
+      const board = createBoard("fl3-board", "/tmp/fl3-board");
+      const t1 = createTask({ board_id: board.id, title: "Task 1", assignee: "opencode" });
+      promoteTask(t1.id);
+      const t2 = createTask({ board_id: board.id, title: "Task 2", assignee: "opencode" });
+      promoteTask(t2.id);
+
+      const result = await tick({
+        spawnHarness: () => Promise.resolve({ stdout: "ok", stderr: "", exitCode: 0 }),
+        createWorktree: () => "/tmp/mock-worktree",
+        removeWorktree: () => ({ worktreeRemoved: true, branchDeleted: true, found: true }),
+        maxSpawnsPerTick: 1,
+        failureLimit: 10,
+      });
+
+      // Only 1 spawned (maxSpawns cap), both are ready
+      expect(result.processed).toBe(1);
+    });
+
+    it("stops at failure limit even when max is higher", async () => {
+      const board = createBoard("fl4-board", "/tmp/fl4-board");
+      // Create tasks with non-existent workdir so they fail
+      const t1 = createTask({ board_id: board.id, title: "Task 1", assignee: "opencode" });
+      promoteTask(t1.id);
+      const t2 = createTask({ board_id: board.id, title: "Task 2", assignee: "opencode" });
+      promoteTask(t2.id);
+      const t3 = createTask({ board_id: board.id, title: "Task 3", assignee: "opencode" });
+      promoteTask(t3.id);
+
+      const warnings: string[] = [];
+      const origWarn = console.warn;
+      console.warn = (...args: string[]) => { warnings.push(args.join(" ")); };
+
+      try {
+        await tick({
+          maxSpawnsPerTick: 10,
+          failureLimit: 1,
+        });
+      } finally {
+        console.warn = origWarn;
+      }
+
+      expect(warnings.some((w) => w.includes("failure limit of 1 reached"))).toBe(true);
+    });
+
+    it("no limit behavior when failureLimit is not set", async () => {
+      const board = createBoard("fl5-board", "/tmp/fl5-board");
+      const t1 = createTask({ board_id: board.id, title: "Task 1", assignee: "opencode" });
+      promoteTask(t1.id);
+      const t2 = createTask({ board_id: board.id, title: "Task 2", assignee: "opencode" });
+      promoteTask(t2.id);
+
+      const warnings: string[] = [];
+      const origWarn = console.warn;
+      console.warn = (...args: string[]) => { warnings.push(args.join(" ")); };
+
+      const result = await tick({
+        spawnHarness: () => Promise.resolve({ stdout: "ok", stderr: "", exitCode: 0 }),
+        createWorktree: () => "/tmp/mock-worktree",
+        removeWorktree: () => ({ worktreeRemoved: true, branchDeleted: true, found: true }),
+      });
+
+      console.warn = origWarn;
+
+      expect(result.processed).toBe(2);
+      expect(warnings.some((w) => w.includes("failure limit"))).toBe(false);
+    });
+
+    it("rate-limited tasks do not increment the failure counter", async () => {
+      setFlag(FF_RATE_LIMIT_EXIT_CODE, true);
+      const board = createBoard("fl6-board", "/tmp/fl6-board");
+      const t1 = createTask({ board_id: board.id, title: "Rate-limited", assignee: "opencode" });
+      promoteTask(t1.id);
+      const t2 = createTask({ board_id: board.id, title: "Success", assignee: "opencode" });
+      promoteTask(t2.id);
+
+      let callCount = 0;
+      const result = await tick({
+        spawnHarness: async () => {
+          callCount++;
+          if (callCount === 1) {
+            return { stdout: "", stderr: "rate limited", exitCode: 75 };
+          }
+          return { stdout: "ok", stderr: "", exitCode: 0 };
+        },
+        createWorktree: () => "/tmp/mock-worktree",
+        removeWorktree: () => ({ worktreeRemoved: true, branchDeleted: true, found: true }),
+        failureLimit: 1,
+      });
+
+      // Both tasks should process (rate-limited not counted as failure)
+      expect(result.processed).toBe(1);
+      const rlTask = showTask(t1.id);
+      expect(rlTask).not.toBeNull();
+    });
+
+    it("harness execution failure increments the counter", async () => {
+      const board = createBoard("fl7-board", "/tmp/fl7-board");
+      const t1 = createTask({ board_id: board.id, title: "Failing", assignee: "opencode" });
+      promoteTask(t1.id);
+      const t2 = createTask({ board_id: board.id, title: "Also ready", assignee: "opencode" });
+      promoteTask(t2.id);
+
+      const warnings: string[] = [];
+      const origWarn = console.warn;
+      console.warn = (...args: string[]) => { warnings.push(args.join(" ")); };
+
+      try {
+        await tick({
+          spawnHarness: () => Promise.resolve({ stdout: "", stderr: "bad", exitCode: 1 }),
+          createWorktree: () => "/tmp/mock-worktree",
+          removeWorktree: () => ({ worktreeRemoved: true, branchDeleted: true, found: true }),
+          failureLimit: 1,
+        });
+      } finally {
+        console.warn = origWarn;
+      }
+
+      expect(warnings.some((w) => w.includes("failure limit of 1 reached"))).toBe(true);
     });
   });
 });

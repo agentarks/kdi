@@ -217,7 +217,7 @@
 - [x] Unit/CLI tests for all CLI commands and notifier watcher
 - [x] `bun run lint`, `bun run test`, `bun run build` pass
 
-## CLI Polish Specs (KDI-030 through KDI-035) — In Progress
+## CLI Polish Specs (KDI-030 through KDI-035) — Done
 - [x] BRDs drafted:
   - `specs/brd-kdi-030-list-filters-sort.md`
   - `specs/brd-kdi-031-show-run-filtering.md`
@@ -232,7 +232,97 @@
   - `ff_comment_enhancements` / `FF_COMMENT_ENHANCEMENTS`
   - `ff_dispatch_controls` / `FF_DISPATCH_CONTROLS`
   - `ff_watch_filters` / `FF_WATCH_FILTERS`
-- [ ] Feature flags registered in `src/flags.ts`
+- [x] Feature flags registered in `src/flags.ts`
+
+## KDI-030: `kdi list` Filters and Sort — Done
+- [x] `session_id`, `workflow_template_id`, `current_step_key` columns added to `tasks` (schema + migrations)
+- [x] Supporting indexes: `idx_tasks_session`, `idx_tasks_workflow_template`, `idx_tasks_step_key`
+- [x] `kdi list --mine` — filter by current profile assignee (resolved from `KDI_PROFILE` → `HERMES_PROFILE` → `"user"`)
+- [x] `kdi list --session <session_id>` — filter by originating session
+- [x] `kdi list --archived` — include archived tasks in listing
+- [x] `kdi list --sort <key>` — sort by `assignee`, `created`, `created-desc`, `priority`, `priority-desc`, `status`, `title`, `updated`
+- [x] `kdi list --workflow-template-id <id>` — filter by workflow template
+- [x] `kdi list --step-key <key>` — filter by current step key
+- [x] `kdi create --session <session_id>` — store originating session on task
+- [x] `--mine` and `--assignee` mutually exclusive; clear error when used together
+- [x] New filters compose with existing `--status`, `--assignee`, `--tenant`, `--created-by`
+- [x] All new options gated by `FF_LIST_FILTERS_SORT` (defaults to `false`)
+- [x] Invalid sort keys rejected with a list of valid values
+- [x] Unit tests cover each filter, sort key, archived inclusion, and flag gating
+- [x] CLI/e2e tests cover all acceptance criteria from the BRD
+- [x] `bun run lint`, `bun run test`, `bun run build` pass
+
+## KDI-031: `kdi show` Run Filtering — Done
+- [x] `kdi show <task_id>` displays a "Runs:" section after comments and attachments when flag enabled
+- [x] `--state-type status --state-name <value>` filters runs by status
+- [x] `--state-type outcome --state-name <value>` filters runs by outcome
+- [x] Only passing both `--state-type` and `--state-name` is valid; partial pairs rejected
+- [x] Invalid `--state-type` rejected with clear error listing valid values
+- [x] "No runs found for this task." when task has no runs
+- [x] "No runs match the filter." when filter matches nothing
+- [x] All new options gated by `FF_SHOW_RUN_FILTERING` (defaults to `false`)
+- [x] `kdi runs` and default `kdi show` output unchanged when flag disabled
+- [x] Unit tests for `getRunsFiltered` — validation, filter matching, empty states
+- [x] CLI/e2e tests cover acceptance criteria
+- [x] `bun run lint`, `bun run test`, `bun run build` pass
+
+## KDI-032: Bulk Operations — Done
+- [x] `kdi block <id1> <id2>... --reason <text>` — bulk block with pre-checks for already-blocked
+- [x] `kdi schedule <id1> <id2>... --at <timestamp> [--reason <text>]` — bulk schedule with per-task try/catch
+- [x] `kdi promote <id1> <id2>... [--force] [--dry-run]` — bulk promote with dependency override
+- [x] `kdi promote --force` bypasses parent dependency checks
+- [x] `kdi promote --dry-run` prints verdicts without mutating state
+- [x] `kdi archive --rm <id1> <id2>...` — permanently delete archived tasks (FK-safe cascade)
+- [x] Already-blocked tasks skipped with clear "already blocked" message
+- [x] Already-archived tasks skipped during block operations
+- [x] `archive --rm` rejects non-archived tasks with clear error
+- [x] Bulk operations gated by `FF_BULK_OPERATIONS` (defaults to `false`)
+- [x] Single-task `block`/`promote`/`archive` work when flag disabled
+- [x] Unit tests cover `promoteTaskAdvanced`, `archiveTaskHard`, flag gating
+- [x] CLI/e2e tests cover acceptance criteria
+- [x] `bun run lint`, `bun run test`, `bun run build` pass
+
+## KDI-033: Comment Enhancements — Done
+- [x] `kdi comment <task_id> <text> --author <name>` — stores author on comment
+- [x] Default author resolved from `KDI_PROFILE` → `HERMES_PROFILE` → `"user"`
+- [x] `kdi comment <task_id> <text> --max-len <n>` — trims stored text to n characters
+- [x] Empty `--author` rejected with clear error
+- [x] Invalid `--max-len` (0, -1, non-numeric) rejected with clear error
+- [x] `kdi show <task_id>` displays author with each comment when flag enabled
+- [x] `author` column added to `comments` table (migration guarded by `PRAGMA table_info`)
+- [x] All new options gated by `FF_COMMENT_ENHANCEMENTS` (defaults to `false`)
+- [x] Preserve backward compatibility: existing comments show "user" as fallback author
+- [x] Unit/CLI tests cover author resolution, max-len trimming, flag gating, show display
+- [x] `bun run lint`, `bun run test`, `bun run build` pass
+
+## KDI-034: Dispatch Controls — Done
+- [x] `kdi dispatch --failure-limit <n>` — per-pass failure threshold
+- [x] Failure counter increments for: crash, spawn-fail, board not found, unknown profile, worktree failure, harness failure
+- [x] Rate-limited tasks (exit code 75) excluded from failure counter
+- [x] Dependency-skipped tasks excluded from failure counter
+- [x] Warning emitted to stderr + board log when limit reached
+- [x] `--failure-limit` combines independently with `--max`
+- [x] `--max <n>` behavior preserved unchanged (ungated)
+- [x] `parseFailureLimit()` pure function extracted, unit-tested
+- [x] `--failure-limit` gated by `FF_DISPATCH_CONTROLS` (defaults to `false`)
+- [x] Unit/dispatcher tests cover happy-path, early-exit, zero/invalid inputs, flag gating
+- [x] `bun run lint`, `bun run test`, `bun run build` pass
+
+## KDI-035: Watch Filters — Done
+- [x] `kdi watch --assignee <profile>` — filter by task assignee
+- [x] `kdi watch --tenant <name>` — filter by task tenant (also gated by `FF_TENANT_NAMESPACE`)
+- [x] `kdi watch --kinds <kind1>,<kind2>` — filter by event kinds
+- [x] `kdi watch --interval <seconds>` — custom poll interval (min 0.1s)
+- [x] Filters compose with AND semantics
+- [x] Empty `--assignee`, `--tenant`, `--kinds` rejected with clear errors
+- [x] Invalid `--interval` rejected with clear error
+- [x] Unfiltered `kdi watch` behavior unchanged
+- [x] `getRecentEvents` and `getEventsAfter` accept optional `WatchFilters`
+- [x] Filtered queries use parameterized SQL; no string interpolation of user input
+- [x] Combined assignee + tenant AND filtering tested
+- [x] All new options gated by `FF_WATCH_FILTERS` (defaults to `false`)
+- [x] Unit/CLI tests cover filters, combinations, flag gating, edge cases
+- [x] `bun run lint`, `bun run test`, `bun run build` pass
 
 - [x] `kdi create <title> --board <slug> --assignee <profile>` — create task
 - [x] `kdi create <title> --board <slug> --triage` — create task in triage
@@ -300,7 +390,7 @@
 ## Task Events (KDI-000b)
 - [x] `task_events` table with task_id, run_id, kind, payload, created_at
 - [x] `kdi tail <task_id>` — follow events live (poll 1s)
-- [x] `kdi watch` — board-wide event stream (poll 0.5s)
+- [x] `kdi watch` — board-wide event stream (poll 0.5s) with optional `--assignee`, `--tenant`, `--kinds`, and `--interval` filters (KDI-035)
 - [x] Event emissions: created, promoted, blocked, unblocked, completed, archived, claimed, finished
 
 ## CAS Claim System (KDI-000c)
