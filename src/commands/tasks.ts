@@ -601,8 +601,24 @@ export const blockTaskCommand = new Command("block")
       let skipped = 0;
       for (const id of ids) {
         try {
-          const task = blockTask(id, options.reason);
-          console.log(`Blocked task ${task.id}.`);
+          const task = showTask(id);
+          if (!task) {
+            console.error(`Skipped task ${id}: not found`);
+            skipped++;
+            continue;
+          }
+          if (task.status === "blocked") {
+            console.error(`Skipped task ${id}: already blocked`);
+            skipped++;
+            continue;
+          }
+          if (task.archived_at !== null) {
+            console.error(`Skipped task ${id}: already archived`);
+            skipped++;
+            continue;
+          }
+          const blocked = blockTask(id, options.reason);
+          console.log(`Blocked task ${blocked.id}.`);
         } catch (err: any) {
           console.error(`Skipped task ${id}: ${err.message}`);
           skipped++;
@@ -663,14 +679,21 @@ export const scheduleTaskCommand = new Command("schedule")
       }
       const ids = taskIds.map(parseTaskId);
       const scheduled: number[] = [];
+      let skipped = 0;
       for (const id of ids) {
-        const task = scheduleTask(id, scheduledAt, options.reason);
-        console.log(`Scheduled task ${task.id} for ${new Date(scheduledAt * 1000).toISOString()}.`);
-        scheduled.push(task.id);
+        try {
+          const task = scheduleTask(id, scheduledAt, options.reason);
+          console.log(`Scheduled task ${task.id} for ${new Date(scheduledAt * 1000).toISOString()}.`);
+          scheduled.push(task.id);
+        } catch (err: any) {
+          console.error(`Skipped task ${id}: ${err.message}`);
+          skipped++;
+        }
       }
       if (scheduled.length > 1) {
         console.log(`Scheduled ${scheduled.length} tasks.`);
       }
+      if (skipped > 0) process.exit(1);
     } catch (err: any) {
       console.error(`Error: ${err.message}`);
       process.exit(1);

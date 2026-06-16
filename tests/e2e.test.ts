@@ -2131,6 +2131,27 @@ describe("kdi e2e acceptance", () => {
     rmSync(tmp, { recursive: true, force: true });
   });
 
+  it("bulk block skips already-blocked tasks", () => {
+    const tmp = makeTempDir("bulk-block-skip");
+    const dbPath = join(tmp, "kdi.db");
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_BULK_OPERATIONS: "true" };
+
+    runKdi(`boards create myproj --workdir ${tmp}`, env);
+    const id1 = runKdi(`create "First" --board myproj`, env);
+    const id2 = runKdi(`create "Second" --board myproj`, env);
+
+    // Block id1 first, then try to block both
+    runKdi(`block ${id1} --reason "first block"`, env);
+    try {
+      runKdi(`block ${id1} ${id2} --reason "bulk block"`, env);
+    } catch (err: any) {
+      expect(err.stderr).toContain(`Skipped task ${id1}: already blocked`);
+      expect(err.stdout).toContain(`Blocked task ${id2}`);
+    }
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
   it("bulk block rejected when flag disabled", () => {
     const tmp = makeTempDir("bulk-block-off");
     const dbPath = join(tmp, "kdi.db");
@@ -2206,16 +2227,65 @@ describe("kdi e2e acceptance", () => {
     // Complete id2 so it can't be promoted
     runKdi(`complete ${id2} --result "done"`, env);
 
-    // dry-run exits non-zero when tasks are skipped; use runKdiAllowFailure
+    // dry-run exits non-zero when tasks are skipped
     try {
       runKdi(`promote ${id1} ${id2} --dry-run`, env);
     } catch (err: any) {
-      // Expected: non-zero exit when a task is skipped
       expect(err.message).toContain("Command failed");
+      expect(err.stdout).toContain("would_promote");
+      expect(err.stderr).toContain("skipped: wrong_status");
     }
 
     // Verify id1 is still in todo (dry-run didn't mutate)
     const showOutput = runKdi(`show ${id1}`, env);
+    expect(showOutput).toContain("Status: todo");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("promote --force --dry-run combined", () => {
+    const tmp = makeTempDir("promote-force-dryrun");
+    const dbPath = join(tmp, "kdi.db");
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_BULK_OPERATIONS: "true" };
+
+    runKdi(`boards create myproj --workdir ${tmp}`, env);
+    runKdi(`create "Parent" --board myproj`, env);
+    const childId = runKdi(`create "Child" --board myproj`, env);
+
+    // Add dependency: parent -> child
+    initDb(dbPath);
+    addDependency(1, parseInt(childId, 10));
+    closeDb();
+
+    // --force --dry-run should show would_promote despite blocked dependency
+    try {
+      runKdi(`promote ${childId} --force --dry-run`, env);
+    } catch (err: any) {
+      expect(err.stderr).toContain("would_promote");
+    }
+
+    // Child should still be in todo
+    const showOutput = runKdi(`show ${childId}`, env);
+    expect(showOutput).toContain("Status: todo");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("single-task --dry-run shows verdict", () => {
+    const tmp = makeTempDir("single-dryrun");
+    const dbPath = join(tmp, "kdi.db");
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_BULK_OPERATIONS: "true" };
+
+    runKdi(`boards create myproj --workdir ${tmp}`, env);
+    const id = runKdi(`create "Task" --board myproj`, env);
+
+    try {
+      runKdi(`promote ${id} --dry-run`, env);
+    } catch (err: any) {
+      expect(err.stderr).toContain("would_promote");
+    }
+
+    const showOutput = runKdi(`show ${id}`, env);
     expect(showOutput).toContain("Status: todo");
 
     rmSync(tmp, { recursive: true, force: true });
