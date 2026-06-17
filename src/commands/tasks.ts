@@ -29,7 +29,8 @@ import { getRuns, getRunsFiltered } from "../models/taskRun";
 import { getEvents, tailEvents, getRecentEvents, getEventsAfter, type WatchFilters } from "../models/taskEvent";
 import { atomicClaim, reclaimTask, heartbeat } from "../models/claim";
 import { getTaskLogPath } from "../observability";
-import { isEnabled, FF_SCHEDULED_STATUS, FF_REVIEW_STATUS, FF_COMPLETE_METADATA, FF_PRIORITY_INTEGER, FF_SKILLS_ARRAY, FF_MAX_RUNTIME, FF_MAX_RETRIES, FF_TENANT_NAMESPACE, FF_CREATED_BY, FF_MODEL_OVERRIDE, FF_DEFAULT_WORKDIR, FF_WORKER_LOG_CAPTURE, FF_ASSIGN_REASSIGN, FF_CRASH_GRACE_PERIOD, FF_HEARTBEAT, FF_RATE_LIMIT_EXIT_CODE, FF_TASK_ATTACHMENTS, FF_LIST_FILTERS_SORT, FF_SHOW_RUN_FILTERING, FF_BULK_OPERATIONS, FF_COMMENT_ENHANCEMENTS, FF_WATCH_FILTERS } from "../flags";
+import { isEnabled, FF_SCHEDULED_STATUS, FF_REVIEW_STATUS, FF_COMPLETE_METADATA, FF_PRIORITY_INTEGER, FF_SKILLS_ARRAY, FF_MAX_RUNTIME, FF_MAX_RETRIES, FF_TENANT_NAMESPACE, FF_CREATED_BY, FF_MODEL_OVERRIDE, FF_DEFAULT_WORKDIR, FF_WORKER_LOG_CAPTURE, FF_ASSIGN_REASSIGN, FF_CRASH_GRACE_PERIOD, FF_HEARTBEAT, FF_RATE_LIMIT_EXIT_CODE, FF_TASK_ATTACHMENTS, FF_LIST_FILTERS_SORT, FF_SHOW_RUN_FILTERING, FF_BULK_OPERATIONS, FF_COMMENT_ENHANCEMENTS, FF_WATCH_FILTERS, FF_WORKFLOW_TEMPLATES } from "../flags";
+import { getWorkflowTemplate, validateStepKey, advanceTaskStep, setTaskStep } from "../models/workflowTemplate";
 import { resolveBoard } from "../resolveBoard";
 
 const VALID_STATUSES = ["triage", "todo", "scheduled", "ready", "running", "done", "blocked", "review"] as const;
@@ -147,7 +148,9 @@ export const createTaskCommand = new Command("create")
   .option("--created-by <actor>", "Actor that created the task")
   .option("--workspace <path>", "Workspace path for this task. Feature-flagged.")
   .option("--session <session_id>", "Originating session ID. Feature-flagged.")
-  .action((title: string, options: { board?: string; assignee?: string; body?: string; triage?: boolean; initialStatus?: string; at?: string; priority?: string; idempotencyKey?: string; maxRuntime?: string; maxRetries?: string; tenant?: string; skill: string[]; createdBy?: string; model?: string; workspace?: string; session?: string }) => {
+  .option("--workflow-template-id <id>", "Workflow template ID. Feature-flagged.")
+  .option("--step-key <key>", "Initial workflow step key (requires --workflow-template-id). Feature-flagged.")
+  .action((title: string, options: { board?: string; assignee?: string; body?: string; triage?: boolean; initialStatus?: string; at?: string; priority?: string; idempotencyKey?: string; maxRuntime?: string; maxRetries?: string; tenant?: string; skill: string[]; createdBy?: string; model?: string; workspace?: string; session?: string; workflowTemplateId?: string; stepKey?: string }) => {
     try {
       if (!title || title.trim() === "") {
         throw new Error("Title is required.");
@@ -281,6 +284,41 @@ export const createTaskCommand = new Command("create")
         }
       }
 
+      if (options.workflowTemplateId !== undefined || options.stepKey !== undefined) {
+        if (!isEnabled(FF_WORKFLOW_TEMPLATES)) {
+          throw new Error("Workflow templates feature is not enabled.");
+        }
+      }
+
+      let workflowTemplateId: string | undefined;
+      let currentStepKey: string | undefined;
+
+      if (isEnabled(FF_WORKFLOW_TEMPLATES) && options.workflowTemplateId !== undefined) {
+        workflowTemplateId = options.workflowTemplateId.trim();
+        if (workflowTemplateId === "") {
+          throw new Error("Workflow template ID cannot be empty.");
+        }
+
+        const template = getWorkflowTemplate(board.id, workflowTemplateId);
+        if (!template) {
+          throw new Error(
+            `Workflow template "${workflowTemplateId}" not found for board "${boardSlug}".`
+          );
+        }
+
+        if (options.stepKey !== undefined) {
+          currentStepKey = options.stepKey.trim();
+          if (currentStepKey === "") {
+            throw new Error("Step key cannot be empty.");
+          }
+          validateStepKey(template, currentStepKey);
+        } else {
+          currentStepKey = template.steps[0];
+        }
+      } else if (options.stepKey !== undefined) {
+        throw new Error("--step-key requires --workflow-template-id.");
+      }
+
       const task = createTask({
         board_id: board.id,
         title,
@@ -299,6 +337,8 @@ export const createTaskCommand = new Command("create")
         model_override: options.model,
         workspace,
         session_id: options.session,
+        workflow_template_id: workflowTemplateId,
+        current_step_key: currentStepKey,
       });
       console.log(task.id);
     } catch (err: any) {
@@ -453,6 +493,12 @@ export const showTaskCommand = new Command("show")
       }
       if (isEnabled(FF_HEARTBEAT) && task.status === "running" && task.last_heartbeat_at) {
         console.log(`Last heartbeat: ${new Date(task.last_heartbeat_at * 1000).toISOString()}`);
+      }
+      if (isEnabled(FF_WORKFLOW_TEMPLATES) && task.workflow_template_id) {
+        console.log(`Workflow template: ${task.workflow_template_id}`);
+        if (task.current_step_key) {
+          console.log(`Current step: ${task.current_step_key}`);
+        }
       }
 
       const comments = getComments(id);
@@ -859,6 +905,36 @@ export const reviewTaskCommand = new Command("review")
       const id = parseTaskId(taskId);
       const task = reviewTask(id, options.reason);
       console.log(`Marked task ${task.id} as under review.`);
+    } catch (err: any) {
+      console.error(`Error: ${err.message}`);
+      process.exit(1);
+    }
+  });
+
+export const stepTaskCommand = new Command("step")
+  .description("Advance or jump a workflow-template task to a step")
+  .argument("<task_id>", "Task ID")
+  .option("--to <key>", "Jump to a specific step key")
+  .option("--reason <text>", "Reason for the step change")
+  .action((taskId: string, options: { to?: string; reason?: string }) => {
+    try {
+      if (!isEnabled(FF_WORKFLOW_TEMPLATES)) {
+        throw new Error("Workflow templates feature is not enabled.");
+      }
+      const id = parseTaskId(taskId);
+
+      let task: import("../models/task").Task;
+      if (options.to !== undefined) {
+        task = setTaskStep(id, options.to.trim(), options.reason);
+        console.log(`Set task ${task.id} to step ${task.current_step_key}.`);
+      } else {
+        task = advanceTaskStep(id, options.reason);
+        if (task.status === "done") {
+          console.log(`Completed task ${task.id} at terminal workflow step.`);
+        } else {
+          console.log(`Advanced task ${task.id} to step ${task.current_step_key}.`);
+        }
+      }
     } catch (err: any) {
       console.error(`Error: ${err.message}`);
       process.exit(1);
@@ -1274,6 +1350,7 @@ export const listRunsCommand = new Command("runs")
         let line = `Run #${run.id}: status=${run.status}`;
         if (run.outcome) line += ` outcome=${run.outcome}`;
         if (run.profile) line += ` profile=${run.profile}`;
+        if (run.step_key) line += ` step=${run.step_key}`;
         line += ` started=${started}`;
         if (isEnabled(FF_CRASH_GRACE_PERIOD) && run.spawned_at) {
           line += ` spawned=${new Date(run.spawned_at * 1000).toISOString()}`;

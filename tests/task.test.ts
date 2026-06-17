@@ -17,9 +17,13 @@ import {
   assignTask,
   unassignTask,
   reassignTask,
+  promoteTaskAdvanced,
+  archiveTaskHard,
   type Task,
 } from "../src/models/task";
 import { createBoard } from "../src/models/board";
+import { addDependency } from "../src/models/dependency";
+import { addComment } from "../src/models/comment";
 import { getRuns, createRun } from "../src/models/taskRun";
 import { getEvents } from "../src/models/taskEvent";
 import { atomicClaim } from "../src/models/claim";
@@ -1174,7 +1178,7 @@ describe("archiveTaskHard", () => {
     const task = createTask({ board_id: board.id, title: "Cascade delete" });
 
     // Add a comment
-    addComment(task.id, "test comment");
+    addComment({ task_id: task.id, text: "test comment" });
 
     // Promote and create a run
     promoteTask(task.id);

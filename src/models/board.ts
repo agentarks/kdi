@@ -377,6 +377,7 @@ export function removeBoard(slug: string, hardDelete: boolean): void {
     db.run("DELETE FROM task_attachments WHERE task_id IN (SELECT id FROM tasks WHERE board_id = ?)", [board.id]);
     db.run("DELETE FROM comments WHERE task_id IN (SELECT id FROM tasks WHERE board_id = ?)", [board.id]);
     db.run("DELETE FROM dependencies WHERE parent_id IN (SELECT id FROM tasks WHERE board_id = ?) OR child_id IN (SELECT id FROM tasks WHERE board_id = ?)", [board.id, board.id]);
+    db.run("DELETE FROM workflow_templates WHERE board_id = ?", [board.id]);
     db.run("DELETE FROM tasks WHERE board_id = ?", [board.id]);
 
     const boardDir = getBoardDataDir(slug);

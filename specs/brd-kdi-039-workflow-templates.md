@@ -11,19 +11,6 @@ existing task lifecycle and brings KDI closer to parity with Hermes Kanban's
 `workflow_template_id` + `current_step_key` behavior.
 
 -------------------------------------------------------------------------------
-Background
--------------------------------------------------------------------------------
-KDI tasks already move through a fixed status lifecycle (`triage`, `todo`,
-`ready`, `running`, `done`, `blocked`, `review`, `scheduled`). For recurring
-multi-stage work—such as onboarding, incident response, or code-review
-pipelines—operators need a way to express stage sequences and route harnesses
-according to the current stage. Hermes Kanban exposes `workflow_template_id`
-and `current_step_key` for this purpose; KDI-030 added the corresponding task
-columns and list filters. This BRD introduces the parent `workflow_templates`
-table, the CLI surface to manage templates and step through them, and the
-step-key driven routing that flows `current_step_key` into harness execution.
-
--------------------------------------------------------------------------------
 User Stories
 -------------------------------------------------------------------------------
 1. As an operator, I can define a workflow template with an ordered list of
@@ -34,9 +21,6 @@ User Stories
    or jump to a specific step, so that routing is explicit and auditable.
 4. As an operator, I can list defined workflow templates for a board.
 5. As an operator, I can see a task's current template and step in `kdi show`.
-6. As a harness author, I can receive the current step key via a profile
-   template variable and an environment variable so that the same profile can
-   behave differently per step.
 
 -------------------------------------------------------------------------------
 Functional Requirements
@@ -69,13 +53,8 @@ Functional Requirements
 - `kdi show <task_id>` displays `Workflow template:` and `Current step:` when
   `FF_WORKFLOW_TEMPLATES` is enabled and the task is bound to a template.
 - Existing `kdi list --workflow-template-id` and `--step-key` filters continue
-  to work unchanged (added in KDI-030; gated by `FF_LIST_FILTERS_SORT`).
-- Step-key driven routing: when the dispatcher claims a ready task that has a
-  `current_step_key`, the active `task_runs` row records that step key, the
-  harness profile command may use `{{step_key}}` substitution, and the harness
-  process receives `KDI_CURRENT_STEP_KEY=<key>` in its environment.
-- `kdi runs <task_id>` displays `step=<key>` for any run that recorded a step
-  key.
+  to work unchanged (they were added in KDI-030 and are gated by
+  `FF_LIST_FILTERS_SORT`).
 - All workflow template surfaces are rejected with a clear error when
   `FF_WORKFLOW_TEMPLATES` is disabled.
 
@@ -85,8 +64,6 @@ Non-Functional Requirements
 - Template lookup by `(board_id, template_id)` must remain sub-millisecond for
   boards with 100 templates.
 - Step advancement is synchronous and transactional.
-- Step-key routing adds no extra database round-trips beyond the existing
-  claim query.
 - No breaking change to existing task status transitions when the flag is
   disabled.
 
@@ -112,8 +89,8 @@ Feature Flag Requirements
 Schema Changes
 -------------------------------------------------------------------------------
 Add a new `workflow_templates` table. The `tasks.workflow_template_id` and
-`tasks.current_step_key` columns are added by KDI-030; this BRD depends on them
-and adds the parent table that gives them meaning.
+`tasks.current_step_key` columns already exist from KDI-030; this BRD adds the
+parent table that gives them meaning.
 
 ```ts
 const hasWorkflowTemplates = db.query(
@@ -148,7 +125,6 @@ CLI Surface
 - `kdi create <title> ... [--workflow-template-id <id>] [--step-key <key>]`
 - `kdi step <task_id> [--to <key>] [--reason <text>]`
 - `kdi show <task_id>` (displays workflow fields when enabled)
-- `kdi runs <task_id>` (displays `step=<key>` when a run recorded one)
 
 -------------------------------------------------------------------------------
 Model Behavior
@@ -167,8 +143,7 @@ Model Behavior
    ```
 2. `defineWorkflowTemplate(board_id, template_id, name, steps)`:
    - Validate `template_id` matches `^[a-zA-Z0-9_-]+$`.
-   - Validate `steps` is a non-empty array of unique non-empty strings,
-     bounded to a maximum count (e.g. 100) and step-key length (e.g. 255).
+   - Validate `steps` is a non-empty array of unique non-empty strings.
    - Upsert on `(board_id, template_id)` conflict, updating `name`, `steps`,
      and `updated_at`.
 3. `listWorkflowTemplates(board_id)`:
@@ -189,20 +164,6 @@ Model Behavior
    - Update `current_step_key` and emit `stepped`.
 
 -------------------------------------------------------------------------------
-Step-Key Driven Routing
--------------------------------------------------------------------------------
-When the dispatcher claims a ready task:
-1. `atomicClaim` selects `tasks.current_step_key` alongside
-   `max_runtime_seconds` and writes `step_key` into the new `task_runs` row.
-2. The dispatcher builds the harness command with `substituteCommand`, passing
-   `step_key: task.current_step_key ?? ""`. Profile commands may contain
-   `{{step_key}}`.
-3. If the task has a non-empty `current_step_key`, the dispatcher adds
-   `KDI_CURRENT_STEP_KEY=<key>` to the harness environment.
-4. Profile validation (`validateProfile`) accepts `{{step_key}}` as a known
-   template variable.
-
--------------------------------------------------------------------------------
 Event Recording
 -------------------------------------------------------------------------------
 - New event kind: `stepped`.
@@ -213,47 +174,45 @@ Event Recording
 -------------------------------------------------------------------------------
 Acceptance Criteria
 -------------------------------------------------------------------------------
-- [ ] `FF_WORKFLOW_TEMPLATES=true kdi workflows define onboarding --name
+- [x] `FF_WORKFLOW_TEMPLATES=true kdi workflows define onboarding --name
       "Onboarding" --steps '["setup","review","deploy"]' --board myproj`
       creates a template with three steps.
-- [ ] `FF_WORKFLOW_TEMPLATES=true kdi workflows list --board myproj` prints
+- [x] `FF_WORKFLOW_TEMPLATES=true kdi workflows list --board myproj` prints
       the onboarding template and its steps.
-- [ ] `FF_WORKFLOW_TEMPLATES=true kdi create "Onboard user" --board myproj
+- [x] `FF_WORKFLOW_TEMPLATES=true kdi create "Onboard user" --board myproj
       --workflow-template-id onboarding` creates a task with
       `current_step_key = "setup"`.
-- [ ] `FF_WORKFLOW_TEMPLATES=true kdi create "Onboard user" --board myproj
+- [x] `FF_WORKFLOW_TEMPLATES=true kdi create "Onboard user" --board myproj
       --workflow-template-id onboarding --step-key review` creates a task
       starting at the `review` step.
-- [ ] `FF_WORKFLOW_TEMPLATES=true kdi create "Onboard user" --board myproj
+- [x] `FF_WORKFLOW_TEMPLATES=true kdi create "Onboard user" --board myproj
       --workflow-template-id onboarding --step-key missing` exits with a
       clear error that the step does not exist in the template.
-- [ ] `FF_WORKFLOW_TEMPLATES=true kdi step <task_id>` advances the task from
+- [x] `FF_WORKFLOW_TEMPLATES=true kdi step <task_id>` advances the task from
       `setup` to `review`.
-- [ ] `FF_WORKFLOW_TEMPLATES=true kdi step <task_id>` at the `deploy` step
+- [x] `FF_WORKFLOW_TEMPLATES=true kdi step <task_id>` at the `deploy` step
       transitions the task to `done` and clears `current_step_key`.
-- [ ] `FF_WORKFLOW_TEMPLATES=true kdi step <task_id> --to setup` jumps the
+- [x] `FF_WORKFLOW_TEMPLATES=true kdi step <task_id> --to setup` jumps the
       task back to the `setup` step.
-- [ ] `FF_WORKFLOW_TEMPLATES=true kdi step <task_id> --reason "fixed bug"`
+- [x] `FF_WORKFLOW_TEMPLATES=true kdi step <task_id> --reason "fixed bug"`
       records the reason on the `stepped` event.
-- [ ] `FF_WORKFLOW_TEMPLATES=true kdi show <task_id>` displays the workflow
+- [x] `FF_WORKFLOW_TEMPLATES=true kdi show <task_id>` displays the workflow
       template id and current step.
-- [ ] `FF_WORKFLOW_TEMPLATES=false kdi workflows define ...` exits with
+- [x] `FF_WORKFLOW_TEMPLATES=false kdi workflows define ...` exits with
       "Workflow templates feature is not enabled."
-- [ ] `FF_WORKFLOW_TEMPLATES=false kdi create "task" --workflow-template-id x`
+- [x] `FF_WORKFLOW_TEMPLATES=false kdi create "task" --workflow-template-id x`
       exits with the same gating error.
-- [ ] A board hard-delete removes its workflow templates.
-- [ ] When a task with `current_step_key` is claimed by the dispatcher, the
-      active `task_runs` row records the step key.
-- [ ] The dispatcher substitutes `{{step_key}}` in harness profile commands for
+- [x] A board hard-delete removes its workflow templates.
+- [x] Unit and CLI tests cover template CRUD, step advancement, terminal-step
+      completion, validation errors, and flag gating.
+- [x] When a task with `current_step_key` is claimed by the dispatcher, the active
+      `task_runs` row records the step key.
+- [x] The dispatcher substitutes `{{step_key}}` in harness profile commands for tasks
+      that have a current step key.
+- [x] The dispatcher sets `KDI_CURRENT_STEP_KEY=<key>` in the harness environment for
       tasks that have a current step key.
-- [ ] The dispatcher sets `KDI_CURRENT_STEP_KEY=<key>` in the harness
-      environment for tasks that have a current step key.
-- [ ] `kdi runs <task_id>` displays `step=<key>` for runs that recorded a step
-      key.
-- [ ] Profile validation accepts `{{step_key}}` as a known template variable.
-- [ ] Unit and CLI tests cover template CRUD, step advancement, terminal-step
-      completion, validation errors, flag gating, dispatcher routing, and
-      runs display.
+- [x] `kdi runs <task_id>` displays `step=<key>` for runs that recorded a step key.
+- [x] Profile validation accepts `{{step_key}}` as a known template variable.
 
 -------------------------------------------------------------------------------
 Risks / Mitigations
@@ -270,31 +229,15 @@ Risks / Mitigations
 - **Risk:** Defining a template with many steps could bloat the JSON column.
   **Mitigation:** Enforce a reasonable maximum step count (e.g. 100) and step
   key length (e.g. 255 characters).
-- **Risk:** Harness profiles that do not expect `{{step_key}}` or
-  `KDI_CURRENT_STEP_KEY` are unaffected; absent values substitute to empty
-  string and omit the env var.
-
--------------------------------------------------------------------------------
-Migration Notes
--------------------------------------------------------------------------------
-- Fresh databases create `workflow_templates` directly via the baseline schema.
-- Existing databases add the table idempotently on the next `kdi` invocation
-  using the `sqlite_master` guard shown above.
-- `tasks.workflow_template_id` and `tasks.current_step_key` are created by
-  KDI-030 migrations; this feature assumes they already exist.
 
 -------------------------------------------------------------------------------
 Dependencies
 -------------------------------------------------------------------------------
 - `src/models/task.ts` (`Task`, `TASK_COLUMNS`, `hydrateTask`, `showTask`).
 - `src/models/taskEvent.ts` (`addEvent`).
-- `src/models/taskRun.ts` (`createRun`, `TaskRun`, run columns).
-- `src/models/claim.ts` (`atomicClaim`).
-- `src/commands/tasks.ts` (`kdi create`, `kdi show`, `kdi runs`).
+- `src/commands/tasks.ts` (`kdi create`, `kdi show`).
 - `src/commands/workflows.ts` (new file for `kdi workflows define/list`).
-- `src/dispatcher.ts` (harness command substitution and env vars).
-- `src/profiles.ts` (`substituteCommand`, `validateProfile`).
 - `src/index.ts` (wire new commands).
 - `src/db.ts` (new `workflow_templates` table and index).
 - `src/flags.ts` (`FF_WORKFLOW_TEMPLATES`).
-- `specs/feature-flags.md` (registry entry for `ff_workflow_templates`).
+- `specs/feature-flags.md` (already registered; verify consistency).

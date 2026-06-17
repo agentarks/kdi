@@ -493,27 +493,21 @@
   - `--kinds <kind1>,<kind2>` — comma-separated event kind filter
   - `--interval <seconds>` — poll interval (default 0.5)
 
-- [x] **KDI-036: `kdi runs` filtering**
+- [ ] **KDI-036: `kdi runs` filtering**
   - `--state-type {status,outcome} --state-name VALUE` — filter runs by column
-  - BRD: `specs/brd-kdi-036-runs-filtering.md`
 
-- [x] **KDI-037: Dispatcher presence warning**
+- [ ] **KDI-037: Dispatcher presence warning**
   - `kdi create` warns if no dispatcher/gateway detected for the board
   - Defensive probe of dispatcher PID / config flag
-  - BRD: `specs/brd-kdi-037-dispatcher-presence-warning.md`
 
 ### Phase 8 — v2 / Future
-- [x] **KDI-038: Goal mode**
-  - `kdi create --goal --goal-max-turns 20 --goal-judge <profile>`
-  - Ralph-style goal loop with required judge integration
+- [ ] **KDI-038: Goal mode**
+  - `kdi create --goal --goal-max-turns 20`
+  - Ralph-style goal loop (requires judge integration)
 
-- [x] **KDI-039: Workflow templates**
-  - `workflow_templates` table with board-scoped templates and ordered steps
-  - `kdi workflows define/list` template management commands
-  - `kdi create --workflow-template-id [--step-key]` binds a task to a template
-  - `kdi step <task_id> [--to <key>] [--reason <text>]` advances or jumps steps
-  - Step-key driven routing (`{{step_key}}`, `KDI_CURRENT_STEP_KEY`)
-  - BRD: `specs/brd-kdi-039-workflow-templates.md`
+- [ ] **KDI-039: Workflow templates**
+  - `workflow_template_id` + `current_step_key` on tasks
+  - Step-key driven routing
 
 - [ ] **KDI-040: Triage automation (LLM-powered)**
   - `kdi specify <task_id>` — LLM fleshes out triage → todo

@@ -458,6 +458,105 @@ describe("dispatcher", () => {
     expect(calls[0][4]).toBeUndefined();
   });
 
+  it("passes current_step_key to harness via {{step_key}} template and KDI_CURRENT_STEP_KEY env", async () => {
+    const home = setupTempHome([
+      { name: "stepagent", command: "echo {{step_key}}" },
+    ]);
+    const originalPath = process.env.KDI_PROFILES_PATH;
+    process.env.KDI_PROFILES_PATH = join(home, ".config/kdi/profiles.yaml");
+
+    const board = createBoard("test-board", "/tmp/test-board");
+    const task = createTask({
+      board_id: board.id,
+      title: "Step key test",
+      assignee: "stepagent",
+      current_step_key: "review",
+    });
+    promoteTask(task.id);
+
+    const mockHarness = mock(() => Promise.resolve({ stdout: "ok", stderr: "", exitCode: 0 }));
+    const mockCreateWorktree = mock(() => "/tmp/mock-worktree");
+    const mockRemoveWorktree = mock(() => ({ worktreeRemoved: true, branchDeleted: true, found: true }));
+
+    await tick({
+      spawnHarness: mockHarness,
+      createWorktree: mockCreateWorktree,
+      removeWorktree: mockRemoveWorktree,
+    });
+
+    if (originalPath !== undefined) {
+      process.env.KDI_PROFILES_PATH = originalPath;
+    } else {
+      delete process.env.KDI_PROFILES_PATH;
+    }
+    rmSync(home, { recursive: true, force: true });
+
+    const calls = mockHarness.mock.calls as unknown as [string, string, string | undefined, number | undefined, Record<string, string> | undefined][];
+    expect(calls.length).toBeGreaterThan(0);
+    expect(calls[0][0]).toContain("review");
+    expect(calls[0][4]).toBeDefined();
+    expect(calls[0][4]!.KDI_CURRENT_STEP_KEY).toBe("review");
+  });
+
+  it("does not set KDI_CURRENT_STEP_KEY env when current_step_key is absent", async () => {
+    const home = setupTempHome([
+      { name: "nostepagent", command: "echo done" },
+    ]);
+    const originalPath = process.env.KDI_PROFILES_PATH;
+    process.env.KDI_PROFILES_PATH = join(home, ".config/kdi/profiles.yaml");
+
+    const board = createBoard("test-board", "/tmp/test-board");
+    const task = createTask({
+      board_id: board.id,
+      title: "No step key test",
+      assignee: "nostepagent",
+    });
+    promoteTask(task.id);
+
+    const mockHarness = mock(() => Promise.resolve({ stdout: "ok", stderr: "", exitCode: 0 }));
+    const mockCreateWorktree = mock(() => "/tmp/mock-worktree");
+    const mockRemoveWorktree = mock(() => ({ worktreeRemoved: true, branchDeleted: true, found: true }));
+
+    await tick({
+      spawnHarness: mockHarness,
+      createWorktree: mockCreateWorktree,
+      removeWorktree: mockRemoveWorktree,
+    });
+
+    if (originalPath !== undefined) {
+      process.env.KDI_PROFILES_PATH = originalPath;
+    } else {
+      delete process.env.KDI_PROFILES_PATH;
+    }
+    rmSync(home, { recursive: true, force: true });
+
+    const calls = mockHarness.mock.calls as unknown as [string, string, string | undefined, number | undefined, Record<string, string> | undefined][];
+    expect(calls.length).toBeGreaterThan(0);
+    expect(calls[0][4]).toBeUndefined();
+  });
+
+  it("records current_step_key on the run when claiming", async () => {
+    const board = createBoard("test-board", "/tmp/test-board");
+    const task = createTask({
+      board_id: board.id,
+      title: "Run step key test",
+      assignee: "opencode",
+      current_step_key: "deploy",
+    });
+    promoteTask(task.id);
+
+    await tick({
+      spawnHarness: () => Promise.resolve({ stdout: "ok", stderr: "", exitCode: 0 }),
+      createWorktree: () => "/tmp/mock-worktree",
+      removeWorktree: () => ({ worktreeRemoved: true, branchDeleted: true, found: true }),
+    });
+
+    const { getRuns } = await import("../src/models/taskRun");
+    const runs = getRuns(task.id);
+    expect(runs).toHaveLength(1);
+    expect(runs[0].step_key).toBe("deploy");
+  });
+
   it("processes ready tasks in priority descending order", async () => {
     const board = createBoard("prio-board", "/tmp/prio-board");
     const low = createTask({ board_id: board.id, title: "Low", assignee: "opencode", priority: 1 });

@@ -461,6 +461,7 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
     try {
       const skillsValue = task.skills && task.skills.length > 0 ? task.skills.join(",") : "";
       const modelValue = task.model_override ?? "";
+      const stepKey = task.current_step_key ?? "";
       const command = substituteCommand(profile.command, {
         workdir: worktreePath,
         branch: worktreeBranch,
@@ -468,11 +469,13 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
         agent: profile.agent ?? profile.name,
         skills: skillsValue,
         model: modelValue,
+        step_key: stepKey,
       });
 
       const harnessEnv: Record<string, string> | undefined = {};
       if (skillsValue) harnessEnv.KDI_SKILLS = skillsValue;
       if (modelValue) harnessEnv.KDI_MODEL = modelValue;
+      if (stepKey) harnessEnv.KDI_CURRENT_STEP_KEY = stepKey;
       const effectiveHarnessEnv = Object.keys(harnessEnv).length > 0 ? harnessEnv : undefined;
       const harnessTimeoutMs = task.max_runtime_seconds ? task.max_runtime_seconds * 1000 : undefined;
       const harnessStart = Date.now();

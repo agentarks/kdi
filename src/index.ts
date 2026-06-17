@@ -13,6 +13,7 @@ import {
   blockTaskCommand,
   unblockTaskCommand,
   reviewTaskCommand,
+  stepTaskCommand,
   archiveTaskCommand,
   specifyTaskCommand,
   listRunsCommand,
@@ -41,6 +42,7 @@ import {
   notifyListCommand,
   notifyUnsubscribeCommand,
 } from "./commands/notify";
+import { workflowsCommand } from "./commands/workflows";
 const program = new Command();
 
 program
@@ -91,6 +93,8 @@ program.addCommand(heartbeatTaskCommand);
 program.addCommand(logTaskCommand);
 program.addCommand(completeTaskCommand);
 program.addCommand(scheduleTaskCommand);
+program.addCommand(stepTaskCommand);
+program.addCommand(workflowsCommand);
 program.addCommand(assigneesCommand);
 program.addCommand(initCommand);
 program.addCommand(dispatchCommand);

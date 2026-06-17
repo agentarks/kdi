@@ -191,6 +191,41 @@ describe("profiles", () => {
     expect(p.command).toBe("echo {{workdir}} {{branch}} {{task_id}} {{agent}}");
   });
 
+  it("validateProfile allows {{step_key}} template variable", () => {
+    const p = validateProfile(
+      { name: "test", command: "echo {{step_key}}" },
+      0
+    );
+    expect(p.command).toBe("echo {{step_key}}");
+  });
+
+  it("substitutes {{step_key}} when provided", () => {
+    const result = substituteCommand(
+      "agent --step {{step_key}} --task {{task_id}}",
+      {
+        workdir: "/tmp/wt",
+        branch: "main",
+        task_id: "7",
+        agent: "coder",
+        step_key: "review",
+      }
+    );
+    expect(result).toBe("agent --step review --task 7");
+  });
+
+  it("substitutes {{step_key}} with empty string when absent", () => {
+    const result = substituteCommand(
+      "agent --step {{step_key}} --task {{task_id}}",
+      {
+        workdir: "/tmp/wt",
+        branch: "main",
+        task_id: "7",
+        agent: "coder",
+      }
+    );
+    expect(result).toBe("agent --step  --task 7");
+  });
+
   it("validateProfile allows {{skills}} template variable", () => {
     const p = validateProfile(
       { name: "test", command: "echo {{skills}}" },

@@ -18,7 +18,7 @@ export interface TaskEvent {
 export function addEvent(
   taskId: number,
   kind: string,
-  payload?: Record<string, any>,
+  payload?: Record<string, unknown>,
   runId?: number
 ): TaskEvent {
   const db = getDb();
@@ -65,9 +65,9 @@ export function tailEvents(taskId: number, sinceId?: number): TaskEvent[] {
     .all(taskId) as TaskEvent[];
 }
 
-function buildWatchClauses(filters?: WatchFilters): { where: string[]; params: any[] } {
+function buildWatchClauses(filters?: WatchFilters): { where: string[]; params: (string | number)[] } {
   const where: string[] = [];
-  const params: any[] = [];
+  const params: (string | number)[] = [];
 
   if (filters) {
     const needsJoin = !!(filters.assignee || filters.tenant);

@@ -58,14 +58,11 @@ stateDiagram-v2
 | `ff_notify_subs` | `FF_NOTIFY_SUBS` | CLI / notifier watcher | InDev | `false` | KDI-025 | Notification subscriptions; `notify-subscribe/list/unsubscribe` commands; notifier watcher in dispatcher tick.
 | `ff_list_filters_sort` | `FF_LIST_FILTERS_SORT` | CLI / task listing | InDev | `false` | KDI-030 | `kdi list` filters (`--mine`, `--session`, `--archived`, workflow/step-key) and sort options; `create --session`.
 | `ff_show_run_filtering` | `FF_SHOW_RUN_FILTERING` | CLI / task inspection | InDev | `false` | KDI-031 | `kdi show` run section and `--state-type`/`--state-name` run filtering.
-| `ff_runs_filtering` | `FF_RUNS_FILTERING` | CLI / task inspection | Planned | `false` | KDI-036 | `kdi runs --state-type`/`--state-name` run filtering.
 | `ff_bulk_operations` | `FF_BULK_OPERATIONS` | CLI / task lifecycle | Planned | `false` | KDI-032 | Bulk `block`/`promote`/`archive --rm`; `promote --force` and `--dry-run`.
 | `ff_comment_enhancements` | `FF_COMMENT_ENHANCEMENTS` | CLI / task metadata | InDev | `false` | KDI-033 | `kdi comment --author`/`--max-len` and author display in `kdi show`.
 | `ff_dispatch_controls` | `FF_DISPATCH_CONTROLS` | CLI / dispatcher | InDev | `false` | KDI-034 | `kdi dispatch --failure-limit` per-pass failure threshold.
 | `ff_watch_filters` | `FF_WATCH_FILTERS` | CLI / observability | InDev | `false` | KDI-035 | `kdi watch --assignee`/`--tenant`/`--kinds`/`--interval` filters.
-| `ff_dispatcher_presence_warning` | `FF_DISPATCHER_PRESENCE_WARNING` | CLI / dispatcher + create | Planned | `false` | KDI-037 | Dispatcher presence warning on `kdi create`; per-board `dispatcher.pid` markers.
-| `ff_goal_mode` | `FF_GOAL_MODE` | CLI / dispatcher + create | Planned | `false` | KDI-038 | Ralph-style goal loop; `--goal`, `--goal-max-turns`, `--goal-judge`; judge profile verdicts.
-| `ff_workflow_templates` | `FF_WORKFLOW_TEMPLATES` | CLI / dispatcher | Planned | `false` | KDI-039 | Workflow templates table; `kdi workflows define/list`; `kdi create --workflow-template-id`; `kdi step`; step-key routing and advancement.
+| `ff_workflow_templates` | `FF_WORKFLOW_TEMPLATES` | CLI / task lifecycle | InDev | `false` | KDI-039 | Step-key driven workflow templates; `kdi create --workflow-template-id`, `kdi step`, `kdi workflows`.
 
 ## Lifecycle Notes
 
@@ -469,20 +466,6 @@ stateDiagram-v2
 - **Rollback / deactivation:** Set `FF_SHOW_RUN_FILTERING=false` to hide the run section and reject the filter options.
 - **Deprecation plan:** N/A
 
-### `ff_runs_filtering` — Planned
-
-- **Owner:** kdi core team
-- **BRD:** [BRD-KDI-036](brd-kdi-036-runs-filtering.md)
-- **Status transitions:**
-  - `Planned` → `InDev` when `kdi runs --state-type`/`--state-name` filtering is implemented.
-- **Schema note:** No schema changes; reuses the existing `task_runs` table, `idx_task_runs_task_id` index, and `getRunsFiltered` model helper from KDI-031.
-- **Activation criteria:**
-  - `kdi runs <task_id>` continues to list all runs unfiltered when no filter options are supplied.
-  - `kdi runs <task_id> --state-type {status,outcome} --state-name VALUE` filters displayed runs by the chosen column.
-  - Partial filter options and invalid `--state-type` values are rejected with clear errors.
-- **Rollback / deactivation:** Set `FF_RUNS_FILTERING=false` to reject the filter options on `kdi runs`.
-- **Deprecation plan:** N/A
-
 ### `ff_bulk_operations` — Planned
 
 - **Owner:** kdi core team
@@ -542,52 +525,22 @@ stateDiagram-v2
 - **Rollback / deactivation:** Set `FF_COMMENT_ENHANCEMENTS=false` to reject `--author`/`--max-len` and hide authors in `kdi show`.
 - **Deprecation plan:** N/A
 
-### `ff_dispatcher_presence_warning` — Planned
-
-- **Owner:** kdi core team
-- **BRD:** [BRD-KDI-037](brd-kdi-037-dispatcher-presence-warning.md)
-- **Status transitions:**
-  - `Planned` → `InDev` when `kdi create` dispatcher probe and per-board PID markers are implemented.
-- **Schema note:** No schema changes; introduces per-board `dispatcher.pid` runtime state files under the board data directory.
-- **Activation criteria:**
-  - `kdi dispatch` writes a `<boardDataDir>/dispatcher.pid` marker for each active board at startup and removes tracked markers on clean shutdown.
-  - `kdi create <title> --board <slug>` warns on stderr when no live dispatcher is detected for the board.
-  - `kdi create --no-dispatcher-warning` suppresses the warning for a single invocation.
-  - Probe failures (missing, stale, unreadable, or invalid PID file) never block task creation.
-- **Rollback / deactivation:** Set `FF_DISPATCHER_PRESENCE_WARNING=false` to disable the probe and warning.
-- **Deprecation plan:** N/A
-
-### `ff_goal_mode` — Planned
-
-- **Owner:** kdi core team
-- **BRD:** [BRD-KDI-038](brd-kdi-038-goal-mode.md)
-- **Status transitions:**
-  - `Planned` → `InDev` when goal-mode columns, create options, and dispatcher goal loop are implemented.
-- **Schema note:** Adds `goal_mode`, `goal_max_turns`, `goal_remaining_turns`, and `goal_judge_profile` columns to `tasks` with migrations; extends `task_runs.outcome` CHECK to include `goal_continue`.
-- **Activation criteria:**
-  - `kdi create --goal --goal-max-turns <n> --goal-judge <profile>` stores a goal-mode task.
-  - `kdi show` displays goal-mode fields when the flag is enabled.
-  - Dispatcher spawns the judge profile after each harness turn and applies `done`/`continue` verdicts.
-  - Goal-mode tasks that exhaust their turn budget are blocked with reason "Goal max turns exhausted".
-- **Rollback / deactivation:** Set `FF_GOAL_MODE=false` to reject goal-mode options and dispatch goal-mode tasks as normal single-turn tasks.
-- **Deprecation plan:** N/A
-
-### `ff_workflow_templates` — Planned
+### `ff_workflow_templates` — InDev
 
 - **Owner:** kdi core team
 - **BRD:** [BRD-KDI-039](brd-kdi-039-workflow-templates.md)
 - **Status transitions:**
-  - `Planned` → `InDev` when `workflow_templates` table, `kdi workflows define/list`, `kdi step`, and dispatcher step-key routing are implemented.
-- **Schema note:** Adds `workflow_templates` table; reuses `workflow_template_id` and `current_step_key` columns added in KDI-030.
+  - `Planned` → `InDev` when `workflow_templates` table, `kdi create --workflow-template-id`, `kdi step`, and `kdi workflows` commands are implemented.
+  - `InDev` → `Active` when step-key driven routing is stable and safe to enable by default.
+- **Schema note:** Adds `workflow_templates` table with `id`, `name`, and `steps` JSON array. Reuses `workflow_template_id` and `current_step_key` columns on `tasks` added by KDI-030.
 - **Activation criteria:**
-  - `kdi workflows define <id> --name <name> --steps <json>` upserts a board-scoped template with ordered step keys.
-  - `kdi workflows list [--board <slug>]` lists templates for the resolved board.
-  - `kdi create --workflow-template-id <id> [--step-key <key>]` creates a task bound to a template (defaults to first step).
-  - `kdi step <task_id> [--to <key>] [--reason <text>]` advances or jumps steps; terminal step transitions the task to `done`.
-  - Dispatcher records `current_step_key` on `task_runs`, substitutes `{{step_key}}` in profile commands, and sets `KDI_CURRENT_STEP_KEY`.
-  - `kdi runs <task_id>` displays `step=<key>` for runs that recorded one.
-- **Rollback / deactivation:** Set `FF_WORKFLOW_TEMPLATES=false` to reject workflow-template options and dispatch workflow tasks as normal single-turn tasks.
-- **Deprecation plan:** N/A
+  - `kdi workflows define <id> --name <name> --steps <json>` creates or replaces a template.
+  - `kdi create "title" --workflow-template-id <id>` binds a task to a template and sets the default first step.
+  - `kdi create --step-key <key>` validates the key against the template.
+  - `kdi step <task_id>` advances to the next step or completes the workflow at the terminal step.
+  - `kdi step <task_id> --to <key>` jumps to a specific step.
+  - `kdi show` displays the current template and step when the flag is enabled.
+- **Rollback / deactivation:** Set `FF_WORKFLOW_TEMPLATES=false` to reject workflow template options and commands and hide workflow fields in `kdi show`.
 - **Deprecation plan:** N/A
 
 ### `ff_kanban_dispatch` — Planned
