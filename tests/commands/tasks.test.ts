@@ -7,8 +7,8 @@ import { cleanupDb } from "../cleanupDb";
 import { createBoard } from "../../src/models/board";
 import { createTask, archiveTask, type Task } from "../../src/models/task";
 import { createRun } from "../../src/models/taskRun";
-import { listRunsCommand, attachTaskCommand, showTaskCommand, createTaskCommand, listTasksCommand } from "../../src/commands/tasks";
-import { setFlag, clearOverrides, FF_TASK_ATTACHMENTS, FF_LIST_FILTERS_SORT, FF_COMMENT_ENHANCEMENTS, FF_WATCH_FILTERS } from "../../src/flags";
+import { listRunsCommand, attachTaskCommand, showTaskCommand, createTaskCommand, listTasksCommand, watchCommand } from "../../src/commands/tasks";
+import { setFlag, clearOverrides, FF_TASK_ATTACHMENTS, FF_LIST_FILTERS_SORT, FF_COMMENT_ENHANCEMENTS, FF_WATCH_FILTERS, FF_TENANT_NAMESPACE } from "../../src/flags";
 
 const TEST_DB = "/tmp/kdi-commands-tasks-test.db";
 const TEST_SLUGS = ["cmd-board", "attach-board", "show-board"];
@@ -104,6 +104,59 @@ describe("tasks commands", () => {
     const line = logs.find((l) => l.startsWith("Run #"));
     expect(line).toBeDefined();
     expect(line).not.toContain("spawned=");
+  });
+
+  it("runs command displays step_key when present", async () => {
+    const board = createBoard("cmd-board", "/tmp/cmd-board");
+    const task = createTask({ board_id: board.id, title: "Cmd task" });
+    const run = createRun({
+      task_id: task.id,
+      status: "done",
+      started_at: 1000,
+      step_key: "review",
+    });
+
+    const logs: string[] = [];
+    const originalLog = console.log;
+    console.log = (...args: unknown[]) => {
+      logs.push(args.map(String).join(" "));
+    };
+
+    try {
+      await listRunsCommand.parseAsync([String(task.id)], { from: "user" });
+    } finally {
+      console.log = originalLog;
+    }
+
+    const line = logs.find((l) => l.includes(`Run #${run.id}`));
+    expect(line).toBeDefined();
+    expect(line).toContain("step=review");
+  });
+
+  it("runs command hides step_key when absent", async () => {
+    const board = createBoard("cmd-board", "/tmp/cmd-board");
+    const task = createTask({ board_id: board.id, title: "Cmd task" });
+    createRun({
+      task_id: task.id,
+      status: "done",
+      started_at: 1000,
+    });
+
+    const logs: string[] = [];
+    const originalLog = console.log;
+    console.log = (...args: unknown[]) => {
+      logs.push(args.map(String).join(" "));
+    };
+
+    try {
+      await listRunsCommand.parseAsync([String(task.id)], { from: "user" });
+    } finally {
+      console.log = originalLog;
+    }
+
+    const line = logs.find((l) => l.startsWith("Run #"));
+    expect(line).toBeDefined();
+    expect(line).not.toContain("step=");
   });
 
   it("attach command copies file when flag is enabled", async () => {

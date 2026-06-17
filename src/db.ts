@@ -135,8 +135,20 @@ CREATE TABLE IF NOT EXISTS kanban_notify_subs (
   UNIQUE (task_id, platform, chat_id, thread_id)
 );
 
+CREATE TABLE IF NOT EXISTS workflow_templates (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  board_id INTEGER NOT NULL REFERENCES boards(id),
+  template_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  steps TEXT NOT NULL,
+  created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+  updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
+  UNIQUE (board_id, template_id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_notify_subs_task ON kanban_notify_subs(task_id);
 CREATE INDEX IF NOT EXISTS idx_notify_subs_active ON kanban_notify_subs(task_id, unsubscribed_at);
+CREATE INDEX IF NOT EXISTS idx_workflow_templates_board ON workflow_templates(board_id);
 
 CREATE INDEX IF NOT EXISTS idx_tasks_board_status ON tasks(board_id, status);
 CREATE INDEX IF NOT EXISTS idx_tasks_assignee ON tasks(assignee);
@@ -523,6 +535,26 @@ export function initDb(path?: string): Database {
       `);
       dbInstance.exec("CREATE INDEX idx_notify_subs_task ON kanban_notify_subs(task_id)");
       dbInstance.exec("CREATE INDEX idx_notify_subs_active ON kanban_notify_subs(task_id, unsubscribed_at)");
+    }
+
+    // Migrate: add workflow_templates table and index if missing
+    const hasWorkflowTemplates = dbInstance.query(
+      "SELECT 1 FROM sqlite_master WHERE type='table' AND name='workflow_templates'"
+    ).get() as { 1: number } | undefined;
+    if (!hasWorkflowTemplates) {
+      dbInstance.exec(`
+        CREATE TABLE workflow_templates (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          board_id INTEGER NOT NULL REFERENCES boards(id),
+          template_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          steps TEXT NOT NULL,
+          created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+          updated_at INTEGER NOT NULL DEFAULT (unixepoch()),
+          UNIQUE (board_id, template_id)
+        )
+      `);
+      dbInstance.exec("CREATE INDEX idx_workflow_templates_board ON workflow_templates(board_id)");
     }
 
   } catch (err) {

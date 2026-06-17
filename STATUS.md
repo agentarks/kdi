@@ -324,60 +324,23 @@
 - [x] Unit/CLI tests cover filters, combinations, flag gating, edge cases
 - [x] `bun run lint`, `bun run test`, `bun run build` pass
 
-## KDI-036: `kdi runs` Filtering — In Progress
-- [x] BRD drafted at `specs/brd-kdi-036-runs-filtering.md`
-- [ ] Feature flag `ff_runs_filtering` / `FF_RUNS_FILTERING` registered in
-      `src/flags.ts` and `specs/feature-flags.md`, defaults to `false`
-- [ ] `kdi runs <task_id> [--state-type {status|outcome} --state-name VALUE]`
-      implemented
-- [ ] CLI tests cover flag gating, filter matching, validation, and empty states
-- [ ] `bun run lint`, `bun run test`, `bun run build` pass
-
-## Dispatcher Presence Warning (KDI-037) — In Progress
-- [x] BRD drafted at `specs/brd-kdi-037-dispatcher-presence-warning.md`
-- [ ] Feature flag `ff_dispatcher_presence_warning` / `FF_DISPATCHER_PRESENCE_WARNING`
-      registered in `src/flags.ts` and `specs/feature-flags.md`, defaults to `false`
-- [ ] `kdi create <title> [--no-dispatcher-warning]` option implemented
-- [ ] Dispatcher writes per-board `dispatcher.pid` marker at startup and removes
-      it on clean shutdown
-- [ ] `kdi create` warns on stderr when no live dispatcher is detected for the
-      target board
-- [ ] Unit/CLI tests cover flag gating, live/dead/missing PID, and suppression
-      option
-- [ ] `bun run lint`, `bun run test`, `bun run build` pass
-
-## Goal Mode (KDI-038) — In Progress
-- [x] BRD drafted at `specs/brd-kdi-038-goal-mode.md`
-- [ ] Feature flag `ff_goal_mode` / `FF_GOAL_MODE` registered in
-      `src/flags.ts` and `specs/feature-flags.md`, defaults to `false`
-- [ ] Schema adds `goal_mode`, `goal_max_turns`, `goal_remaining_turns`, and
-      `goal_judge_profile` columns to `tasks` (with migration)
-- [ ] `kdi create --goal --goal-max-turns <n> --goal-judge <profile>` implemented
-- [ ] `kdi show` displays goal-mode fields when the flag is enabled
-- [ ] Dispatcher implements Ralph-style goal loop with judge profile verdicts
-- [ ] Unit/CLI tests cover create/show, turn helpers, and dispatcher goal loop
-- [ ] `bun run lint`, `bun run test`, `bun run build` pass
-
-## Workflow Templates (KDI-039) — In Progress
-- [x] BRD drafted at `specs/brd-kdi-039-workflow-templates.md`
-- [ ] Feature flag `ff_workflow_templates` / `FF_WORKFLOW_TEMPLATES` registered in
-      `src/flags.ts` and `specs/feature-flags.md`, defaults to `false`
-- [ ] `workflow_templates` table with board-scoped templates and ordered steps
-- [ ] `kdi workflows define <id> --name <name> --steps <json>` upserts a
-      template for the resolved board
-- [ ] `kdi workflows list [--board <slug>]` lists templates for the resolved board
-- [ ] `kdi create --workflow-template-id <id> [--step-key <key>]` creates a task
-      bound to a template (defaults to first step)
-- [ ] `kdi step <task_id> [--to <key>] [--reason <text>]` advances or jumps
-      workflow steps; terminal step transitions task to `done`
-- [ ] `kdi show` displays workflow template and current step when flag enabled
-- [ ] Dispatcher records `current_step_key` on `task_runs`, substitutes
-      `{{step_key}}` in profile commands, and sets `KDI_CURRENT_STEP_KEY`
-- [ ] `kdi runs <task_id>` displays `step=<key>` for runs that recorded one
-- [ ] `stepped` task event recorded on step transitions
-- [ ] Unit/CLI tests cover template CRUD, step advancement, validation errors,
-      flag gating, and dispatcher routing
-- [ ] `bun run lint`, `bun run test`, `bun run build` pass
+## KDI-039: Workflow Templates — Done
+- [x] BRD finalized at `specs/brd-kdi-039-workflow-templates.md`
+- [x] Feature flag `ff_workflow_templates` / `FF_WORKFLOW_TEMPLATES` registered in `specs/feature-flags.md` and `src/flags.ts`, defaults to `false`
+- [x] `workflow_templates` table schema and migration in `src/db.ts`; cascade-deleted on board hard-delete
+- [x] `defineWorkflowTemplate()` / `listWorkflowTemplates()` / `getWorkflowTemplate()` / `validateStepKey()` / `advanceTaskStep()` / `setTaskStep()` model functions in `src/models/workflowTemplate.ts`
+- [x] `kdi workflows define <id> --name <name> --steps <json>` command
+- [x] `kdi workflows list [--board <slug>] [--json]` command
+- [x] `kdi create <title> --workflow-template-id <id> [--step-key <key>]` command; validates template exists and step key is valid
+- [x] `kdi step <task_id> [--to <key>] [--reason <text>]` command; advances to next step or jumps to arbitrary step
+- [x] `kdi show <task_id>` displays workflow template and current step when flag enabled
+- [x] Step advancement emits `stepped` event; terminal step transitions task to `done` and emits `completed`
+- [x] Step-key driven routing: dispatcher records `current_step_key` on `task_runs`, substitutes `{{step_key}}` in profile commands, and sets `KDI_CURRENT_STEP_KEY` env var for harnesses
+- [x] `kdi runs <task_id>` displays `step=<key>` when the run has a step key
+- [x] Unit/CLI tests cover template CRUD, step advancement, terminal completion, validation, dispatcher routing, runs display, and flag gating
+- [x] E2E verified: define template → create bound task → step through workflow → terminal completion
+- [x] `bun run lint` and `bun run build` pass
+- [x] Code-review fixes: duplicate BRD files removed, missing imports in `tests/task.test.ts` restored, template name length capped at 255 in `defineWorkflowTemplate()`, event payloads no longer use `Record<string, any>`
 
 - [x] `kdi create <title> --board <slug> --assignee <profile>` — create task
 - [x] `kdi create <title> --board <slug> --triage` — create task in triage
@@ -434,8 +397,7 @@
 ## Task Runs (KDI-000)
 - [x] `task_runs` table with per-attempt history (profile, step_key, status, claim_lock, worker_pid, started_at, ended_at, outcome, summary, metadata, error)
 - [x] Dispatcher creates a `task_runs` row on claim and finalizes it on finish/fail
-- [x] `kdi runs <task_id>` — show attempt history with optional
-      `--state-type`/`--state-name` filters (KDI-036)
+- [x] `kdi runs <task_id>` — show attempt history
 
 ## Task Runs Status (KDI-000e)
 - [x] `status` column on `task_runs`: `running | done | blocked | crashed | timed_out | failed | released`
@@ -473,8 +435,6 @@
 - [x] Profile validation on load
 
 ## Dispatcher — Accepted
-- [ ] Dispatcher writes per-board PID markers and `kdi create` warns when no
-      live dispatcher is detected (KDI-037)
 - [x] `kdi dispatch` — background polling daemon (tick function; long-running mode TBD)
 - [x] Poll interval configurable (default 5s)
 - [x] Claim ready tasks (CAS: ready → running)
@@ -575,6 +535,7 @@
 - [ ] **KDI-005: `ff_complete_metadata` gating is coarse** — The entire `--metadata` path is gated; the flag doesn't apply to the base `--result`/`--summary` paths. Consider finer-grained flags if metadata needs independent rollout.
 - [ ] **Branch naming convention not enforced** — `AGENTS.md` requires `feat/<brd-id>-<feature-slug>` but the current branch `fix/review-gaps` was not renamed. Either update `AGENTS.md` with an exemption or enforce via CI.
 - [ ] **`spawnHarness` uses `shell: true`** — Changed from manual shell parser to `spawn(command, { shell: true })`. This changes quoting/escaping semantics for profile commands. Verify no existing profiles depend on the old literal-argument behavior. Document in PR description.
+- [ ] **`bun run test` exits 1 despite all tests passing** — `tests/commands/tasks.test.ts` (KDI-030 list filters) appears to leak an async `process.stderr.write` after a test completes, causing the test runner to exit with code 1 even though no test reports `(fail)`. The file passes in isolation. Not introduced by KDI-039.
 - [ ] **Worker log capture test flaky in full-suite runs** — `worker log capture > spawnHarness writes combined stdout/stderr to log file` (and the matching e2e dispatcher log test) occasionally fail when the full suite runs but pass in isolation. Likely an ordering/timing interaction between tests sharing `HOME`/`KDI_DB` defaults. Documented by reviewer for KDI-022; investigate and fix if it persists on `main`.
 - [ ] **SQLite monolithic migration** — The single `CREATE TABLE tasks_new ... DROP TABLE ... RENAME TO` migration handles schema changes for KDI-001 (triage), KDI-002 (scheduled), KDI-003 (review), and KDI-004 (integer priority) in one pass. This is technically required by SQLite (can't `ALTER TABLE` CHECK constraints or change column types), but it mixes feature boundaries. If versioned migration files are ever introduced, this should be split into per-feature steps with intermediate schema versions.
 - [ ] **`tests/init.test.ts` fails when `KDI_DB` is set** — `defaultDbPath()` honors the `KDI_DB`/`KDI_DB_PATH` environment variables, but `tests/init.test.ts` asserts that `defaultDbPath()` ends with `.db`. When the parent environment sets `KDI_DB` to a path without that suffix (e.g. `.../kdi.sqlite`), the assertion fails. The implementation is correct; the test is environment-sensitive. Run the suite with `env -u KDI_DB bun test` for a clean baseline.

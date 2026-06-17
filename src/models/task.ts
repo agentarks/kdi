@@ -284,7 +284,7 @@ export function createTask(input: CreateTaskInput): Task {
 export function listTasks(filter: ListTasksFilter, sort?: string): Task[] {
   const db = getDb();
   const conditions: string[] = [];
-  const params: any[] = [];
+  const params: (string | number)[] = [];
 
   conditions.push("board_id = ?");
   params.push(filter.board_id);
@@ -603,7 +603,7 @@ export function completeTask(id: number, input: CompleteTaskInput = {}): Task {
   if (!updated) {
     throw new Error(`Task ${id} not found after completion`);
   }
-  let eventPayload: Record<string, any> | undefined;
+  let eventPayload: Record<string, unknown> | undefined;
   if (input.metadata) {
     try {
       eventPayload = { metadata: JSON.parse(input.metadata) };

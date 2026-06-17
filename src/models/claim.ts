@@ -23,12 +23,12 @@ export function atomicClaim(
   const now = Math.floor(Date.now() / 1000);
   const expiresAt = now + ttl;
 
-  // Read task-level max runtime before claiming so we can copy it to the run
+  // Read task-level max runtime and current step before claiming so we can copy them to the run
   const taskRow = db.query(
-    `SELECT max_runtime_seconds FROM tasks WHERE id = ? AND status = 'ready' AND archived_at IS NULL
+    `SELECT max_runtime_seconds, current_step_key FROM tasks WHERE id = ? AND status = 'ready' AND archived_at IS NULL
      AND (claim_lock IS NULL OR claim_expires < unixepoch())
      AND (rate_limited_until IS NULL OR rate_limited_until <= unixepoch())`
-  ).get(taskId) as { max_runtime_seconds: number | null } | undefined;
+  ).get(taskId) as { max_runtime_seconds: number | null; current_step_key: string | null } | undefined;
 
   if (!taskRow) {
     return { success: false };
@@ -55,6 +55,7 @@ export function atomicClaim(
     claim_lock: profile,
     claim_expires: expiresAt,
     max_runtime_seconds: taskRow.max_runtime_seconds,
+    step_key: taskRow.current_step_key,
   });
 
   addEvent(taskId, "claimed", { assignee: profile }, run.id);
