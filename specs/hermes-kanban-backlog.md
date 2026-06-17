@@ -493,19 +493,19 @@
   - `--kinds <kind1>,<kind2>` — comma-separated event kind filter
   - `--interval <seconds>` — poll interval (default 0.5)
 
-- [ ] **KDI-036: `kdi runs` filtering**
+- [x] **KDI-036: `kdi runs` filtering**
   - `--state-type {status,outcome} --state-name VALUE` — filter runs by column
 
-- [ ] **KDI-037: Dispatcher presence warning**
+- [x] **KDI-037: Dispatcher presence warning**
   - `kdi create` warns if no dispatcher/gateway detected for the board
   - Defensive probe of dispatcher PID / config flag
 
 ### Phase 8 — v2 / Future
-- [ ] **KDI-038: Goal mode**
+- [x] **KDI-038: Goal mode**
   - `kdi create --goal --goal-max-turns 20`
   - Ralph-style goal loop (requires judge integration)
 
-- [ ] **KDI-039: Workflow templates**
+- [x] **KDI-039: Workflow templates**
   - `workflow_template_id` + `current_step_key` on tasks
   - Step-key driven routing
 
@@ -672,12 +672,12 @@
 42. **KDI-033**: `comment` enhancements (`--author`, `--max-len`)
 43. **KDI-034**: `dispatch` controls (`--max`, `--failure-limit`)
 44. **KDI-035**: `watch` filters (`--assignee`, `--tenant`, `--kinds`)
-45. **KDI-036**: `runs` filtering
-46. **KDI-037**: Dispatcher presence warning
+45. ✅ **KDI-036**: `runs` filtering
+46. ✅ **KDI-037**: Dispatcher presence warning
 
 ### P7 — v2 / Future
-47. **KDI-038**: Goal mode
-48. **KDI-039**: Workflow templates
+47. ✅ **KDI-038**: Goal mode
+48. ✅ **KDI-039**: Workflow templates
 49. **KDI-040**: Triage automation (LLM)
 50. **KDI-041**: Swarm mode
 
