@@ -63,6 +63,8 @@ stateDiagram-v2
 | `ff_dispatch_controls` | `FF_DISPATCH_CONTROLS` | CLI / dispatcher | InDev | `false` | KDI-034 | `kdi dispatch --failure-limit` per-pass failure threshold.
 | `ff_watch_filters` | `FF_WATCH_FILTERS` | CLI / observability | InDev | `false` | KDI-035 | `kdi watch --assignee`/`--tenant`/`--kinds`/`--interval` filters.
 | `ff_workflow_templates` | `FF_WORKFLOW_TEMPLATES` | CLI / task lifecycle | InDev | `false` | KDI-039 | Step-key driven workflow templates; `kdi create --workflow-template-id`, `kdi step`, `kdi workflows`.
+| `ff_triage_automation` | `FF_TRIAGE_AUTOMATION` | CLI / task lifecycle | InDev | `false` | KDI-040 | LLM-powered triage automation; `kdi specify` (LLM path) and `kdi decompose`. |
+| `ff_swarm_mode` | `FF_SWARM_MODE` | CLI / dispatcher | Planned | `false` | KDI-041 | Multi-agent task graph: `kdi swarm` creates parallel workers, a verifier, and a synthesizer bound by dependencies.
 
 ## Lifecycle Notes
 
@@ -541,6 +543,35 @@ stateDiagram-v2
   - `kdi step <task_id> --to <key>` jumps to a specific step.
   - `kdi show` displays the current template and step when the flag is enabled.
 - **Rollback / deactivation:** Set `FF_WORKFLOW_TEMPLATES=false` to reject workflow template options and commands and hide workflow fields in `kdi show`.
+- **Deprecation plan:** N/A
+
+### `ff_triage_automation` — InDev
+
+- **Owner:** kdi core team
+- **BRD:** [BRD-KDI-040](brd-kdi-040-triage-automation.md)
+- **Status transitions:**
+  - `Planned` → `InDev` when `kdi specify` LLM path and `kdi decompose` command are implemented.
+- **Schema note:** Reuses the existing `tasks`, `dependencies`, and `task_events` tables. No schema changes.
+- **Activation criteria:**
+  - `FF_TRIAGE_AUTOMATION=true kdi specify <id>` invokes the auxiliary LLM, updates body/title/assignee, and promotes the task to `todo`.
+  - `FF_TRIAGE_AUTOMATION=true kdi decompose <id>` fans a triage task into 2-10 child tasks with dependency edges and archives the parent.
+  - `--all` and `--tenant` sweep modes work for both commands.
+  - `--skip-llm` and the manual `kdi specify` path remain available when the flag is disabled.
+- **Rollback / deactivation:** Set `FF_TRIAGE_AUTOMATION=false` to reject `kdi decompose` and the LLM path of `kdi specify`.
+- **Deprecation plan:** N/A
+### `ff_swarm_mode` — Planned
+
+- **Owner:** kdi core team
+- **BRD:** [BRD-KDI-041](brd-kdi-041-swarm-mode.md)
+- **Status transitions:**
+  - `Planned` → `InDev` when `kdi swarm`, `createSwarmGraph()`, dispatcher dependency ordering, and swarm completion/failure watcher are implemented.
+- **Schema note:** Reuses the existing `dependencies` table for execution ordering. Adds a nullable `swarm_parent_id INTEGER` column on `tasks` to group swarm members under the orchestrator task; migration always runs but the column is ignored when the flag is off.
+- **Activation criteria:**
+  - `kdi swarm --worker <profile>:<title> [--worker ...] --verifier <profile> --synthesizer <profile>` creates an orchestrator task plus parallel worker tasks, a verifier, and a synthesizer.
+  - Workers run in parallel; the verifier runs only after all workers are `done`; the synthesizer runs only after the verifier is `done`.
+  - The orchestrator auto-completes when the synthesizer completes, or auto-blocks if any swarm child fails.
+  - `--dry-run` prints the planned graph without mutating state.
+- **Rollback / deactivation:** Set `FF_SWARM_MODE=false` to reject the `kdi swarm` command and disable the dispatcher swarm watcher.
 - **Deprecation plan:** N/A
 
 ### `ff_kanban_dispatch` — Planned
