@@ -509,11 +509,13 @@
   - `workflow_template_id` + `current_step_key` on tasks
   - Step-key driven routing
 
-- [ ] **KDI-040: Triage automation (LLM-powered)**
+- [x] **KDI-040: Triage automation (LLM-powered)**
+  - BRD: `specs/brd-kdi-040-triage-automation.md`
   - `kdi specify <task_id>` — LLM fleshes out triage → todo
   - `kdi decompose <task_id>` — LLM fans out into child graph
 
-- [ ] **KDI-041: Swarm mode**
+- [x] **KDI-041: Swarm mode**
+  - BRD: `specs/brd-kdi-041-swarm-mode.md`
   - `kdi swarm --worker backend:auth --worker frontend:login --verifier qa --synthesizer pm`
   - Parallel workers → verifier → synthesizer graph
 

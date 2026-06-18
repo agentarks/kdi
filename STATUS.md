@@ -1,5 +1,37 @@
 # kdi — Status
 
+## Triage Automation (KDI-040) — In Progress
+- [x] BRD drafted at `specs/brd-kdi-040-triage-automation.md` to match LLM-powered triage automation semantics
+- [x] Feature flag `ff_triage_automation` / `FF_TRIAGE_AUTOMATION` registered in `specs/feature-flags.md`, defaults to `false`
+- [ ] Feature flag constant `FF_TRIAGE_AUTOMATION` registered in `src/flags.ts`
+- [ ] `kdi specify` LLM path and `kdi decompose` command in `src/commands/tasks.ts`
+- [ ] `kdi decompose` wired into `src/index.ts`
+- [ ] `specifyTaskWithLlm()` / `decomposeTask()` model helpers in `src/models/task.ts`
+- [ ] OpenAI-compatible LLM client and prompt builders in `src/llm.ts`
+- [ ] `--all` and `--tenant` sweep modes for both commands
+- [ ] `--skip-llm` escape hatch preserves manual `kdi specify` behavior
+- [ ] Invalid LLM responses block tasks with clear reasons
+- [ ] `specified` event gains `{ llm: true }` payload; new `decomposed` event kind
+- [ ] Unit and CLI tests covering flag gating, LLM success/failure paths, `--all`, `--tenant`, decomposition validation, and `--skip-llm`
+- [ ] `bun run lint`, `bun run test`, `bun run build` pass
+
+## Swarm Mode (KDI-041) — In Progress
+- [x] BRD revised at `specs/brd-kdi-041-swarm-mode.md` to match multi-agent task graph semantics
+- [x] Feature flag `ff_swarm_mode` / `FF_SWARM_MODE` registered in `specs/feature-flags.md`, defaults to `false`
+- [ ] Feature flag constant `FF_SWARM_MODE` registered in `src/flags.ts`
+- [ ] Schema migration for `tasks.swarm_parent_id INTEGER` column and `idx_tasks_swarm_parent` index
+- [ ] `createSwarmGraph()` model helper in `src/models/swarm.ts`
+- [ ] `kdi swarm` command in `src/commands/swarm.ts` wired into `src/index.ts`
+- [ ] CLI parsing for repeatable `--worker <profile>:<title>` plus `--verifier` and `--synthesizer`
+- [ ] Input validation: at least one worker, required verifier/synthesizer, worker format, duplicate titles
+- [ ] `--dry-run` prints planned graph without mutating state
+- [ ] Dispatcher honors dependency ordering for verifier and synthesizer
+- [ ] Dispatcher swarm watcher: auto-complete orchestrator on synthesizer success, block on child failure
+- [ ] Result propagation via KDI-023 context builder (parent results)
+- [ ] Events: `swarm_created`, `swarm_worker_created`, `swarm_verifier_created`, `swarm_synthesizer_created`, `swarm_completed`, `swarm_failed`
+- [ ] Unit and CLI tests covering happy path, dry-run, validation errors, dependency ordering, result propagation, and failure handling
+- [ ] `bun run lint`, `bun run test`, `bun run build` pass
+
 ## Board Slug Path Traversal Hardening — Done
 - [x] Shared board slug validation requires `^[a-zA-Z0-9_-]+$`
 - [x] `boards create <slug>` and `createBoard()` reject traversal slugs

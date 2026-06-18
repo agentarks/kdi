@@ -55,8 +55,9 @@ Pin these exact versions when adding or upgrading dependencies. Verify new versi
 2. **Check existing implementation** before assuming it's missing.
 3. **Write the failing eval** before writing code.
 4. **Implement** with feature flag, TDD per acceptance criterion.
+5. **For new user-facing CLI features, use the `kdi-new-feature-loop` skill**: write/update tests, implement, run the feature like a real user with temp `HOME` and temp `KDI_DB`, fix code plus tests for any user-loop bug, and repeat until the CLI path works.
 6. **Update STATUS.md** immediately.
-7. **Report evidence** — commands, output, file paths.
+7. **Report evidence** — commands, output, file paths, and user-loop smoke output when applicable.
 
 ## Code Standards
 
