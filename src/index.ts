@@ -44,6 +44,7 @@ import {
   notifyUnsubscribeCommand,
 } from "./commands/notify";
 import { workflowsCommand } from "./commands/workflows";
+import { swarmCommand } from "./commands/swarm";
 const program = new Command();
 
 program
@@ -107,5 +108,6 @@ program.addCommand(contextCommand);
 program.addCommand(notifySubscribeCommand);
 program.addCommand(notifyListCommand);
 program.addCommand(notifyUnsubscribeCommand);
+program.addCommand(swarmCommand);
 
 program.parse();

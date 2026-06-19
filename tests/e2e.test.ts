@@ -2625,4 +2625,173 @@ describe("kdi e2e acceptance", () => {
     rmSync(tmp, { recursive: true, force: true });
   });
 
+
+
+  it("swarm is rejected when flag disabled", () => {
+    const tmp = makeTempDir("swarm-flag-off");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_SWARM_MODE: "false" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+
+    expect(() =>
+      runKdi(
+        `swarm --worker backend:auth --verifier qa --synthesizer pm --board myproj`,
+        env
+      )
+    ).toThrow(/Swarm mode is not enabled/);
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("swarm dry-run prints plan without creating tasks", () => {
+    const tmp = makeTempDir("swarm-dry-run");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_SWARM_MODE: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const output = runKdi(
+      `swarm --worker backend:auth --worker frontend:login --verifier qa --synthesizer pm --board myproj --dry-run`,
+      env
+    );
+
+    expect(output).toContain("Orchestrator:");
+    expect(output).toContain("Worker: auth");
+    expect(output).toContain("Worker: login");
+    expect(output).toContain("Verifier:");
+    expect(output).toContain("Synthesizer:");
+    expect(output).toContain("auth -> verify:");
+    expect(output).toContain("login -> verify:");
+    expect(output).toContain("-> synthesize:");
+
+    const listOutput = runKdi("list --board myproj", env);
+    expect(listOutput).not.toContain("auth");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("swarm creates orchestrator, workers, verifier, and synthesizer", () => {
+    const tmp = makeTempDir("swarm-create");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_SWARM_MODE: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+    const output = runKdi(
+      `swarm --worker backend:auth --worker frontend:login --verifier qa --synthesizer pm --board myproj --body "build auth" --priority 3 --session sess-1`,
+      env
+    );
+
+    const orchestratorId = output.match(/orchestrator #(\d+)/)?.[1];
+    expect(orchestratorId).toBeDefined();
+
+    const orchestratorShow = runKdi(`show ${orchestratorId}`, env);
+    expect(orchestratorShow).toContain("Status: triage");
+    expect(orchestratorShow).toContain("build auth");
+
+    const listOutput = runKdi("list --board myproj --status ready", env);
+    expect(listOutput).toContain("auth");
+    expect(listOutput).toContain("login");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("swarm rejects missing worker", () => {
+    const tmp = makeTempDir("swarm-no-worker");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_SWARM_MODE: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+
+    expect(() =>
+      runKdi(`swarm --verifier qa --synthesizer pm --board myproj`, env)
+    ).toThrow(/At least one --worker is required/);
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("swarm rejects missing verifier", () => {
+    const tmp = makeTempDir("swarm-no-verifier");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_SWARM_MODE: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+
+    expect(() =>
+      runKdi(`swarm --worker backend:auth --synthesizer pm --board myproj`, env)
+    ).toThrow(/--verifier is required/);
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("swarm rejects missing synthesizer", () => {
+    const tmp = makeTempDir("swarm-no-synthesizer");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_SWARM_MODE: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+
+    expect(() =>
+      runKdi(`swarm --worker backend:auth --verifier qa --board myproj`, env)
+    ).toThrow(/--synthesizer is required/);
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("swarm rejects duplicate worker titles", () => {
+    const tmp = makeTempDir("swarm-dup-title");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_SWARM_MODE: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+
+    expect(() =>
+      runKdi(
+        `swarm --worker backend:auth --worker frontend:auth --verifier qa --synthesizer pm --board myproj`,
+        env
+      )
+    ).toThrow(/Duplicate worker title/);
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("swarm rejects worker missing title suffix", () => {
+    const tmp = makeTempDir("swarm-bad-worker");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_SWARM_MODE: "true" };
+
+    runKdi(`boards create myproj --workdir ${repoDir}`, env);
+
+    expect(() =>
+      runKdi(
+        `swarm --worker backend --verifier qa --synthesizer pm --board myproj`,
+        env
+      )
+    ).toThrow(/Invalid worker/);
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
 });

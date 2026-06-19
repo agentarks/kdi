@@ -11,20 +11,22 @@ const TEST_DB = "/tmp/kdi-commands-workflow-tasks-test.db";
 
 const COMMANDS_TO_RESET = [createTaskCommand, showTaskCommand, stepTaskCommand, listTasksCommand, workflowsCommand];
 
-const commandOptionDefaults = new Map<unknown, Record<string, unknown>>();
-for (const cmd of COMMANDS_TO_RESET) {
-  commandOptionDefaults.set(cmd, { ...(cmd as { _optionValues: Record<string, unknown> })._optionValues });
+function resetCommandOptions(cmd: unknown): void {
+  const defaults: Record<string, unknown> = {};
+  for (const option of (cmd as any).options ?? []) {
+    if (option.defaultValue !== undefined) {
+      defaults[option.attributeName()] = option.defaultValue;
+    }
+  }
+  (cmd as any)._optionValues = defaults;
   for (const sub of (cmd as any).commands ?? []) {
-    commandOptionDefaults.set(sub, { ...(sub as { _optionValues: Record<string, unknown> })._optionValues });
+    resetCommandOptions(sub);
   }
 }
 
 function resetAllCommandOptions(): void {
   for (const cmd of COMMANDS_TO_RESET) {
-    (cmd as { _optionValues: Record<string, unknown> })._optionValues = { ...commandOptionDefaults.get(cmd) };
-    for (const sub of (cmd as any).commands ?? []) {
-      (sub as { _optionValues: Record<string, unknown> })._optionValues = { ...commandOptionDefaults.get(sub) };
-    }
+    resetCommandOptions(cmd);
   }
 }
 
@@ -97,52 +99,42 @@ describe("KDI-039 workflow task commands", () => {
     createBoard("wf-board", "/tmp/wf-board");
     defineWorkflowTemplate(1, "onboarding", "Onboarding", ["setup"]);
 
-    const errors: string[] = [];
-    const originalError = console.error;
-    console.error = (...args: unknown[]) => { errors.push(args.map(String).join(" ")); };
+    const originalExitCallback = (createTaskCommand as any)._exitCallback;
+    createTaskCommand.exitOverride();
 
-    let exited = false;
-    const originalExit = process.exit;
-    process.exit = ((code?: number) => { exited = true; throw new Error(`exit:${code}`); }) as typeof process.exit;
-
+    let message: string | undefined;
     try {
       await createTaskCommand.parseAsync([
         "Onboard user", "--board", "wf-board", "--workflow-template-id", "onboarding", "--step-key", "missing",
       ], { from: "user" });
-    } catch {
-      // expected
+    } catch (err: any) {
+      message = err.message;
     } finally {
-      console.error = originalError;
-      process.exit = originalExit;
+      (createTaskCommand as any)._exitCallback = originalExitCallback;
     }
 
-    expect(errors.some((e) => e.includes('Step "missing" not found'))).toBe(true);
+    expect(message).toContain('Step "missing" not found');
   });
 
   it("create --workflow-template-id is gated when flag disabled", async () => {
     setFlag(FF_WORKFLOW_TEMPLATES, false);
     createBoard("wf-board", "/tmp/wf-board");
 
-    const errors: string[] = [];
-    const originalError = console.error;
-    console.error = (...args: unknown[]) => { errors.push(args.map(String).join(" ")); };
+    const originalExitCallback = (createTaskCommand as any)._exitCallback;
+    createTaskCommand.exitOverride();
 
-    let exited = false;
-    const originalExit = process.exit;
-    process.exit = ((code?: number) => { exited = true; throw new Error(`exit:${code}`); }) as typeof process.exit;
-
+    let message: string | undefined;
     try {
       await createTaskCommand.parseAsync([
         "Onboard user", "--board", "wf-board", "--workflow-template-id", "onboarding",
       ], { from: "user" });
-    } catch {
-      // expected
+    } catch (err: any) {
+      message = err.message;
     } finally {
-      console.error = originalError;
-      process.exit = originalExit;
+      (createTaskCommand as any)._exitCallback = originalExitCallback;
     }
 
-    expect(errors.some((e) => e.includes("Workflow templates feature is not enabled"))).toBe(true);
+    expect(message).toContain("Workflow templates feature is not enabled");
   });
 
   it("step advances to next step", async () => {

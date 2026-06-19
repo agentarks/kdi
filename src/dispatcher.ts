@@ -9,7 +9,7 @@ import { atomicClaim, heartbeat } from "./models/claim";
 import { isBlockedByDependencies } from "./models/dependency";
 import { getProfile, substituteCommand } from "./profiles";
 import { createWorktree, removeWorktree, type RemoveWorktreeResult } from "./worktree";
-import { isEnabled, FF_ENABLE_KANBAN_DISPATCH, FF_WORKER_LOG_CAPTURE, FF_CRASH_GRACE_PERIOD, FF_HEARTBEAT, FF_RATE_LIMIT_EXIT_CODE, FF_NOTIFY_SUBS } from "./flags";
+import { isEnabled, FF_ENABLE_KANBAN_DISPATCH, FF_WORKER_LOG_CAPTURE, FF_CRASH_GRACE_PERIOD, FF_HEARTBEAT, FF_RATE_LIMIT_EXIT_CODE, FF_NOTIFY_SUBS, FF_SWARM_MODE } from "./flags";
 import { runNotifierWatcher, getLastSeenEventId, setLastSeenEventId } from "./notifiers";
 import {
   recordTick,
@@ -157,16 +157,60 @@ function getBoardSlug(boardId: number): string | null {
   return board?.slug ?? null;
 }
 
-function finishTask(id: number, result: string, runId: number | null): void {
+function finishTask(task: Task, result: string, runId: number | null): void {
   const db = getDb();
   db.run(
     `UPDATE tasks SET status = 'done', result = ?, summary = ?, consecutive_failures = 0, claim_lock = NULL, claim_expires = NULL, updated_at = unixepoch() WHERE id = ?`,
-    [result, result.slice(0, 200), id]
+    [result, result.slice(0, 200), task.id]
   );
   if (runId !== null) {
     finishRun(runId, "completed", result.slice(0, 200), null, null);
   }
-  addEvent(id, "finished", { outcome: "completed" }, runId ?? undefined);
+  addEvent(task.id, "finished", { outcome: "completed" }, runId ?? undefined);
+
+  if (isEnabled(FF_SWARM_MODE) && task.swarm_parent_id !== null && task.title.startsWith("synthesize:")) {
+    completeSwarmOrchestrator(task.swarm_parent_id, task.id, result);
+  }
+}
+
+function completeSwarmOrchestrator(orchestratorId: number, synthesizerId: number, result: string): void {
+  const db = getDb();
+  const summary = result.slice(0, 200);
+  const updateResult = db.run(
+    `UPDATE tasks SET status = 'done', result = ?, summary = ?, updated_at = unixepoch() WHERE id = ? AND status = 'triage' AND archived_at IS NULL`,
+    [result, summary, orchestratorId]
+  );
+  if (updateResult.changes > 0) {
+    addEvent(orchestratorId, "swarm_completed", { synthesizer_id: synthesizerId, result, summary });
+  }
+}
+
+function checkSwarmFailures(): number {
+  if (!isEnabled(FF_SWARM_MODE)) return 0;
+  const db = getDb();
+  const rows = db.query(
+    `SELECT ${TASK_COLUMNS} FROM tasks t WHERE t.status = 'triage' AND t.archived_at IS NULL AND EXISTS (SELECT 1 FROM tasks c WHERE c.swarm_parent_id = t.id AND c.archived_at IS NULL AND (c.status = 'blocked' OR c.status = 'archived'))`
+  ).all() as Task[];
+
+  let blocked = 0;
+  for (const raw of rows) {
+    const orchestrator = hydrateTask(raw);
+    const child = db.query(
+      `SELECT ${TASK_COLUMNS} FROM tasks WHERE swarm_parent_id = ? AND archived_at IS NULL AND (status = 'blocked' OR status = 'archived') ORDER BY updated_at DESC LIMIT 1`
+    ).get(orchestrator.id) as Task | undefined;
+
+    if (!child) continue;
+    const reason = `Swarm child #${child.id} (${child.title}) is ${child.status}`;
+    const updateResult = db.run(
+      `UPDATE tasks SET status = 'blocked', block_reason = ?, updated_at = unixepoch() WHERE id = ? AND status = 'triage' AND archived_at IS NULL`,
+      [reason, orchestrator.id]
+    );
+    if (updateResult.changes > 0) {
+      addEvent(orchestrator.id, "swarm_failed", { child_id: child.id, child_title: child.title, child_status: child.status, reason });
+      blocked++;
+    }
+  }
+  return blocked;
 }
 
 function determineOutcome(reason: string): Parameters<typeof finishRun>[1] {
@@ -379,6 +423,7 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
   reapStaleClaims();
   promoteScheduledTasks(Math.floor(Date.now() / 1000));
   const crashCount = checkCrashedRuns();
+  checkSwarmFailures();
 
   const tasks = listReadyTasks();
   let processed = 0;
@@ -491,7 +536,7 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
       }
 
       if (exitCode === 0) {
-        finishTask(task.id, stdout, runId);
+        finishTask(task, stdout, runId);
         processed++;
       } else if (exitCode === 75 && isEnabled(FF_RATE_LIMIT_EXIT_CODE)) {
         handleRateLimit(task, runId, rateLimitCooldownSeconds, stderr || stdout);
