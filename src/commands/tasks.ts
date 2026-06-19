@@ -31,9 +31,10 @@ import { getRuns, getRunsFiltered } from "../models/taskRun";
 import { getEvents, tailEvents, getRecentEvents, getEventsAfter, type WatchFilters } from "../models/taskEvent";
 import { atomicClaim, reclaimTask, heartbeat } from "../models/claim";
 import { getTaskLogPath } from "../observability";
-import { isEnabled, FF_SCHEDULED_STATUS, FF_REVIEW_STATUS, FF_COMPLETE_METADATA, FF_PRIORITY_INTEGER, FF_SKILLS_ARRAY, FF_MAX_RUNTIME, FF_MAX_RETRIES, FF_TENANT_NAMESPACE, FF_CREATED_BY, FF_MODEL_OVERRIDE, FF_DEFAULT_WORKDIR, FF_WORKER_LOG_CAPTURE, FF_ASSIGN_REASSIGN, FF_CRASH_GRACE_PERIOD, FF_HEARTBEAT, FF_RATE_LIMIT_EXIT_CODE, FF_TASK_ATTACHMENTS, FF_LIST_FILTERS_SORT, FF_SHOW_RUN_FILTERING, FF_BULK_OPERATIONS, FF_COMMENT_ENHANCEMENTS, FF_WATCH_FILTERS, FF_WORKFLOW_TEMPLATES, FF_TRIAGE_AUTOMATION } from "../flags";
+import { isEnabled, FF_SCHEDULED_STATUS, FF_REVIEW_STATUS, FF_COMPLETE_METADATA, FF_PRIORITY_INTEGER, FF_SKILLS_ARRAY, FF_MAX_RUNTIME, FF_MAX_RETRIES, FF_TENANT_NAMESPACE, FF_CREATED_BY, FF_MODEL_OVERRIDE, FF_DEFAULT_WORKDIR, FF_WORKER_LOG_CAPTURE, FF_ASSIGN_REASSIGN, FF_CRASH_GRACE_PERIOD, FF_HEARTBEAT, FF_RATE_LIMIT_EXIT_CODE, FF_TASK_ATTACHMENTS, FF_LIST_FILTERS_SORT, FF_SHOW_RUN_FILTERING, FF_BULK_OPERATIONS, FF_COMMENT_ENHANCEMENTS, FF_WATCH_FILTERS, FF_WORKFLOW_TEMPLATES, FF_TRIAGE_AUTOMATION, FF_DISPATCHER_PRESENCE_WARNING } from "../flags";
 import { getWorkflowTemplate, validateStepKey, advanceTaskStep, setTaskStep } from "../models/workflowTemplate";
 import { resolveBoard } from "../resolveBoard";
+import { isDispatcherPresent } from "../dispatcherPresence";
 import { buildSpecifyPrompt, buildDecomposePrompt, callTriageLlm } from "../llm";
 
 const VALID_STATUSES = ["triage", "todo", "scheduled", "ready", "running", "done", "blocked", "review"] as const;
@@ -153,7 +154,8 @@ export const createTaskCommand = new Command("create")
   .option("--session <session_id>", "Originating session ID. Feature-flagged.")
   .option("--workflow-template-id <id>", "Workflow template ID. Feature-flagged.")
   .option("--step-key <key>", "Initial workflow step key (requires --workflow-template-id). Feature-flagged.")
-  .action(function (this: Command, title: string, options: { board?: string; assignee?: string; body?: string; triage?: boolean; initialStatus?: string; at?: string; priority?: string; idempotencyKey?: string; maxRuntime?: string; maxRetries?: string; tenant?: string; skill: string[]; createdBy?: string; model?: string; workspace?: string; session?: string; workflowTemplateId?: string; stepKey?: string }) {
+  .option("--no-dispatcher-warning", "Suppress the dispatcher presence warning")
+  .action(function (this: Command, title: string, options: { board?: string; assignee?: string; body?: string; triage?: boolean; initialStatus?: string; at?: string; priority?: string; idempotencyKey?: string; maxRuntime?: string; maxRetries?: string; tenant?: string; skill: string[]; createdBy?: string; model?: string; workspace?: string; session?: string; workflowTemplateId?: string; stepKey?: string; dispatcherWarning?: boolean }) {
     try {
       if (!title || title.trim() === "") {
         throw new Error("Title is required.");
@@ -262,6 +264,15 @@ export const createTaskCommand = new Command("create")
 
       const boardSlug = resolveBoard(options.board);
       const board = getBoardBySlug(boardSlug);
+
+      // Warn when no live dispatcher is detected for the target board. The
+      // flag gates the probe; --no-dispatcher-warning is a per-invocation
+      // escape that suppresses the warning even when the flag is on.
+      if (isEnabled(FF_DISPATCHER_PRESENCE_WARNING) && options.dispatcherWarning !== false) {
+        if (!isDispatcherPresent(boardSlug)) {
+          console.warn(`Warning: No running dispatcher detected for board "${boardSlug}". Tasks may not be picked up until one starts.`);
+        }
+      }
 
       let workspace: string | undefined;
       if (options.workspace !== undefined) {

@@ -64,7 +64,8 @@ stateDiagram-v2
 | `ff_watch_filters` | `FF_WATCH_FILTERS` | CLI / observability | InDev | `false` | KDI-035 | `kdi watch --assignee`/`--tenant`/`--kinds`/`--interval` filters.
 | `ff_workflow_templates` | `FF_WORKFLOW_TEMPLATES` | CLI / task lifecycle | InDev | `false` | KDI-039 | Step-key driven workflow templates; `kdi create --workflow-template-id`, `kdi step`, `kdi workflows`.
 | `ff_triage_automation` | `FF_TRIAGE_AUTOMATION` | CLI / task lifecycle | InDev | `false` | KDI-040 | LLM-powered triage automation; `kdi specify` (LLM path) and `kdi decompose`. |
-| `ff_swarm_mode` | `FF_SWARM_MODE` | CLI / dispatcher | Planned | `false` | KDI-041 | Multi-agent task graph: `kdi swarm` creates parallel workers, a verifier, and a synthesizer bound by dependencies.
+| `ff_swarm_mode` | `FF_SWARM_MODE` | CLI / dispatcher | Planned | `false` | KDI-041 | Multi-agent task graph: `kdi swarm` creates parallel workers, a verifier, and a synthesizer bound by dependencies. |
+| `ff_dispatcher_presence_warning` | `FF_DISPATCHER_PRESENCE_WARNING` | CLI / dispatcher + create | InDev | `false` | KDI-037 | `kdi create` warns on stderr when no live dispatcher is detected for the target board; `--no-dispatcher-warning` per-invocation escape. |
 
 ## Lifecycle Notes
 
@@ -572,6 +573,21 @@ stateDiagram-v2
   - The orchestrator auto-completes when the synthesizer completes, or auto-blocks if any swarm child fails.
   - `--dry-run` prints the planned graph without mutating state.
 - **Rollback / deactivation:** Set `FF_SWARM_MODE=false` to reject the `kdi swarm` command and disable the dispatcher swarm watcher.
+- **Deprecation plan:** N/A
+
+### `ff_dispatcher_presence_warning` — InDev
+
+- **Owner:** kdi core team
+- **BRD:** [BRD-KDI-037](brd-kdi-037-dispatcher-presence-warning.md)
+- **Status transitions:**
+  - `InDev` → `Active` when the warning is safe to enable by default.
+- **Activation criteria:**
+  - `FF_DISPATCHER_PRESENCE_WARNING=true kdi create ...` probes for a live dispatcher and prints a single warning to stderr when none is detected.
+  - The warning never blocks task creation and the command exits `0`.
+  - `--no-dispatcher-warning` per-invocation flag suppresses the warning even when the feature flag is on.
+  - When the flag is off, `kdi create` performs no probe, emits no warning, and ignores `--no-dispatcher-warning`.
+- **Schema note:** No schema changes. The probe reads `<boardDataDir>/dispatcher.pid` which the dispatcher writes when it starts and removes on clean shutdown.
+- **Rollback / deactivation:** Set `FF_DISPATCHER_PRESENCE_WARNING=false` to disable the probe and warning entirely.
 - **Deprecation plan:** N/A
 
 ### `ff_kanban_dispatch` — Planned

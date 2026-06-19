@@ -1,5 +1,17 @@
 # kdi — Status
 
+## Dispatcher Presence Warning (KDI-037) — Done
+- [x] BRD drafted at `specs/brd-kdi-037-dispatcher-presence-warning.md`
+- [x] Feature flag `ff_dispatcher_presence_warning` / `FF_DISPATCHER_PRESENCE_WARNING` registered in `src/flags.ts` and `specs/feature-flags.md`, defaults to `false`
+- [x] `src/dispatcherPresence.ts` exposes `getDispatcherPidPath(slug)` and `isDispatcherPresent(slug)`; `isDispatcherPresent` returns `true` only when the PID file exists, is readable, contains a single positive integer, and `process.kill(pid, 0)` succeeds — any other condition returns `false`
+- [x] `kdi create <title> [--no-dispatcher-warning]` option added to `src/commands/tasks.ts`; warning is printed to stderr (single line via `console.warn`) after the board is resolved and before the task is created, only when the flag is on AND `--no-dispatcher-warning` is not set
+- [x] Warning is non-blocking: task ID is still printed to stdout and the command exits `0`
+- [x] Unit tests in `tests/dispatcherPresence.test.ts` cover missing, empty, non-numeric, negative, zero, dead-PID, live-PID, and non-existent-board-slug cases
+- [x] CLI tests in `tests/commands/tasks.test.ts` (KDI-037 describe block) cover flag-on/live, flag-on/missing, flag-on/dead, flag-on/malformed, `--no-dispatcher-warning` suppression, and flag-off/option-accepted
+- [x] User-loop smoke proven with temp `HOME` and temp `KDI_DB`: warning appears on no-PID/dead-PID, suppressed on live-PID, suppressed by `--no-dispatcher-warning`, and absent when flag is off
+- [x] `bun run lint`, `bun test tests/dispatcherPresence.test.ts tests/commands/tasks.test.ts`, and `bun run build` pass; full suite (807 tests) passes
+- [x] Out of scope (deferred): dispatcher writes per-board PID marker at startup and removes it on clean shutdown (separate scope)
+
 ## Triage Automation (KDI-040) — Done
 - [x] BRD drafted at `specs/brd-kdi-040-triage-automation.md` to match LLM-powered triage automation semantics
 - [x] Feature flag `ff_triage_automation` / `FF_TRIAGE_AUTOMATION` registered in `specs/feature-flags.md` and `src/flags.ts`, defaults to `false`
@@ -473,6 +485,7 @@
 - [x] Capture stdout/stderr/exit code
 - [x] Update task status: done / failed
 - [x] Task runs table (per-attempt history)
+- [ ] Dispatcher writes per-board PID markers and `kdi create` warns when no live dispatcher is detected (KDI-037)
 
 ## Worktree Isolation — Accepted
 - [x] Auto-create worktree branch `wt/<profile>/<task_id>`
