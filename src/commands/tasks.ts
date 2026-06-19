@@ -31,7 +31,7 @@ import { getRuns, getRunsFiltered } from "../models/taskRun";
 import { getEvents, tailEvents, getRecentEvents, getEventsAfter, type WatchFilters } from "../models/taskEvent";
 import { atomicClaim, reclaimTask, heartbeat } from "../models/claim";
 import { getTaskLogPath } from "../observability";
-import { isEnabled, FF_SCHEDULED_STATUS, FF_REVIEW_STATUS, FF_COMPLETE_METADATA, FF_PRIORITY_INTEGER, FF_SKILLS_ARRAY, FF_MAX_RUNTIME, FF_MAX_RETRIES, FF_TENANT_NAMESPACE, FF_CREATED_BY, FF_MODEL_OVERRIDE, FF_DEFAULT_WORKDIR, FF_WORKER_LOG_CAPTURE, FF_ASSIGN_REASSIGN, FF_CRASH_GRACE_PERIOD, FF_HEARTBEAT, FF_RATE_LIMIT_EXIT_CODE, FF_TASK_ATTACHMENTS, FF_LIST_FILTERS_SORT, FF_SHOW_RUN_FILTERING, FF_BULK_OPERATIONS, FF_COMMENT_ENHANCEMENTS, FF_WATCH_FILTERS, FF_WORKFLOW_TEMPLATES, FF_TRIAGE_AUTOMATION } from "../flags";
+import { isEnabled, FF_SCHEDULED_STATUS, FF_REVIEW_STATUS, FF_COMPLETE_METADATA, FF_PRIORITY_INTEGER, FF_SKILLS_ARRAY, FF_MAX_RUNTIME, FF_MAX_RETRIES, FF_TENANT_NAMESPACE, FF_CREATED_BY, FF_MODEL_OVERRIDE, FF_DEFAULT_WORKDIR, FF_WORKER_LOG_CAPTURE, FF_ASSIGN_REASSIGN, FF_CRASH_GRACE_PERIOD, FF_HEARTBEAT, FF_RATE_LIMIT_EXIT_CODE, FF_TASK_ATTACHMENTS, FF_LIST_FILTERS_SORT, FF_SHOW_RUN_FILTERING, FF_RUNS_FILTERING, FF_BULK_OPERATIONS, FF_COMMENT_ENHANCEMENTS, FF_WATCH_FILTERS, FF_WORKFLOW_TEMPLATES, FF_TRIAGE_AUTOMATION } from "../flags";
 import { getWorkflowTemplate, validateStepKey, advanceTaskStep, setTaskStep } from "../models/workflowTemplate";
 import { resolveBoard } from "../resolveBoard";
 import { buildSpecifyPrompt, buildDecomposePrompt, callTriageLlm } from "../llm";
@@ -1424,12 +1424,36 @@ export const logTaskCommand = new Command("log")
 export const listRunsCommand = new Command("runs")
   .description("Show task run history")
   .argument("<task_id>", "Task ID")
-  .action((taskId: string) => {
+  .option("--state-type <type>", "Run state type to filter by (status|outcome)")
+  .option("--state-name <value>", "Run state name to filter by")
+  .action((taskId: string, options: { stateType?: string; stateName?: string }) => {
     try {
       const id = parseTaskId(taskId);
-      const runs = getRuns(id);
+
+      const hasStateType = options.stateType !== undefined;
+      const hasStateName = options.stateName !== undefined;
+
+      if (!isEnabled(FF_RUNS_FILTERING)) {
+        if (hasStateType || hasStateName) {
+          throw new Error("Run filtering feature is not enabled.");
+        }
+      } else {
+        if (hasStateType !== hasStateName) {
+          throw new Error("--state-type and --state-name must both be provided or both omitted.");
+        }
+        if (hasStateType) {
+          const validTypes = ["status", "outcome"];
+          if (!validTypes.includes(options.stateType!)) {
+            throw new Error(`Invalid state type "${options.stateType}". Valid: ${validTypes.join(", ")}.`);
+          }
+        }
+      }
+
+      const runs = hasStateType
+        ? getRunsFiltered(id, { stateType: options.stateType!, stateName: options.stateName! })
+        : getRuns(id);
       if (runs.length === 0) {
-        console.log("No runs found for this task.");
+        console.log(hasStateType ? "No runs match the filter." : "No runs found for this task.");
         return;
       }
       for (const run of runs) {
