@@ -245,7 +245,7 @@ describe("triage automation commands", () => {
     expect(logs.some((l) => l.includes("Decomposed 1/1 tasks"))).toBe(true);
   });
 
-  it("rejects non-numeric task IDs", async () => {
+  it("rejects non-numeric task IDs for specify", async () => {
     setFlag(FF_TRIAGE_AUTOMATION, true);
     createBoard("triage-cmd", "/tmp/triage-cmd");
 
@@ -255,12 +255,35 @@ describe("triage automation commands", () => {
     expect(errors.some((e) => e.includes("Invalid task ID"))).toBe(true);
   });
 
-  it("missing API key exits before mutating", async () => {
+  it("rejects non-numeric task IDs for decompose", async () => {
+    setFlag(FF_TRIAGE_AUTOMATION, true);
+    process.env.KDI_TRIAGE_LLM_API_KEY = "sk-test";
+    createBoard("triage-cmd", "/tmp/triage-cmd");
+
+    const { exitCode, errors } = await runCommand(decomposeTaskCommand, ["abc", "--board", "triage-cmd"]);
+
+    expect(exitCode).toBe(1);
+    expect(errors.some((e) => e.includes("Invalid task ID"))).toBe(true);
+  });
+
+  it("missing API key exits before mutating for specify", async () => {
     setFlag(FF_TRIAGE_AUTOMATION, true);
     const board = createBoard("triage-cmd", "/tmp/triage-cmd");
     const task = createTask({ board_id: board.id, title: "Triage", triage: true });
 
     const { exitCode, errors } = await runCommand(specifyTaskCommand, [String(task.id), "--board", "triage-cmd"]);
+
+    expect(exitCode).toBe(1);
+    expect(errors.some((e) => e.includes("Triage LLM API key is not configured"))).toBe(true);
+    expect(showTask(task.id)!.status).toBe("triage");
+  });
+
+  it("missing API key exits before mutating for decompose", async () => {
+    setFlag(FF_TRIAGE_AUTOMATION, true);
+    const board = createBoard("triage-cmd", "/tmp/triage-cmd");
+    const task = createTask({ board_id: board.id, title: "Epic", triage: true });
+
+    const { exitCode, errors } = await runCommand(decomposeTaskCommand, [String(task.id), "--board", "triage-cmd"]);
 
     expect(exitCode).toBe(1);
     expect(errors.some((e) => e.includes("Triage LLM API key is not configured"))).toBe(true);

@@ -129,6 +129,21 @@ describe("triage automation model", () => {
       expect(events.some((e) => e.kind === "blocked")).toBe(true);
     });
 
+    it("missing body in LLM response blocks with exact reason", async () => {
+      process.env.KDI_TRIAGE_LLM_API_KEY = "sk-test";
+      setFlag(FF_TRIAGE_AUTOMATION, true);
+
+      const task = initTask();
+      mockFetch({ body: "" });
+
+      await expect(specifyTaskWithLlm(task.id)).rejects.toThrow(
+        "LLM specify failed: missing body in response"
+      );
+      expect(showTask(task.id)!.block_reason).toBe(
+        "LLM specify failed: missing body in response"
+      );
+    });
+
     it("rejects non-triage task", async () => {
       const task = initTask({ initialStatus: "todo" });
       await expect(specifyTaskWithLlm(task.id, { skipLlm: true })).rejects.toThrow(
