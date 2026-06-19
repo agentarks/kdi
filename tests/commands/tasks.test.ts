@@ -485,6 +485,19 @@ const KDI030_DB = "/tmp/kdi-commands-tasks-030-test.db";
 
 let _origStderrWrite: typeof process.stderr.write | null = null;
 
+function resetCommandOptions(cmd: unknown): void {
+  const defaults: Record<string, unknown> = {};
+  for (const option of (cmd as any).options ?? []) {
+    if (option.defaultValue !== undefined) {
+      defaults[option.attributeName()] = option.defaultValue;
+    }
+  }
+  (cmd as any)._optionValues = defaults;
+  for (const sub of (cmd as any).commands ?? []) {
+    resetCommandOptions(sub);
+  }
+}
+
 describe("KDI-030 list filters and sort", () => {
   beforeEach(() => {
     clearOverrides();
@@ -492,6 +505,10 @@ describe("KDI-030 list filters and sort", () => {
     process.env.KDI_DB = KDI030_DB;
     delete process.env.KDI_PROFILE;
     delete process.env.HERMES_PROFILE;
+    // Reset Commander singleton option state so repeated parses do not see
+    // stale option values from prior tests.
+    resetCommandOptions(createTaskCommand);
+    resetCommandOptions(listTasksCommand);
     // Suppress Commander stderr leaks by intercepting process.stderr.write
     _origStderrWrite = process.stderr.write.bind(process.stderr);
     process.stderr.write = (() => true) as typeof process.stderr.write;
@@ -534,24 +551,19 @@ describe("KDI-030 list filters and sort", () => {
     setFlag(FF_LIST_FILTERS_SORT, false);
     createBoard("kdi030", "/tmp/kdi030");
 
-    const errors: string[] = [];
-    const originalError = console.error;
-    console.error = (...args: unknown[]) => { errors.push(args.map(String).join(" ")); };
+    const originalExitCallback = (createTaskCommand as any)._exitCallback;
+    createTaskCommand.exitOverride();
 
-    let exited = false;
-    const originalExit = process.exit;
-    process.exit = ((code?: number) => { exited = true; throw new Error(`exit:${code}`); }) as typeof process.exit;
-
+    let message: string | undefined;
     try {
       await createTaskCommand.parseAsync(["Task", "--board", "kdi030", "--session", "sess-abc"], { from: "user" });
-    } catch {
-      // expected
+    } catch (err: any) {
+      message = err.message;
     } finally {
-      console.error = originalError;
-      process.exit = originalExit;
+      (createTaskCommand as any)._exitCallback = originalExitCallback;
     }
 
-    expect(errors.some((e) => e.includes("List filters and sort feature is not enabled"))).toBe(true);
+    expect(message).toContain("List filters and sort feature is not enabled");
   });
 
   it("list --session filters by session_id", async () => {
@@ -598,24 +610,19 @@ describe("KDI-030 list filters and sort", () => {
     setFlag(FF_LIST_FILTERS_SORT, true);
     createBoard("kdi030", "/tmp/kdi030");
 
-    const errors: string[] = [];
-    const originalError = console.error;
-    console.error = (...args: unknown[]) => { errors.push(args.map(String).join(" ")); };
+    const originalExitCallback = (listTasksCommand as any)._exitCallback;
+    listTasksCommand.exitOverride();
 
-    let exited = false;
-    const originalExit = process.exit;
-    process.exit = ((code?: number) => { exited = true; throw new Error(`exit:${code}`); }) as typeof process.exit;
-
+    let message: string | undefined;
     try {
       await listTasksCommand.parseAsync(["--board", "kdi030", "--mine", "--assignee", "bob"], { from: "user" });
-    } catch {
-      // expected
+    } catch (err: any) {
+      message = err.message;
     } finally {
-      console.error = originalError;
-      process.exit = originalExit;
+      (listTasksCommand as any)._exitCallback = originalExitCallback;
     }
 
-    expect(errors.some((e) => e.includes("--mine and --assignee cannot be used together"))).toBe(true);
+    expect(message).toContain("--mine and --assignee cannot be used together");
   });
 
   it("list --archived includes archived tasks", async () => {
@@ -726,24 +733,19 @@ describe("KDI-030 list filters and sort", () => {
     setFlag(FF_LIST_FILTERS_SORT, true);
     createBoard("kdi030", "/tmp/kdi030");
 
-    const errors: string[] = [];
-    const originalError = console.error;
-    console.error = (...args: unknown[]) => { errors.push(args.map(String).join(" ")); };
+    const originalExitCallback = (listTasksCommand as any)._exitCallback;
+    listTasksCommand.exitOverride();
 
-    let exited = false;
-    const originalExit = process.exit;
-    process.exit = ((code?: number) => { exited = true; throw new Error(`exit:${code}`); }) as typeof process.exit;
-
+    let message: string | undefined;
     try {
       await listTasksCommand.parseAsync(["--board", "kdi030", "--sort", "invalid"], { from: "user" });
-    } catch {
-      // expected
+    } catch (err: any) {
+      message = err.message;
     } finally {
-      console.error = originalError;
-      process.exit = originalExit;
+      (listTasksCommand as any)._exitCallback = originalExitCallback;
     }
 
-    expect(errors.some((e) => e.includes("Invalid sort key"))).toBe(true);
+    expect(message).toContain("Invalid sort key");
   });
 
   it("list --workflow-template-id filters by template", async () => {
@@ -812,23 +814,18 @@ describe("KDI-030 list filters and sort", () => {
     setFlag(FF_LIST_FILTERS_SORT, false);
     createBoard("kdi030", "/tmp/kdi030");
 
-    const errors: string[] = [];
-    const originalError = console.error;
-    console.error = (...args: unknown[]) => { errors.push(args.map(String).join(" ")); };
+    const originalExitCallback = (listTasksCommand as any)._exitCallback;
+    listTasksCommand.exitOverride();
 
-    let exited = false;
-    const originalExit = process.exit;
-    process.exit = ((code?: number) => { exited = true; throw new Error(`exit:${code}`); }) as typeof process.exit;
-
+    let message: string | undefined;
     try {
       await listTasksCommand.parseAsync(["--board", "kdi030", "--mine"], { from: "user" });
-    } catch {
-      // expected
+    } catch (err: any) {
+      message = err.message;
     } finally {
-      console.error = originalError;
-      process.exit = originalExit;
+      (listTasksCommand as any)._exitCallback = originalExitCallback;
     }
 
-    expect(errors.some((e) => e.includes("List filters and sort feature is not enabled"))).toBe(true);
+    expect(message).toContain("List filters and sort feature is not enabled");
   });
 });

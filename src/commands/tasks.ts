@@ -150,7 +150,7 @@ export const createTaskCommand = new Command("create")
   .option("--session <session_id>", "Originating session ID. Feature-flagged.")
   .option("--workflow-template-id <id>", "Workflow template ID. Feature-flagged.")
   .option("--step-key <key>", "Initial workflow step key (requires --workflow-template-id). Feature-flagged.")
-  .action((title: string, options: { board?: string; assignee?: string; body?: string; triage?: boolean; initialStatus?: string; at?: string; priority?: string; idempotencyKey?: string; maxRuntime?: string; maxRetries?: string; tenant?: string; skill: string[]; createdBy?: string; model?: string; workspace?: string; session?: string; workflowTemplateId?: string; stepKey?: string }) => {
+  .action(function (this: Command, title: string, options: { board?: string; assignee?: string; body?: string; triage?: boolean; initialStatus?: string; at?: string; priority?: string; idempotencyKey?: string; maxRuntime?: string; maxRetries?: string; tenant?: string; skill: string[]; createdBy?: string; model?: string; workspace?: string; session?: string; workflowTemplateId?: string; stepKey?: string }) {
     try {
       if (!title || title.trim() === "") {
         throw new Error("Title is required.");
@@ -342,8 +342,7 @@ export const createTaskCommand = new Command("create")
       });
       console.log(task.id);
     } catch (err: any) {
-      console.error(`Error: ${err.message}`);
-      process.exit(1);
+      this.error(err.message);
     }
   });
 
@@ -360,7 +359,7 @@ export const listTasksCommand = new Command("list")
   .option("--sort <key>", "Sort order (assignee, created, created-desc, priority, priority-desc, status, title, updated)")
   .option("--workflow-template-id <id>", "Filter by workflow template ID")
   .option("--step-key <key>", "Filter by current step key")
-  .action((options: { board?: string; status?: string; assignee?: string; tenant?: string; createdBy?: string; mine?: boolean; session?: string; archived?: boolean; sort?: string; workflowTemplateId?: string; stepKey?: string }) => {
+  .action(function (this: Command, options: { board?: string; status?: string; assignee?: string; tenant?: string; createdBy?: string; mine?: boolean; session?: string; archived?: boolean; sort?: string; workflowTemplateId?: string; stepKey?: string }) {
     try {
       // Gate new options behind FF_LIST_FILTERS_SORT
       const hasNewOption = options.mine || options.session !== undefined || options.archived || options.sort !== undefined || options.workflowTemplateId !== undefined || options.stepKey !== undefined;
@@ -426,8 +425,7 @@ export const listTasksCommand = new Command("list")
         console.log(`${task.id}: ${task.title} [${task.status}]${task.assignee ? " @" + task.assignee : ""}`);
       }
     } catch (err: any) {
-      console.error(`Error: ${err.message}`);
-      process.exit(1);
+      this.error(err.message);
     }
   });
 
