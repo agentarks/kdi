@@ -1,19 +1,17 @@
 # kdi — Status
 
-## Triage Automation (KDI-040) — In Progress
+## Triage Automation (KDI-040) — Done
 - [x] BRD drafted at `specs/brd-kdi-040-triage-automation.md` to match LLM-powered triage automation semantics
-- [x] Feature flag `ff_triage_automation` / `FF_TRIAGE_AUTOMATION` registered in `specs/feature-flags.md`, defaults to `false`
-- [ ] Feature flag constant `FF_TRIAGE_AUTOMATION` registered in `src/flags.ts`
-- [ ] `kdi specify` LLM path and `kdi decompose` command in `src/commands/tasks.ts`
-- [ ] `kdi decompose` wired into `src/index.ts`
-- [ ] `specifyTaskWithLlm()` / `decomposeTask()` model helpers in `src/models/task.ts`
-- [ ] OpenAI-compatible LLM client and prompt builders in `src/llm.ts`
-- [ ] `--all` and `--tenant` sweep modes for both commands
-- [ ] `--skip-llm` escape hatch preserves manual `kdi specify` behavior
-- [ ] Invalid LLM responses block tasks with clear reasons
-- [ ] `specified` event gains `{ llm: true }` payload; new `decomposed` event kind
-- [ ] Unit and CLI tests covering flag gating, LLM success/failure paths, `--all`, `--tenant`, decomposition validation, and `--skip-llm`
-- [ ] `bun run lint`, `bun run test`, `bun run build` pass
+- [x] Feature flag `ff_triage_automation` / `FF_TRIAGE_AUTOMATION` registered in `specs/feature-flags.md` and `src/flags.ts`, defaults to `false`
+- [x] `kdi specify` LLM path and `kdi decompose` command in `src/commands/tasks.ts`; `kdi decompose` wired into `src/index.ts`
+- [x] `specifyTaskWithLlm()` / `decomposeTask()` model helpers in `src/models/task.ts`
+- [x] OpenAI-compatible LLM client and prompt builders in `src/llm.ts`
+- [x] `--all` and `--tenant` sweep modes for both commands
+- [x] `--skip-llm` escape hatch preserves manual `kdi specify` behavior
+- [x] Invalid LLM responses block tasks with clear reasons; invalid decomposition blocks parent with no children created
+- [x] `specified` event gains `{ llm: true }` payload; new `decomposed` event kind
+- [x] Unit and CLI tests covering flag gating, LLM success/failure paths, `--all`, `--tenant`, decomposition validation, and `--skip-llm`
+- [x] `bun run lint` and `bun run build` pass; new tests pass; full suite matches existing flaky baseline
 
 ## Swarm Mode (KDI-041) — In Progress
 - [x] BRD revised at `specs/brd-kdi-041-swarm-mode.md` to match multi-agent task graph semantics

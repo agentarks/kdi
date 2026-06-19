@@ -2,7 +2,8 @@ import { getDb } from "../db";
 import { addEvent } from "./taskEvent";
 import { createRun, finishRun } from "./taskRun";
 import { reclaimTask } from "./claim";
-import { isBlockedByDependencies } from "./dependency";
+import { isBlockedByDependencies, addDependency } from "./dependency";
+import { buildSpecifyPrompt, callTriageLlm, type LlmDecomposeResponse } from "../llm";
 
 export const TASK_COLUMNS =
   "id, board_id, title, body, assignee, status, priority, tenant, " +
@@ -80,6 +81,14 @@ export interface CompleteTaskInput {
   result?: string;
   summary?: string;
   metadata?: string;
+}
+
+export interface SpecifyTaskWithLlmOptions {
+  skipLlm?: boolean;
+}
+
+export interface DecompositionInput {
+  children: Exclude<LlmDecomposeResponse["children"], undefined>;
 }
 
 export interface ReassignOptions {
@@ -643,6 +652,152 @@ export function specifyTask(id: number): Task {
   }
   addEvent(updated.id, "specified");
   return updated;
+}
+
+export async function specifyTaskWithLlm(
+  id: number,
+  options: SpecifyTaskWithLlmOptions = {}
+): Promise<Task> {
+  const task = showTask(id);
+  if (!task) {
+    throw new Error(`Task ${id} not found`);
+  }
+  if (task.status !== "triage") {
+    throw new Error(`Task ${id} is not in triage status`);
+  }
+
+  if (options.skipLlm) {
+    return specifyTask(id);
+  }
+
+  if (!Bun.env.KDI_TRIAGE_LLM_API_KEY) {
+    throw new Error("Triage LLM API key is not configured (KDI_TRIAGE_LLM_API_KEY).");
+  }
+
+  let data: { body: string; title?: string; assignee?: string };
+  try {
+    const response = await callTriageLlm(buildSpecifyPrompt(task));
+    if (response.type !== "specify") {
+      throw new Error("unexpected LLM response type");
+    }
+    data = response.data;
+    if (typeof data.body !== "string" || data.body.trim() === "") {
+      throw new Error("missing body in response");
+    }
+  } catch (err: any) {
+    const reason = `LLM specify failed: ${err.message || String(err)}`;
+    blockTask(id, reason);
+    throw new Error(reason);
+  }
+
+  const db = getDb();
+  db.run(
+    `UPDATE tasks SET status = 'todo', body = ?, title = COALESCE(?, title), assignee = COALESCE(?, assignee), updated_at = unixepoch() WHERE id = ? AND status = 'triage' AND archived_at IS NULL`,
+    [data.body, data.title ?? null, data.assignee ?? null, id]
+  );
+
+  const updated = showTask(id);
+  if (!updated) {
+    throw new Error(`Task ${id} not found after specification`);
+  }
+  addEvent(updated.id, "specified", { llm: true });
+  return updated;
+}
+
+function validateDecomposition(
+  decomposition: DecompositionInput
+): string | null {
+  const children = decomposition.children;
+  if (!Array.isArray(children) || children.length < 2 || children.length > 10) {
+    return "children must contain 2-10 items";
+  }
+
+  for (let i = 0; i < children.length; i++) {
+    const child = children[i];
+    if (!child || typeof child !== "object") {
+      return `child ${i} is not an object`;
+    }
+    if (typeof child.title !== "string" || child.title.trim() === "") {
+      return `child ${i} missing non-empty title`;
+    }
+
+    const deps = child.dependencies;
+    if (deps !== undefined) {
+      if (!Array.isArray(deps)) {
+        return `child ${i} dependencies must be an array`;
+      }
+      for (const j of deps) {
+        if (!Number.isInteger(j) || j < 0 || j >= children.length) {
+          return `invalid dependency index ${j} in child ${i}`;
+        }
+        if (j === i) {
+          return `self-dependency at index ${i}`;
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+export function decomposeTask(id: number, decomposition: DecompositionInput): Task[] {
+  const db = getDb();
+
+  const parent = showTask(id);
+  if (!parent) {
+    throw new Error(`Task ${id} not found`);
+  }
+  if (parent.status !== "triage") {
+    throw new Error(`Task ${id} is not in triage status`);
+  }
+
+  const validationError = validateDecomposition(decomposition);
+  if (validationError) {
+    blockTask(id, `LLM decomposition failed: ${validationError}`);
+    throw new Error(validationError);
+  }
+
+  const children = decomposition.children;
+  let childIds: number[] = [];
+
+  try {
+    const decompose = db.transaction(() => {
+      const ids: number[] = [];
+      for (const child of children) {
+        const result = db.run(
+          `INSERT INTO tasks (board_id, title, body, assignee, status, tenant, created_by)
+           VALUES (?, ?, ?, ?, 'todo', ?, ?)`,
+          [
+            parent.board_id,
+            child.title,
+            child.body ?? null,
+            child.assignee ?? parent.assignee ?? null,
+            parent.tenant,
+            parent.created_by,
+          ]
+        );
+        ids.push(Number(result.lastInsertRowid));
+      }
+
+      for (let i = 0; i < children.length; i++) {
+        const deps = children[i].dependencies ?? [];
+        for (const j of deps) {
+          addDependency(ids[j], ids[i]);
+        }
+      }
+
+      archiveTask(id);
+      return ids;
+    });
+    childIds = decompose();
+  } catch (err: any) {
+    const reason = `LLM decomposition failed: ${err.message || String(err)}`;
+    blockTask(id, reason);
+    throw err;
+  }
+
+  addEvent(id, "decomposed", { child_ids: childIds, child_count: childIds.length });
+  return childIds.map((childId) => showTask(childId)!);
 }
 
 export function assignTask(id: number, profile: string): Task {

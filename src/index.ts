@@ -16,6 +16,7 @@ import {
   stepTaskCommand,
   archiveTaskCommand,
   specifyTaskCommand,
+  decomposeTaskCommand,
   listRunsCommand,
   tailTaskCommand,
   watchCommand,
@@ -82,6 +83,7 @@ program.addCommand(unblockTaskCommand);
 program.addCommand(reviewTaskCommand);
 program.addCommand(archiveTaskCommand);
 program.addCommand(specifyTaskCommand);
+program.addCommand(decomposeTaskCommand);
 program.addCommand(listRunsCommand);
 program.addCommand(tailTaskCommand);
 program.addCommand(watchCommand);
