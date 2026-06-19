@@ -14,6 +14,8 @@ import {
   archiveTask,
   archiveTaskHard,
   specifyTask,
+  specifyTaskWithLlm,
+  decomposeTask,
   completeTask,
   reviewTask,
   scheduleTask,
@@ -29,9 +31,10 @@ import { getRuns, getRunsFiltered } from "../models/taskRun";
 import { getEvents, tailEvents, getRecentEvents, getEventsAfter, type WatchFilters } from "../models/taskEvent";
 import { atomicClaim, reclaimTask, heartbeat } from "../models/claim";
 import { getTaskLogPath } from "../observability";
-import { isEnabled, FF_SCHEDULED_STATUS, FF_REVIEW_STATUS, FF_COMPLETE_METADATA, FF_PRIORITY_INTEGER, FF_SKILLS_ARRAY, FF_MAX_RUNTIME, FF_MAX_RETRIES, FF_TENANT_NAMESPACE, FF_CREATED_BY, FF_MODEL_OVERRIDE, FF_DEFAULT_WORKDIR, FF_WORKER_LOG_CAPTURE, FF_ASSIGN_REASSIGN, FF_CRASH_GRACE_PERIOD, FF_HEARTBEAT, FF_RATE_LIMIT_EXIT_CODE, FF_TASK_ATTACHMENTS, FF_LIST_FILTERS_SORT, FF_SHOW_RUN_FILTERING, FF_BULK_OPERATIONS, FF_COMMENT_ENHANCEMENTS, FF_WATCH_FILTERS, FF_WORKFLOW_TEMPLATES } from "../flags";
+import { isEnabled, FF_SCHEDULED_STATUS, FF_REVIEW_STATUS, FF_COMPLETE_METADATA, FF_PRIORITY_INTEGER, FF_SKILLS_ARRAY, FF_MAX_RUNTIME, FF_MAX_RETRIES, FF_TENANT_NAMESPACE, FF_CREATED_BY, FF_MODEL_OVERRIDE, FF_DEFAULT_WORKDIR, FF_WORKER_LOG_CAPTURE, FF_ASSIGN_REASSIGN, FF_CRASH_GRACE_PERIOD, FF_HEARTBEAT, FF_RATE_LIMIT_EXIT_CODE, FF_TASK_ATTACHMENTS, FF_LIST_FILTERS_SORT, FF_SHOW_RUN_FILTERING, FF_BULK_OPERATIONS, FF_COMMENT_ENHANCEMENTS, FF_WATCH_FILTERS, FF_WORKFLOW_TEMPLATES, FF_TRIAGE_AUTOMATION } from "../flags";
 import { getWorkflowTemplate, validateStepKey, advanceTaskStep, setTaskStep } from "../models/workflowTemplate";
 import { resolveBoard } from "../resolveBoard";
+import { buildSpecifyPrompt, buildDecomposePrompt, callTriageLlm } from "../llm";
 
 const VALID_STATUSES = ["triage", "todo", "scheduled", "ready", "running", "done", "blocked", "review"] as const;
 type ValidStatus = typeof VALID_STATUSES[number];
@@ -946,28 +949,46 @@ export const specifyTaskCommand = new Command("specify")
   .argument("[task_id]", "Task ID")
   .option("--all", "Promote all triage tasks for the current board")
   .option("--board <slug>", "Board slug (resolved via chain: --board, KDI_BOARD, current, default)")
-  .action((taskId: string | undefined, options: { all?: boolean; board?: string }) => {
+  .option("--tenant <name>", "Tenant namespace filter (requires FF_TRIAGE_AUTOMATION)")
+  .option("--skip-llm", "Use manual promotion path")
+  .action(async (taskId: string | undefined, options: { all?: boolean; board?: string; tenant?: string; skipLlm?: boolean }) => {
     try {
       const boardSlug = resolveBoard(options.board);
       const boardId = getBoardIdBySlug(boardSlug);
+      const useLlm = isEnabled(FF_TRIAGE_AUTOMATION) && !options.skipLlm;
+
+      if (options.tenant !== undefined && !isEnabled(FF_TRIAGE_AUTOMATION)) {
+        throw new Error("Triage automation feature is not enabled.");
+      }
+      if (options.tenant !== undefined && options.tenant.trim() === "") {
+        throw new Error("Tenant cannot be empty.");
+      }
 
       if (options.all) {
-        const tasks = listTasks({ board_id: boardId, status: "triage" });
+        const tasks = listTasks({ board_id: boardId, status: "triage", tenant: options.tenant });
         if (tasks.length === 0) {
           console.log("No triage tasks to specify.");
           return;
         }
         let specified = 0;
+        let skipped = 0;
         for (const task of tasks) {
           try {
-            specifyTask(task.id);
-            console.log(`Specified task ${task.id}: ${task.title}`);
+            if (useLlm) {
+              const updated = await specifyTaskWithLlm(task.id);
+              console.log(`Specified task ${updated.id}: ${updated.title}`);
+            } else {
+              const updated = specifyTask(task.id);
+              console.log(`Specified task ${updated.id}: ${updated.title}`);
+            }
             specified++;
           } catch (err: any) {
             console.error(`Skipped task ${task.id}: ${err.message}`);
+            skipped++;
           }
         }
         console.log(`Specified ${specified}/${tasks.length} tasks.`);
+        if (skipped > 0) process.exit(1);
         return;
       }
 
@@ -976,8 +997,77 @@ export const specifyTaskCommand = new Command("specify")
       }
 
       const id = parseTaskId(taskId);
-      const task = specifyTask(id);
-      console.log(`Specified task ${task.id}: ${task.title}`);
+      if (useLlm) {
+        const task = await specifyTaskWithLlm(id);
+        console.log(`Specified task ${task.id}: ${task.title}`);
+      } else {
+        const task = specifyTask(id);
+        console.log(`Specified task ${task.id}: ${task.title}`);
+      }
+    } catch (err: any) {
+      console.error(`Error: ${err.message}`);
+      process.exit(1);
+    }
+  });
+
+export const decomposeTaskCommand = new Command("decompose")
+  .description("Decompose a triage task into child tasks via LLM")
+  .argument("[task_id]", "Task ID")
+  .option("--all", "Decompose all triage tasks for the current board")
+  .option("--board <slug>", "Board slug (resolved via chain: --board, KDI_BOARD, current, default)")
+  .option("--tenant <name>", "Tenant namespace filter")
+  .action(async (taskId: string | undefined, options: { all?: boolean; board?: string; tenant?: string }) => {
+    try {
+      if (!isEnabled(FF_TRIAGE_AUTOMATION)) {
+        throw new Error("Triage automation feature is not enabled.");
+      }
+      if (options.tenant !== undefined && options.tenant.trim() === "") {
+        throw new Error("Tenant cannot be empty.");
+      }
+
+      const boardSlug = resolveBoard(options.board);
+      const boardId = getBoardIdBySlug(boardSlug);
+
+      if (options.all) {
+        const tasks = listTasks({ board_id: boardId, status: "triage", tenant: options.tenant });
+        if (tasks.length === 0) {
+          console.log("No triage tasks to decompose.");
+          return;
+        }
+        let decomposed = 0;
+        let skipped = 0;
+        for (const task of tasks) {
+          try {
+            const data = await callTriageLlm(buildDecomposePrompt(task));
+            const children = decomposeTask(task.id, data);
+            console.log(`Decomposed task ${task.id}: created ${children.length} children`);
+            decomposed++;
+          } catch (err: any) {
+            console.error(`Skipped task ${task.id}: ${err.message}`);
+            skipped++;
+          }
+        }
+        console.log(`Decomposed ${decomposed}/${tasks.length} tasks.`);
+        if (skipped > 0) process.exit(1);
+        return;
+      }
+
+      if (!taskId) {
+        throw new Error("Task ID is required (or use --all).");
+      }
+
+      const id = parseTaskId(taskId);
+      const task = showTask(id);
+      if (!task) {
+        throw new Error(`Task ${id} not found.`);
+      }
+      if (task.status !== "triage") {
+        throw new Error(`Task ${id} is not in triage status.`);
+      }
+
+      const data = await callTriageLlm(buildDecomposePrompt(task));
+      const children = decomposeTask(id, data);
+      console.log(`Decomposed task ${id}: created ${children.length} children`);
     } catch (err: any) {
       console.error(`Error: ${err.message}`);
       process.exit(1);
