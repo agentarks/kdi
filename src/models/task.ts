@@ -9,7 +9,7 @@ export const TASK_COLUMNS =
   "workspace_kind, workspace, branch, result, summary, block_reason, schedule_reason, review_reason, " +
   "created_by, created_at, updated_at, started_at, archived_at, current_run_id, " +
   "claim_lock, claim_expires, last_heartbeat_at, max_runtime_seconds, max_retries, consecutive_failures, idempotency_key, model_override, rate_limited_until, scheduled_at, skills, " +
-  "session_id, workflow_template_id, current_step_key";
+  "session_id, workflow_template_id, current_step_key, swarm_parent_id";
 
 export interface Task {
   id: number;
@@ -48,6 +48,7 @@ export interface Task {
   session_id: string | null;
   workflow_template_id: string | null;
   current_step_key: string | null;
+  swarm_parent_id: number | null;
 }
 
 export type InitialTaskStatus = Exclude<Task["status"], "archived">;
@@ -74,6 +75,7 @@ export interface CreateTaskInput {
   session_id?: string;
   workflow_template_id?: string;
   current_step_key?: string;
+  swarm_parent_id?: number;
 }
 
 export interface CompleteTaskInput {
@@ -195,8 +197,8 @@ export function createTask(input: CreateTaskInput): Task {
 
   const insert = db.transaction(() => {
     const result = db.run(
-      `INSERT INTO tasks (board_id, title, body, assignee, status, priority, tenant, workspace_kind, workspace, branch, idempotency_key, scheduled_at, created_by, max_runtime_seconds, max_retries, skills, model_override, session_id, workflow_template_id, current_step_key)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO tasks (board_id, title, body, assignee, status, priority, tenant, workspace_kind, workspace, branch, idempotency_key, scheduled_at, created_by, max_runtime_seconds, max_retries, skills, model_override, session_id, workflow_template_id, current_step_key, swarm_parent_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         input.board_id,
         input.title,
@@ -218,6 +220,7 @@ export function createTask(input: CreateTaskInput): Task {
         input.session_id ?? null,
         input.workflow_template_id ?? null,
         input.current_step_key ?? null,
+        input.swarm_parent_id ?? null,
       ]
     );
     return Number(result.lastInsertRowid);
@@ -276,6 +279,7 @@ export function createTask(input: CreateTaskInput): Task {
     session_id: input.session_id ?? null,
     workflow_template_id: input.workflow_template_id ?? null,
     current_step_key: input.current_step_key ?? null,
+    swarm_parent_id: input.swarm_parent_id ?? null,
   };
   addEvent(task.id, "created");
   return task;
@@ -408,6 +412,7 @@ export function hydrateTask(raw: unknown): Task {
   task.consecutive_failures = Number(task.consecutive_failures ?? 0);
   task.max_retries = task.max_retries === null || task.max_retries === undefined ? null : Number(task.max_retries);
   task.rate_limited_until = task.rate_limited_until === null || task.rate_limited_until === undefined ? null : Number(task.rate_limited_until);
+  task.swarm_parent_id = task.swarm_parent_id === null || task.swarm_parent_id === undefined ? null : Number(task.swarm_parent_id);
   return task;
 }
 

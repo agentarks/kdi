@@ -65,7 +65,8 @@ CREATE TABLE IF NOT EXISTS tasks (
   rate_limited_until INTEGER,
   session_id TEXT,
   workflow_template_id TEXT,
-  current_step_key TEXT
+  current_step_key TEXT,
+  swarm_parent_id INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS comments (
@@ -477,14 +478,15 @@ export function initDb(path?: string): Database {
             rate_limited_until INTEGER,
             session_id TEXT,
             workflow_template_id TEXT,
-            current_step_key TEXT
+            current_step_key TEXT,
+            swarm_parent_id INTEGER
           );
           INSERT INTO tasks_new
-            (id, board_id, title, body, assignee, status, priority, tenant, workspace_kind, workspace, branch, result, summary, block_reason, schedule_reason, review_reason, scheduled_at, created_by, skills, created_at, updated_at, started_at, archived_at, current_run_id, claim_lock, claim_expires, last_heartbeat_at, max_runtime_seconds, max_retries, consecutive_failures, idempotency_key, model_override, rate_limited_until, session_id, workflow_template_id, current_step_key)
+            (id, board_id, title, body, assignee, status, priority, tenant, workspace_kind, workspace, branch, result, summary, block_reason, schedule_reason, review_reason, scheduled_at, created_by, skills, created_at, updated_at, started_at, archived_at, current_run_id, claim_lock, claim_expires, last_heartbeat_at, max_runtime_seconds, max_retries, consecutive_failures, idempotency_key, model_override, rate_limited_until, session_id, workflow_template_id, current_step_key, swarm_parent_id)
           SELECT
             id, board_id, title, body, assignee, status,
             CASE priority WHEN 'low' THEN 1 WHEN 'medium' THEN 2 WHEN 'high' THEN 3 ELSE COALESCE(priority, 0) END,
-            tenant, workspace_kind, workspace, branch, result, summary, block_reason, schedule_reason, review_reason, scheduled_at, COALESCE(created_by, 'unknown'), skills, created_at, updated_at, started_at, archived_at, current_run_id, claim_lock, claim_expires, last_heartbeat_at, max_runtime_seconds, max_retries, COALESCE(consecutive_failures, 0), idempotency_key, model_override, rate_limited_until, NULL, NULL, NULL
+            tenant, workspace_kind, workspace, branch, result, summary, block_reason, schedule_reason, review_reason, scheduled_at, COALESCE(created_by, 'unknown'), skills, created_at, updated_at, started_at, archived_at, current_run_id, claim_lock, claim_expires, last_heartbeat_at, max_runtime_seconds, max_retries, COALESCE(consecutive_failures, 0), idempotency_key, model_override, rate_limited_until, NULL, NULL, NULL, NULL AS swarm_parent_id
           FROM tasks;
           DROP TABLE tasks;
           ALTER TABLE tasks_new RENAME TO tasks;
@@ -556,6 +558,14 @@ export function initDb(path?: string): Database {
       `);
       dbInstance.exec("CREATE INDEX idx_workflow_templates_board ON workflow_templates(board_id)");
     }
+
+    // Migrate: add swarm_parent_id column if missing
+    const currentTableInfo = dbInstance.query("PRAGMA table_info(tasks)").all() as any[];
+    const hasSwarmParentId = currentTableInfo.some((col) => col.name === "swarm_parent_id");
+    if (!hasSwarmParentId) {
+      dbInstance.exec("ALTER TABLE tasks ADD COLUMN swarm_parent_id INTEGER");
+    }
+    dbInstance.exec("CREATE INDEX IF NOT EXISTS idx_tasks_swarm_parent ON tasks(board_id, swarm_parent_id)");
 
   } catch (err) {
     closeDb();
