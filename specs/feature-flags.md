@@ -65,6 +65,7 @@ stateDiagram-v2
 | `ff_comment_enhancements` | `FF_COMMENT_ENHANCEMENTS` | CLI / task metadata | InDev | `false` | KDI-033 | `kdi comment --author`/`--max-len` and author display in `kdi show`.
 | `ff_dispatch_controls` | `FF_DISPATCH_CONTROLS` | CLI / dispatcher | InDev | `false` | KDI-034 | `kdi dispatch --failure-limit` per-pass failure threshold.
 | `ff_dispatch_once` | `FF_DISPATCH_ONCE` | CLI / dispatcher | InDev | `false` | KDI-034x | `kdi dispatch --once` runs a single tick and exits (hermes `dispatch` parity). Default `dispatch` is still a long-running daemon. |
+| `ff_link_unlink` | `FF_LINK_UNLINK` | CLI / task lifecycle | InDev | `false` | KDI-026 | `kdi link` / `kdi unlink` parent<->child dependency CLI; cycles and self-loops rejected. |
 | `ff_watch_filters` | `FF_WATCH_FILTERS` | CLI / observability | InDev | `false` | KDI-035 | `kdi watch --assignee`/`--tenant`/`--kinds`/`--interval` filters.
 | `ff_workflow_templates` | `FF_WORKFLOW_TEMPLATES` | CLI / task lifecycle | InDev | `false` | KDI-039 | Step-key driven workflow templates; `kdi create --workflow-template-id`, `kdi step`, `kdi workflows`.
 | `ff_triage_automation` | `FF_TRIAGE_AUTOMATION` | CLI / task lifecycle | InDev | `false` | KDI-040 | LLM-powered triage automation; `kdi specify` (LLM path) and `kdi decompose`. |

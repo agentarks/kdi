@@ -41,6 +41,7 @@ export const FF_SWARM_MODE = "FF_SWARM_MODE";
 export const FF_DISPATCHER_PRESENCE_WARNING = "FF_DISPATCHER_PRESENCE_WARNING";
 export const FF_GOAL_MODE = "FF_GOAL_MODE";
 export const FF_DISPATCH_ONCE = "FF_DISPATCH_ONCE";
+export const FF_LINK_UNLINK = "FF_LINK_UNLINK";
 
 const flagRegistry = new Map<string, boolean>();
 const flagOverrides = new Map<string, boolean>();
@@ -125,3 +126,4 @@ registerFlag(FF_SWARM_MODE, false);
 registerFlag(FF_DISPATCHER_PRESENCE_WARNING, false);
 registerFlag(FF_GOAL_MODE, false);
 registerFlag(FF_DISPATCH_ONCE, false);
+registerFlag(FF_LINK_UNLINK, false);
