@@ -176,11 +176,13 @@ function finishTask(task: Task, result: string, runId: number | null): void {
 function completeSwarmOrchestrator(orchestratorId: number, synthesizerId: number, result: string): void {
   const db = getDb();
   const summary = result.slice(0, 200);
-  db.run(
+  const updateResult = db.run(
     `UPDATE tasks SET status = 'done', result = ?, summary = ?, updated_at = unixepoch() WHERE id = ? AND status = 'triage' AND archived_at IS NULL`,
     [result, summary, orchestratorId]
   );
-  addEvent(orchestratorId, "swarm_completed", { synthesizer_id: synthesizerId, result, summary });
+  if (updateResult.changes > 0) {
+    addEvent(orchestratorId, "swarm_completed", { synthesizer_id: synthesizerId, result, summary });
+  }
 }
 
 function checkSwarmFailures(): number {
@@ -199,12 +201,14 @@ function checkSwarmFailures(): number {
 
     if (!child) continue;
     const reason = `Swarm child #${child.id} (${child.title}) is ${child.status}`;
-    db.run(
+    const updateResult = db.run(
       `UPDATE tasks SET status = 'blocked', block_reason = ?, updated_at = unixepoch() WHERE id = ? AND status = 'triage' AND archived_at IS NULL`,
       [reason, orchestrator.id]
     );
-    addEvent(orchestrator.id, "swarm_failed", { child_id: child.id, child_title: child.title, child_status: child.status, reason });
-    blocked++;
+    if (updateResult.changes > 0) {
+      addEvent(orchestrator.id, "swarm_failed", { child_id: child.id, child_title: child.title, child_status: child.status, reason });
+      blocked++;
+    }
   }
   return blocked;
 }
