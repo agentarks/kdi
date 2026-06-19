@@ -15,22 +15,22 @@
 - [ ] Unit and CLI tests covering flag gating, LLM success/failure paths, `--all`, `--tenant`, decomposition validation, and `--skip-llm`
 - [ ] `bun run lint`, `bun run test`, `bun run build` pass
 
-## Swarm Mode (KDI-041) — In Progress
+## Swarm Mode (KDI-041) — Done
 - [x] BRD revised at `specs/brd-kdi-041-swarm-mode.md` to match multi-agent task graph semantics
 - [x] Feature flag `ff_swarm_mode` / `FF_SWARM_MODE` registered in `specs/feature-flags.md`, defaults to `false`
-- [ ] Feature flag constant `FF_SWARM_MODE` registered in `src/flags.ts`
-- [ ] Schema migration for `tasks.swarm_parent_id INTEGER` column and `idx_tasks_swarm_parent` index
-- [ ] `createSwarmGraph()` model helper in `src/models/swarm.ts`
-- [ ] `kdi swarm` command in `src/commands/swarm.ts` wired into `src/index.ts`
-- [ ] CLI parsing for repeatable `--worker <profile>:<title>` plus `--verifier` and `--synthesizer`
-- [ ] Input validation: at least one worker, required verifier/synthesizer, worker format, duplicate titles
-- [ ] `--dry-run` prints planned graph without mutating state
-- [ ] Dispatcher honors dependency ordering for verifier and synthesizer
-- [ ] Dispatcher swarm watcher: auto-complete orchestrator on synthesizer success, block on child failure
-- [ ] Result propagation via KDI-023 context builder (parent results)
-- [ ] Events: `swarm_created`, `swarm_worker_created`, `swarm_verifier_created`, `swarm_synthesizer_created`, `swarm_completed`, `swarm_failed`
-- [ ] Unit and CLI tests covering happy path, dry-run, validation errors, dependency ordering, result propagation, and failure handling
-- [ ] `bun run lint`, `bun run test`, `bun run build` pass
+- [x] Feature flag constant `FF_SWARM_MODE` registered in `src/flags.ts`
+- [x] Schema migration for `tasks.swarm_parent_id INTEGER` column and `idx_tasks_swarm_parent` index
+- [x] `createSwarmGraph()` model helper in `src/models/swarm.ts`
+- [x] `kdi swarm` command in `src/commands/swarm.ts` wired into `src/index.ts`
+- [x] CLI parsing for repeatable `--worker <profile>:<title>` plus `--verifier` and `--synthesizer`
+- [x] Input validation: at least one worker, required verifier/synthesizer, worker format, duplicate titles
+- [x] `--dry-run` prints planned graph without mutating state
+- [x] Dispatcher honors dependency ordering for verifier and synthesizer
+- [x] Dispatcher swarm watcher: auto-complete orchestrator on synthesizer success, block on child failure
+- [x] Result propagation via KDI-023 context builder (parent results)
+- [x] Events: `swarm_created`, `swarm_worker_created`, `swarm_verifier_created`, `swarm_synthesizer_created`, `swarm_completed`, `swarm_failed`
+- [x] Unit and CLI tests covering happy path, dry-run, validation errors, dependency ordering, result propagation, and failure handling
+- [x] `bun run lint`, `bun run test`, `bun run build` pass
 
 ## Board Slug Path Traversal Hardening — Done
 - [x] Shared board slug validation requires `^[a-zA-Z0-9_-]+$`
@@ -567,7 +567,7 @@
 - [ ] **KDI-005: `ff_complete_metadata` gating is coarse** — The entire `--metadata` path is gated; the flag doesn't apply to the base `--result`/`--summary` paths. Consider finer-grained flags if metadata needs independent rollout.
 - [ ] **Branch naming convention not enforced** — `AGENTS.md` requires `feat/<brd-id>-<feature-slug>` but the current branch `fix/review-gaps` was not renamed. Either update `AGENTS.md` with an exemption or enforce via CI.
 - [ ] **`spawnHarness` uses `shell: true`** — Changed from manual shell parser to `spawn(command, { shell: true })`. This changes quoting/escaping semantics for profile commands. Verify no existing profiles depend on the old literal-argument behavior. Document in PR description.
-- [ ] **`bun run test` exits 1 despite all tests passing** — `tests/commands/tasks.test.ts` (KDI-030 list filters) appears to leak an async `process.stderr.write` after a test completes, causing the test runner to exit with code 1 even though no test reports `(fail)`. The file passes in isolation. Not introduced by KDI-039 or KDI-041.
+- [x] **`bun run test` exits 1 despite all tests passing** — Fixed by switching `createTaskCommand` and `listTasksCommand` error handling to `this.error()` (Commander's internal exit path) and updating KDI-030/KDI-039 tests to use `exitOverride()` instead of mocking `process.exit`. Added `resetCommandOptions()` helper to clear stale Commander singleton option state between tests.
 - [ ] **Worker log capture test flaky in full-suite runs** — `worker log capture > spawnHarness writes combined stdout/stderr to log file` (and the matching e2e dispatcher log test) occasionally fail when the full suite runs but pass in isolation. Likely an ordering/timing interaction between tests sharing `HOME`/`KDI_DB` defaults. Documented by reviewer for KDI-022; investigate and fix if it persists on `main`.
 - [ ] **SQLite monolithic migration** — The single `CREATE TABLE tasks_new ... DROP TABLE ... RENAME TO` migration handles schema changes for KDI-001 (triage), KDI-002 (scheduled), KDI-003 (review), and KDI-004 (integer priority) in one pass. This is technically required by SQLite (can't `ALTER TABLE` CHECK constraints or change column types), but it mixes feature boundaries. If versioned migration files are ever introduced, this should be split into per-feature steps with intermediate schema versions.
 - [ ] **`tests/init.test.ts` fails when `KDI_DB` is set** — `defaultDbPath()` honors the `KDI_DB`/`KDI_DB_PATH` environment variables, but `tests/init.test.ts` asserts that `defaultDbPath()` ends with `.db`. When the parent environment sets `KDI_DB` to a path without that suffix (e.g. `.../kdi.sqlite`), the assertion fails. The implementation is correct; the test is environment-sensitive. Run the suite with `env -u KDI_DB bun test` for a clean baseline.

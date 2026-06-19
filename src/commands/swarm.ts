@@ -13,15 +13,12 @@ function isValidKind(value: string): value is Kind {
 }
 
 function parseWorker(value: string, previous: SwarmWorkerInput[] = []): SwarmWorkerInput[] {
+  // ponytail: split only — format validation lives in validateSwarmInput so
+  // parse-time throws do not escape the action try/catch and leak a stack
+  // trace to the user.
   const idx = value.indexOf(":");
-  if (idx <= 0 || idx === value.length - 1) {
-    throw new Error(`Invalid worker "${value}". Use --worker <profile>:<title>.`);
-  }
-  const profile = value.slice(0, idx).trim();
-  const title = value.slice(idx + 1).trim();
-  if (!profile || !title) {
-    throw new Error(`Invalid worker "${value}". Profile and title must be non-empty.`);
-  }
+  const profile = (idx >= 0 ? value.slice(0, idx) : value).trim();
+  const title = (idx >= 0 ? value.slice(idx + 1) : "").trim();
   return previous.concat({ profile, title });
 }
 
@@ -45,7 +42,7 @@ export const swarmCommand = new Command("swarm")
   .option("--priority <n>", "Shared priority", parsePriority)
   .option("--kind <kind>", "Workspace kind (dir, worktree, scratch)")
   .option("--dry-run", "Print the planned graph without creating tasks")
-  .action((options: {
+  .action(function (this: Command, options: {
     worker: SwarmWorkerInput[];
     verifier?: string;
     synthesizer?: string;
@@ -56,23 +53,20 @@ export const swarmCommand = new Command("swarm")
     priority?: number;
     kind?: string;
     dryRun?: boolean;
-  }) => {
+  }) {
     try {
       if (!isEnabled(FF_SWARM_MODE)) {
-        console.error("Swarm mode is not enabled.");
-        process.exit(1);
+        this.error("Swarm mode is not enabled.");
       }
 
       if (options.kind !== undefined && !isValidKind(options.kind)) {
-        console.error(`Invalid --kind "${options.kind}". Valid: ${VALID_KINDS.join(", ")}.`);
-        process.exit(1);
+        this.error(`Invalid --kind "${options.kind}". Valid: ${VALID_KINDS.join(", ")}.`);
       }
 
       const boardSlug = resolveBoard(options.board);
       const board = showBoard(boardSlug, false);
       if (!board) {
-        console.error(`Board "${boardSlug}" not found or is archived.`);
-        process.exit(1);
+        this.error(`Board "${boardSlug}" not found or is archived.`);
       }
 
       const input = {
@@ -109,7 +103,6 @@ export const swarmCommand = new Command("swarm")
       console.log(`  verifier: ${graph.verifier_id}`);
       console.log(`  synthesizer: ${graph.synthesizer_id}`);
     } catch (err: any) {
-      console.error(err.message || String(err));
-      process.exit(1);
+      this.error(err.message || String(err));
     }
   });
