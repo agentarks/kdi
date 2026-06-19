@@ -58,13 +58,13 @@ stateDiagram-v2
 | `ff_notify_subs` | `FF_NOTIFY_SUBS` | CLI / notifier watcher | InDev | `false` | KDI-025 | Notification subscriptions; `notify-subscribe/list/unsubscribe` commands; notifier watcher in dispatcher tick.
 | `ff_list_filters_sort` | `FF_LIST_FILTERS_SORT` | CLI / task listing | InDev | `false` | KDI-030 | `kdi list` filters (`--mine`, `--session`, `--archived`, workflow/step-key) and sort options; `create --session`.
 | `ff_show_run_filtering` | `FF_SHOW_RUN_FILTERING` | CLI / task inspection | InDev | `false` | KDI-031 | `kdi show` run section and `--state-type`/`--state-name` run filtering.
-| `ff_bulk_operations` | `FF_BULK_OPERATIONS` | CLI / task lifecycle | Planned | `false` | KDI-032 | Bulk `block`/`promote`/`archive --rm`; `promote --force` and `--dry-run`.
+| `ff_bulk_operations` | `FF_BULK_OPERATIONS` | CLI / task lifecycle | InDev | `false` | KDI-032 | Bulk `block`/`promote`/`archive --rm`; `promote --force` and `--dry-run`.
 | `ff_comment_enhancements` | `FF_COMMENT_ENHANCEMENTS` | CLI / task metadata | InDev | `false` | KDI-033 | `kdi comment --author`/`--max-len` and author display in `kdi show`.
 | `ff_dispatch_controls` | `FF_DISPATCH_CONTROLS` | CLI / dispatcher | InDev | `false` | KDI-034 | `kdi dispatch --failure-limit` per-pass failure threshold.
 | `ff_watch_filters` | `FF_WATCH_FILTERS` | CLI / observability | InDev | `false` | KDI-035 | `kdi watch --assignee`/`--tenant`/`--kinds`/`--interval` filters.
 | `ff_workflow_templates` | `FF_WORKFLOW_TEMPLATES` | CLI / task lifecycle | InDev | `false` | KDI-039 | Step-key driven workflow templates; `kdi create --workflow-template-id`, `kdi step`, `kdi workflows`.
 | `ff_triage_automation` | `FF_TRIAGE_AUTOMATION` | CLI / task lifecycle | InDev | `false` | KDI-040 | LLM-powered triage automation; `kdi specify` (LLM path) and `kdi decompose`. |
-| `ff_swarm_mode` | `FF_SWARM_MODE` | CLI / dispatcher | Planned | `false` | KDI-041 | Multi-agent task graph: `kdi swarm` creates parallel workers, a verifier, and a synthesizer bound by dependencies.
+| `ff_swarm_mode` | `FF_SWARM_MODE` | CLI / dispatcher | InDev | `false` | KDI-041 | Multi-agent task graph: `kdi swarm` creates parallel workers, a verifier, and a synthesizer bound by dependencies.
 
 ## Lifecycle Notes
 
@@ -468,12 +468,12 @@ stateDiagram-v2
 - **Rollback / deactivation:** Set `FF_SHOW_RUN_FILTERING=false` to hide the run section and reject the filter options.
 - **Deprecation plan:** N/A
 
-### `ff_bulk_operations` — Planned
+### `ff_bulk_operations` — InDev
 
 - **Owner:** kdi core team
 - **BRD:** [BRD-KDI-032](brd-kdi-032-bulk-operations.md)
 - **Status transitions:**
-  - `Planned` → `InDev` when bulk `block`/`promote`/`archive --rm`, `promote --force`, and `promote --dry-run` are implemented.
+  - `InDev` → `Active` when bulk operations are safe to enable by default.
 - **Schema note:** No schema changes; reuses existing `tasks`, `task_events`, `task_runs`, `comments`, `dependencies`, and `task_attachments` tables.
 - **Activation criteria:**
   - `kdi block <id>... --reason <text>` blocks multiple tasks.
@@ -559,12 +559,12 @@ stateDiagram-v2
   - `--skip-llm` and the manual `kdi specify` path remain available when the flag is disabled.
 - **Rollback / deactivation:** Set `FF_TRIAGE_AUTOMATION=false` to reject `kdi decompose` and the LLM path of `kdi specify`.
 - **Deprecation plan:** N/A
-### `ff_swarm_mode` — Planned
+### `ff_swarm_mode` — InDev
 
 - **Owner:** kdi core team
 - **BRD:** [BRD-KDI-041](brd-kdi-041-swarm-mode.md)
 - **Status transitions:**
-  - `Planned` → `InDev` when `kdi swarm`, `createSwarmGraph()`, dispatcher dependency ordering, and swarm completion/failure watcher are implemented.
+  - `InDev` → `Active` when swarm mode is safe to enable by default.
 - **Schema note:** Reuses the existing `dependencies` table for execution ordering. Adds a nullable `swarm_parent_id INTEGER` column on `tasks` to group swarm members under the orchestrator task; migration always runs but the column is ignored when the flag is off.
 - **Activation criteria:**
   - `kdi swarm --worker <profile>:<title> [--worker ...] --verifier <profile> --synthesizer <profile>` creates an orchestrator task plus parallel worker tasks, a verifier, and a synthesizer.

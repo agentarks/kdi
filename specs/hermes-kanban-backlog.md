@@ -196,7 +196,7 @@
 | `skills` array | **Done** | No force-loaded skills |
 | `model_override` | **Done** | No per-task model override |
 | `max_retries` / circuit breaker | **Done** | `kdi create --max-retries`; dispatcher blocks after retry limit |
-| `goal_mode` / `goal_max_turns` | **Done** | No goal loop |
+| `goal_mode` / `goal_max_turns` | **Planned** | No goal loop |
 | `session_id` | **Done** | No session tracking |
 | `workflow_template_id` | **Done** | No workflow routing |
 | `task_runs` table | **Done** | `kdi runs <task_id>` |
@@ -246,7 +246,7 @@
 | `watch --assignee` / `--tenant` / `--kinds` | **Done** | No event stream filters |
 | `heartbeat --note` | **Done** | No heartbeat note |
 | `log --tail` | **Done** | No byte-limit on log read |
-| `runs --state-type` / `--state-name` | **Done** | No run filtering |
+| `runs --state-type` / `--state-name` | **Planned** | No run filtering on `kdi runs` (KDI-031 added it to `kdi show`) |
 | `notify-subscribe --notifier-profile` | **Done** | No notifier profile |
 | `notify-list` without task_id | **Done** | No global subscription list |
 | `notify-unsubscribe --thread-id` | **Done** | No thread-scoped unsub |
@@ -254,7 +254,7 @@
 | `reclaim --reason` / `reassign --reason` | **Done** | No reason on recovery ops |
 | Rate-limit exit code (EX_TEMPFAIL=75) | **Done** | No rate-limit requeue path |
 | Crash grace (30s) | **Done** | No PID liveness grace |
-| Dispatcher presence warning | **Done** | No warning when dispatcher absent |
+| Dispatcher presence warning | **Planned** | No warning when dispatcher absent |
 | `task_runs.status` column | **Done** | Only `outcome` considered |
 | Diagnostic rule engine (8 rules) | **Done** | 8 automated health rules implemented |
 | `build_worker_context` caps/attachments | **Done** | No bounded context builder |
@@ -460,7 +460,7 @@
   - `kdi notify-list [<task_id>]` — global or per-task listing
   - `kdi notify-unsubscribe <task_id> --platform ... --chat-id ... --thread-id ...`
 
-### Phase 7 — CLI Polish & Filtering ✅ Done
+### Phase 7 — CLI Polish & Filtering (KDI-030..035 done; KDI-036, KDI-037 pending)
 - [x] **KDI-030: `kdi list` filters and sort**
   - `--mine` — filter by current profile assignee
   - `--session <session_id>` — filter by originating session
@@ -493,15 +493,16 @@
   - `--kinds <kind1>,<kind2>` — comma-separated event kind filter
   - `--interval <seconds>` — poll interval (default 0.5)
 
-- [x] **KDI-036: `kdi runs` filtering**
+- [ ] **KDI-036: `kdi runs` filtering**
   - `--state-type {status,outcome} --state-name VALUE` — filter runs by column
+  - Note: KDI-031 added the same flags to `kdi show`, not `kdi runs`. KDI-036 still pending.
 
-- [x] **KDI-037: Dispatcher presence warning**
+- [ ] **KDI-037: Dispatcher presence warning**
   - `kdi create` warns if no dispatcher/gateway detected for the board
   - Defensive probe of dispatcher PID / config flag
 
 ### Phase 8 — v2 / Future
-- [x] **KDI-038: Goal mode**
+- [ ] **KDI-038: Goal mode**
   - `kdi create --goal --goal-max-turns 20`
   - Ralph-style goal loop (requires judge integration)
 
@@ -589,7 +590,7 @@
 | `watch --assignee/--tenant/--kinds` | `kdi watch --assignee/--tenant/--kinds` | **Done** | KDI-035 |
 | `heartbeat --note` | `kdi heartbeat --note` | **Done** | KDI-000c |
 | `log --tail` | `kdi log --tail` | **Done** | KDI-018 |
-| `runs --state-type/--state-name` | `kdi runs --state-type/--state-name` | **Done** | KDI-036 |
+| `runs --state-type/--state-name` | `kdi runs --state-type/--state-name` | **Planned** | KDI-036 |
 | `notify-subscribe --notifier-profile` | `kdi notify-subscribe --notifier-profile` | **Done** | KDI-025 |
 | `notify-list` without task_id | `kdi notify-list` without task_id | **Done** | KDI-025 |
 | `notify-unsubscribe --thread-id` | `kdi notify-unsubscribe --thread-id` | **Done** | KDI-025 |
@@ -598,7 +599,7 @@
 | `reassign --reason` | `kdi reassign --reason` | **Done** | KDI-017 |
 | Rate-limit EX_TEMPFAIL=75 | **Done** | **Done** | KDI-016c |
 | Crash grace 30s | **Done** | **Done** | KDI-016b |
-| Dispatcher presence warning | **Done** | **Done** | KDI-037 |
+| Dispatcher presence warning | **Planned** | **Planned** | KDI-037 |
 | `task_runs.status` column | Exists | Exists | KDI-000e |
 | Diagnostic rule engine | **Done** | **Done** | KDI-020 |
 | `hermes kanban swarm` | `kdi swarm` | **Done** | KDI-041 |
@@ -674,11 +675,11 @@
 42. **KDI-033**: `comment` enhancements (`--author`, `--max-len`)
 43. **KDI-034**: `dispatch` controls (`--max`, `--failure-limit`)
 44. **KDI-035**: `watch` filters (`--assignee`, `--tenant`, `--kinds`)
-45. ✅ **KDI-036**: `runs` filtering
-46. ✅ **KDI-037**: Dispatcher presence warning
+45. **KDI-036**: `runs` filtering
+46. **KDI-037**: Dispatcher presence warning
 
 ### P7 — v2 / Future
-47. ✅ **KDI-038**: Goal mode
+47. **KDI-038**: Goal mode
 48. ✅ **KDI-039**: Workflow templates
 49. **KDI-040**: Triage automation (LLM)
 50. **KDI-041**: Swarm mode
