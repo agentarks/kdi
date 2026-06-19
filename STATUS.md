@@ -296,6 +296,21 @@
 - [x] CLI/e2e tests cover acceptance criteria
 - [x] `bun run lint`, `bun run test`, `bun run build` pass
 
+## KDI-036: `kdi runs` Filtering — Done
+- [x] `kdi runs <task_id>` lists all runs for the task, newest first, format unchanged
+- [x] `--state-type status --state-name <value>` filters runs by status
+- [x] `--state-type outcome --state-name <value>` filters runs by outcome
+- [x] Only passing both `--state-type` and `--state-name` is valid; partial pairs rejected
+- [x] Invalid `--state-type` rejected with clear error listing valid values
+- [x] "No runs found for this task." when task has no runs
+- [x] "No runs match the filter." when filter matches nothing
+- [x] All new options gated by `FF_RUNS_FILTERING` (defaults to `false`)
+- [x] Unfiltered `kdi runs` output byte-for-byte unchanged when flag disabled
+- [x] Reuses the `getRunsFiltered` model helper from KDI-031 as the single source of truth
+- [x] Unit tests for `getRunsFiltered` cover filter matching, validation, empty states
+- [x] CLI/e2e tests cover flag gating, both/neither validation, invalid type, status/outcome match, empty filter, no-runs baseline
+- [x] `bun run lint`, `bun run test`, `bun run build` pass
+
 ## KDI-032: Bulk Operations — Done
 - [x] `kdi block <id1> <id2>... --reason <text>` — bulk block with pre-checks for already-blocked
 - [x] `kdi schedule <id1> <id2>... --at <timestamp> [--reason <text>]` — bulk schedule with per-task try/catch
@@ -427,7 +442,7 @@
 ## Task Runs (KDI-000)
 - [x] `task_runs` table with per-attempt history (profile, step_key, status, claim_lock, worker_pid, started_at, ended_at, outcome, summary, metadata, error)
 - [x] Dispatcher creates a `task_runs` row on claim and finalizes it on finish/fail
-- [x] `kdi runs <task_id>` — show attempt history
+- [x] `kdi runs <task_id>` — show attempt history with optional `--state-type`/`--state-name` filters (KDI-036)
 
 ## Task Runs Status (KDI-000e)
 - [x] `status` column on `task_runs`: `running | done | blocked | crashed | timed_out | failed | released`

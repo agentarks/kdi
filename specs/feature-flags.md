@@ -58,6 +58,7 @@ stateDiagram-v2
 | `ff_notify_subs` | `FF_NOTIFY_SUBS` | CLI / notifier watcher | InDev | `false` | KDI-025 | Notification subscriptions; `notify-subscribe/list/unsubscribe` commands; notifier watcher in dispatcher tick.
 | `ff_list_filters_sort` | `FF_LIST_FILTERS_SORT` | CLI / task listing | InDev | `false` | KDI-030 | `kdi list` filters (`--mine`, `--session`, `--archived`, workflow/step-key) and sort options; `create --session`.
 | `ff_show_run_filtering` | `FF_SHOW_RUN_FILTERING` | CLI / task inspection | InDev | `false` | KDI-031 | `kdi show` run section and `--state-type`/`--state-name` run filtering.
+| `ff_runs_filtering` | `FF_RUNS_FILTERING` | CLI / task inspection | InDev | `false` | KDI-036 | `kdi runs` `--state-type`/`--state-name` run filtering.
 | `ff_bulk_operations` | `FF_BULK_OPERATIONS` | CLI / task lifecycle | Planned | `false` | KDI-032 | Bulk `block`/`promote`/`archive --rm`; `promote --force` and `--dry-run`.
 | `ff_comment_enhancements` | `FF_COMMENT_ENHANCEMENTS` | CLI / task metadata | InDev | `false` | KDI-033 | `kdi comment --author`/`--max-len` and author display in `kdi show`.
 | `ff_dispatch_controls` | `FF_DISPATCH_CONTROLS` | CLI / dispatcher | InDev | `false` | KDI-034 | `kdi dispatch --failure-limit` per-pass failure threshold.
@@ -466,6 +467,21 @@ stateDiagram-v2
   - `kdi show --state-type {status,outcome} --state-name VALUE` filters displayed runs.
   - `kdi runs <task_id>` continues to show all runs unfiltered.
 - **Rollback / deactivation:** Set `FF_SHOW_RUN_FILTERING=false` to hide the run section and reject the filter options.
+- **Deprecation plan:** N/A
+
+### `ff_runs_filtering` — InDev
+
+- **Owner:** kdi core team
+- **BRD:** [BRD-KDI-036](brd-kdi-036-runs-filtering.md)
+- **Status transitions:**
+  - `Planned` → `InDev` when `kdi runs --state-type`/`--state-name` filtering is implemented.
+- **Schema note:** No schema changes; reuses the `getRunsFiltered(taskId, filter)` helper from KDI-031 and the existing `task_runs` table plus `idx_runs_task` index.
+- **Activation criteria:**
+  - `FF_RUNS_FILTERING=true kdi runs <task_id> --state-type {status,outcome} --state-name VALUE` filters the listed runs to matching rows.
+  - Unfiltered `kdi runs <task_id>` output is byte-for-byte unchanged when the flag is disabled or no filter options are supplied.
+  - Partial pairs and invalid `--state-type` values are rejected with clear errors.
+  - `getRunsFiltered` model helper from KDI-031 is reused as the single source of truth for SQL.
+- **Rollback / deactivation:** Set `FF_RUNS_FILTERING=false` to reject `--state-type`/`--state-name` and keep the unfiltered `kdi runs` behavior.
 - **Deprecation plan:** N/A
 
 ### `ff_bulk_operations` — Planned
