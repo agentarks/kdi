@@ -625,7 +625,6 @@
 ## Hermes Backlog Verification (2026-06-19)
 
 - [x] `scripts/verify-hermes-backlog.sh` runs **89 / 90 PASS** against `main` (a4b2618) with every `FF_*` flag on, temp `HOME` + temp `KDI_DB`
-- [x] `scripts/e2e-stub-profile.sh` runs **PASS** with real end-to-end autonomy: dispatcher tick → stub harness spawn → task lands in `done` with `outcome=completed` and the full event chain `created → promoted → claimed → finished`
 - [x] Full per-item report at `specs/hermes-backlog-verification-2026-06-19.md`
 - [x] Backlog updated with a `## Verification (2026-06-19)` section at `specs/hermes-kanban-backlog.md` listing 5 gaps
 - [ ] **Gap: KDI-013 global `--board` flag** — real divergence from hermes; per-subcommand `--board`, `KDI_BOARD`, and `current` file all work, but `kdi --board demo …` errors with `unknown option '--board'`

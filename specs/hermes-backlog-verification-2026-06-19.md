@@ -162,70 +162,8 @@ bun install
 bun test                                            # 836 pass
 bun run lint                                        # clean
 KEEP_TMP=1 bash scripts/verify-hermes-backlog.sh    # 90 smoke tests; 89 PASS / 1 FAIL
-KEEP_TMP=1 bash scripts/e2e-stub-profile.sh         # real end-to-end: dispatcher → stub harness → done
 ```
 
 The script enables every `FF_*` flag via env, sets up a temp `HOME` and temp
 `KDI_DB`, runs each backlog item as a real `kdi ...` invocation through a
 small bun timeout helper, and prints a PASS/FAIL line per test.
-
-## End-to-end proof (real task → real worker → real completion)
-
-The 90-test CLI smoke above is a surface check, not autonomy proof. To prove
-the dispatcher actually does work end-to-end, `scripts/e2e-stub-profile.sh`
-adds a temporary `stub` profile to `~/.config/kdi/profiles.yaml` (in the
-temp `HOME`) whose command is `bash -c 'echo ...; touch $KDI_STUB_MARKER;
-exit 0'`, then runs the full pipeline:
-
-1. `kdi init` → `kdi boards create demo --workdir <temp-git-repo>` → `kdi boards switch demo`
-2. `kdi create "stub task" --assignee stub --body "do the thing"`
-3. `kdi promote <id>` (todo → ready)
-4. `kdi dispatch --interval 200 --max 1` in the background
-5. Wait for the marker file the stub harness creates (proves the worker was spawned)
-6. Wait for `kdi show <id>` to report `Status: done`
-7. Inspect `kdi runs <id>`, `kdi log <id>`, `kdi tail <id>` for evidence
-8. Kill the dispatcher, remove the temp profile
-
-Observed output (with `KDI_STUB_MARKER` pointing at a known path):
-
-```
-=== kdi show 1 ===
-Status: done
-Result: stub: task 1 on wt/stub/1 in /tmp/kdi-stub-1-CmkCVD
-
-=== kdi runs 1 ===
-Run #1: status=done outcome=completed profile=stub ...
-
-=== kdi log 1 ===
-stub: task 1 on wt/stub/1 in /tmp/kdi-stub-1-CmkCVD
-
-=== kdi tail 1 ===
-[2026-06-19T21:44:51.000Z] created
-[2026-06-19T21:44:51.000Z] promoted
-[2026-06-19T21:44:51.000Z] claimed {"assignee":"stub"}
-[2026-06-19T21:44:51.000Z] finished {"outcome":"completed"}
-
-PASS: outcome=completed in task_runs
-PASS: profile=stub recorded
-PASS: log captures stub harness stdout
-PASS: events for claim/promote/completion present
-```
-
-The autonomous lifecycle is **created → promoted → claimed → finished**
-without any manual `kdi claim` / `kdi complete` call. The worktree is
-created at `/tmp/kdi-stub-1-CmkCVD` and cleaned up after the run.
-
-This proves the dispatcher's `tick()` path end-to-end:
-- `reapStaleClaims()` → no-op on a fresh run
-- `promoteScheduledTasks()` → no-op
-- `listReadyTasks()` → finds task 1
-- `claimTask()` → CAS, status ready → running
-- `heartbeat()` → seeds `last_heartbeat_at`
-- `getProfile()` → resolves `stub`
-- `createWorktree()` → creates `wt/stub/1` branch + worktree
-- `substituteCommand()` → fills `{{task_id}}`, `{{branch}}`, `{{workdir}}`
-- `spawnHarness()` → `shell: true`, captures stdout/stderr to log file
-- `finishTask()` → status running → done, `task_runs` row with `outcome=completed`, `summary=stdout`
-
-Script exits 0 on success. The temp profile is removed at the end so the
-user's real `~/.config/kdi/profiles.yaml` is not touched.
