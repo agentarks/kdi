@@ -16,6 +16,7 @@ import {
   stepTaskCommand,
   archiveTaskCommand,
   specifyTaskCommand,
+  decomposeTaskCommand,
   listRunsCommand,
   tailTaskCommand,
   watchCommand,
@@ -43,6 +44,7 @@ import {
   notifyUnsubscribeCommand,
 } from "./commands/notify";
 import { workflowsCommand } from "./commands/workflows";
+import { swarmCommand } from "./commands/swarm";
 const program = new Command();
 
 program
@@ -82,6 +84,7 @@ program.addCommand(unblockTaskCommand);
 program.addCommand(reviewTaskCommand);
 program.addCommand(archiveTaskCommand);
 program.addCommand(specifyTaskCommand);
+program.addCommand(decomposeTaskCommand);
 program.addCommand(listRunsCommand);
 program.addCommand(tailTaskCommand);
 program.addCommand(watchCommand);
@@ -105,5 +108,6 @@ program.addCommand(contextCommand);
 program.addCommand(notifySubscribeCommand);
 program.addCommand(notifyListCommand);
 program.addCommand(notifyUnsubscribeCommand);
+program.addCommand(swarmCommand);
 
 program.parse();

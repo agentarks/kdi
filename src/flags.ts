@@ -33,6 +33,8 @@ export const FF_COMMENT_ENHANCEMENTS = "FF_COMMENT_ENHANCEMENTS";
 export const FF_DISPATCH_CONTROLS = "FF_DISPATCH_CONTROLS";
 export const FF_WATCH_FILTERS = "FF_WATCH_FILTERS";
 export const FF_WORKFLOW_TEMPLATES = "FF_WORKFLOW_TEMPLATES";
+export const FF_TRIAGE_AUTOMATION = "FF_TRIAGE_AUTOMATION";
+export const FF_SWARM_MODE = "FF_SWARM_MODE";
 
 const flagRegistry = new Map<string, boolean>();
 const flagOverrides = new Map<string, boolean>();
@@ -109,3 +111,5 @@ registerFlag(FF_COMMENT_ENHANCEMENTS, false);
 registerFlag(FF_DISPATCH_CONTROLS, false);
 registerFlag(FF_WATCH_FILTERS, false);
 registerFlag(FF_WORKFLOW_TEMPLATES, false);
+registerFlag(FF_TRIAGE_AUTOMATION, false);
+registerFlag(FF_SWARM_MODE, false);
