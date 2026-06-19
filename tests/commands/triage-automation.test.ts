@@ -207,6 +207,50 @@ describe("triage automation commands", () => {
     expect(logs.some((l) => l.includes("Specified 1/1 tasks"))).toBe(true);
   });
 
+  it("specify --all exits 1 when any task is skipped", async () => {
+    setFlag(FF_TRIAGE_AUTOMATION, true);
+    const board = createBoard("triage-cmd", "/tmp/triage-cmd");
+    const t1 = createTask({ board_id: board.id, title: "A", triage: true });
+    const t2 = createTask({ board_id: board.id, title: "B", triage: true });
+
+    // mock returns an empty body, so both tasks fail validation and are blocked
+    const mock = startMockLlm({ body: "" });
+    const { exitCode, logs, errors } = await runCommand(
+      specifyTaskCommand,
+      ["--all", "--board", "triage-cmd"],
+      { KDI_TRIAGE_LLM_API_KEY: "sk-test", KDI_TRIAGE_LLM_BASE_URL: mock.url }
+    );
+    mock.stop();
+
+    expect(exitCode).toBe(1);
+    expect(logs.some((l) => l.includes("Specified 0/2 tasks"))).toBe(true);
+    expect(errors.filter((e) => e.includes("Skipped task")).length).toBe(2);
+    expect(showTask(t1.id)!.status).toBe("blocked");
+    expect(showTask(t2.id)!.status).toBe("blocked");
+  });
+
+  it("decompose --all exits 1 when any task is skipped", async () => {
+    setFlag(FF_TRIAGE_AUTOMATION, true);
+    const board = createBoard("triage-cmd", "/tmp/triage-cmd");
+    const t1 = createTask({ board_id: board.id, title: "A", triage: true });
+    const t2 = createTask({ board_id: board.id, title: "B", triage: true });
+
+    // mock returns a single-child response, which fails the 2-10 validation
+    const mock = startMockLlm({ children: [{ title: "only" }] });
+    const { exitCode, logs, errors } = await runCommand(
+      decomposeTaskCommand,
+      ["--all", "--board", "triage-cmd"],
+      { KDI_TRIAGE_LLM_API_KEY: "sk-test", KDI_TRIAGE_LLM_BASE_URL: mock.url }
+    );
+    mock.stop();
+
+    expect(exitCode).toBe(1);
+    expect(logs.some((l) => l.includes("Decomposed 0/2 tasks"))).toBe(true);
+    expect(errors.filter((e) => e.includes("Skipped task")).length).toBe(2);
+    expect(showTask(t1.id)!.status).toBe("blocked");
+    expect(showTask(t2.id)!.status).toBe("blocked");
+  });
+
   it("decompose creates children and archives parent", async () => {
     setFlag(FF_TRIAGE_AUTOMATION, true);
     const board = createBoard("triage-cmd", "/tmp/triage-cmd");

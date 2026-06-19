@@ -676,12 +676,8 @@ export async function specifyTaskWithLlm(
 
   let data: { body: string; title?: string; assignee?: string };
   try {
-    const response = await callTriageLlm(buildSpecifyPrompt(task));
-    if (response.type !== "specify") {
-      throw new Error("unexpected LLM response type");
-    }
-    data = response.data;
-    if (typeof data.body !== "string" || data.body.trim() === "") {
+    data = await callTriageLlm(buildSpecifyPrompt(task));
+    if (data.body.trim() === "") {
       throw new Error("missing body in response");
     }
   } catch (err: any) {
@@ -690,11 +686,22 @@ export async function specifyTaskWithLlm(
     throw new Error(reason);
   }
 
+  // Normalize empty/whitespace to null so COALESCE keeps the existing value,
+  // matching the LLM prompt contract: "omit fields to keep them unchanged".
+  const newTitle = typeof data.title === "string" && data.title.trim() !== "" ? data.title : null;
+  const newAssignee = typeof data.assignee === "string" && data.assignee.trim() !== "" ? data.assignee : null;
+
   const db = getDb();
-  db.run(
+  const result = db.run(
     `UPDATE tasks SET status = 'todo', body = ?, title = COALESCE(?, title), assignee = COALESCE(?, assignee), updated_at = unixepoch() WHERE id = ? AND status = 'triage' AND archived_at IS NULL`,
-    [data.body, data.title ?? null, data.assignee ?? null, id]
+    [data.body, newTitle, newAssignee, id]
   );
+
+  if (result.changes === 0) {
+    const reason = `Task ${id} is not in triage status (concurrent change)`;
+    blockTask(id, `LLM specify failed: ${reason}`);
+    throw new Error(`LLM specify failed: ${reason}`);
+  }
 
   const updated = showTask(id);
   if (!updated) {

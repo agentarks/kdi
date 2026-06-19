@@ -971,6 +971,7 @@ export const specifyTaskCommand = new Command("specify")
           return;
         }
         let specified = 0;
+        let skipped = 0;
         for (const task of tasks) {
           try {
             if (useLlm) {
@@ -983,9 +984,11 @@ export const specifyTaskCommand = new Command("specify")
             specified++;
           } catch (err: any) {
             console.error(`Skipped task ${task.id}: ${err.message}`);
+            skipped++;
           }
         }
         console.log(`Specified ${specified}/${tasks.length} tasks.`);
+        if (skipped > 0) process.exit(1);
         return;
       }
 
@@ -1021,9 +1024,6 @@ export const decomposeTaskCommand = new Command("decompose")
       if (options.tenant !== undefined && options.tenant.trim() === "") {
         throw new Error("Tenant cannot be empty.");
       }
-      if (!Bun.env.KDI_TRIAGE_LLM_API_KEY) {
-        throw new Error("Triage LLM API key is not configured (KDI_TRIAGE_LLM_API_KEY).");
-      }
 
       const boardSlug = resolveBoard(options.board);
       const boardId = getBoardIdBySlug(boardSlug);
@@ -1035,20 +1035,20 @@ export const decomposeTaskCommand = new Command("decompose")
           return;
         }
         let decomposed = 0;
+        let skipped = 0;
         for (const task of tasks) {
           try {
-            const response = await callTriageLlm(buildDecomposePrompt(task));
-            if (response.type !== "decompose") {
-              throw new Error("unexpected LLM response type");
-            }
-            const children = decomposeTask(task.id, response.data);
+            const data = await callTriageLlm(buildDecomposePrompt(task));
+            const children = decomposeTask(task.id, data);
             console.log(`Decomposed task ${task.id}: created ${children.length} children`);
             decomposed++;
           } catch (err: any) {
             console.error(`Skipped task ${task.id}: ${err.message}`);
+            skipped++;
           }
         }
         console.log(`Decomposed ${decomposed}/${tasks.length} tasks.`);
+        if (skipped > 0) process.exit(1);
         return;
       }
 
@@ -1065,11 +1065,8 @@ export const decomposeTaskCommand = new Command("decompose")
         throw new Error(`Task ${id} is not in triage status.`);
       }
 
-      const response = await callTriageLlm(buildDecomposePrompt(task));
-      if (response.type !== "decompose") {
-        throw new Error("unexpected LLM response type");
-      }
-      const children = decomposeTask(id, response.data);
+      const data = await callTriageLlm(buildDecomposePrompt(task));
+      const children = decomposeTask(id, data);
       console.log(`Decomposed task ${id}: created ${children.length} children`);
     } catch (err: any) {
       console.error(`Error: ${err.message}`);

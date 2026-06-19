@@ -29,10 +29,62 @@ export type LlmResponse =
   | { type: "decompose"; data: LlmDecomposeResponse };
 
 const MAX_RESPONSE_BYTES = 32768;
+const MAX_CONTENT_BYTES = 16384;
 
 function getBoardSlug(boardId: number): string {
   const board = getBoardById(boardId);
   return board?.slug ?? String(boardId);
+}
+
+// Scan a string for the last balanced top-level `{...}` substring. Handles
+// multi-line and pretty-printed JSON by tracking brace depth and string
+// state, including backslash escapes. Returns the last candidate whose
+// substring is valid JSON, or null if none is.
+function extractLastJsonObject(text: string): string | null {
+  let lastValid: string | null = null;
+
+  for (let i = text.length - 1; i >= 0; i--) {
+    if (text[i] !== "{") continue;
+
+    const rest = text.slice(i);
+    let depth = 0;
+    let inString = false;
+    let escape = false;
+    let end = -1;
+
+    for (let j = 0; j < rest.length; j++) {
+      const ch = rest[j];
+      if (escape) {
+        escape = false;
+        continue;
+      }
+      if (inString) {
+        if (ch === "\\") escape = true;
+        else if (ch === '"') inString = false;
+        continue;
+      }
+      if (ch === '"') inString = true;
+      else if (ch === "{") depth++;
+      else if (ch === "}") {
+        depth--;
+        if (depth === 0) {
+          end = j;
+          break;
+        }
+      }
+    }
+
+    if (end < 0) continue;
+    const candidate = rest.slice(0, end + 1);
+    try {
+      JSON.parse(candidate);
+      lastValid = candidate;
+    } catch {
+      // not valid JSON; keep scanning for an earlier `{`
+    }
+  }
+
+  return lastValid;
 }
 
 function renderTaskContext(task: Task): string {
@@ -45,7 +97,7 @@ function renderTaskContext(task: Task): string {
   );
 }
 
-export function buildSpecifyPrompt(task: Task): LlmPrompt {
+export function buildSpecifyPrompt(task: Task): LlmPrompt & { type: "specify" } {
   const text =
     `You are a task specifier for a Kanban dispatch system.\n` +
     `A task is currently in "triage" status and needs a clear, actionable body\n` +
@@ -63,7 +115,7 @@ export function buildSpecifyPrompt(task: Task): LlmPrompt {
   return { type: "specify", task, text };
 }
 
-export function buildDecomposePrompt(task: Task): LlmPrompt {
+export function buildDecomposePrompt(task: Task): LlmPrompt & { type: "decompose" } {
   const text =
     `You are a task decomposer for a Kanban dispatch system.\n` +
     `A task is currently in "triage" status and is too large to execute as-is.\n` +
@@ -86,25 +138,14 @@ export function buildDecomposePrompt(task: Task): LlmPrompt {
   return { type: "decompose", task, text };
 }
 
-function extractLastJson(text: string): string | null {
-  const cleaned = text
-    .replace(/```json\s*/gi, "")
-    .replace(/```\s*/g, "");
-  const lines = cleaned
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0);
-
-  for (let i = lines.length - 1; i >= 0; i--) {
-    const line = lines[i];
-    if (line.startsWith("{") && line.endsWith("}")) {
-      return line;
-    }
-  }
-  return null;
+function stripCodeFences(text: string): string {
+  return text.replace(/```(?:json)?\s*/gi, "").replace(/```\s*/g, "");
 }
 
-export async function callTriageLlm(prompt: LlmPrompt): Promise<LlmResponse> {
+export async function callTriageLlm(prompt: LlmPrompt & { type: "specify" }): Promise<LlmSpecifyResponse>;
+export async function callTriageLlm(prompt: LlmPrompt & { type: "decompose" }): Promise<LlmDecomposeResponse>;
+export async function callTriageLlm(prompt: LlmPrompt): Promise<LlmSpecifyResponse | LlmDecomposeResponse>;
+export async function callTriageLlm(prompt: LlmPrompt): Promise<LlmSpecifyResponse | LlmDecomposeResponse> {
   const apiKey = Bun.env.KDI_TRIAGE_LLM_API_KEY;
   if (!apiKey) {
     throw new Error("Triage LLM API key is not configured (KDI_TRIAGE_LLM_API_KEY).");
@@ -113,6 +154,7 @@ export async function callTriageLlm(prompt: LlmPrompt): Promise<LlmResponse> {
   const baseUrl = (Bun.env.KDI_TRIAGE_LLM_BASE_URL || "https://api.openai.com/v1").replace(/\/+$/, "");
   const model = Bun.env.KDI_TRIAGE_LLM_MODEL || "gpt-4o-mini";
   const timeoutMs = Number(Bun.env.KDI_TRIAGE_LLM_TIMEOUT_MS || "60000");
+  const temperature = Number(Bun.env.KDI_TRIAGE_LLM_TEMPERATURE || "0.2");
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -127,7 +169,7 @@ export async function callTriageLlm(prompt: LlmPrompt): Promise<LlmResponse> {
       body: JSON.stringify({
         model,
         messages: [{ role: "user", content: prompt.text }],
-        temperature: 0.2,
+        temperature,
       }),
       signal: controller.signal,
     });
@@ -138,29 +180,54 @@ export async function callTriageLlm(prompt: LlmPrompt): Promise<LlmResponse> {
     }
 
     const text = await response.text();
-    const capped = text.length > MAX_RESPONSE_BYTES ? text.slice(0, MAX_RESPONSE_BYTES) : text;
+    if (text.length > MAX_RESPONSE_BYTES) {
+      throw new Error(`response exceeded ${MAX_RESPONSE_BYTES} bytes`);
+    }
 
-    // OpenAI-compatible responses wrap content in choices.message.content
-    let content = capped;
+    // OpenAI-compatible responses wrap content in choices.message.content.
+    // Detect the wrapper shape independently of content truthiness so an
+    // empty / null / missing content still takes the unwrap branch instead
+    // of being parsed as the JSON payload itself.
+    let content: string;
     try {
-      const wrapper = JSON.parse(capped);
-      if (wrapper.choices && Array.isArray(wrapper.choices) && wrapper.choices[0]?.message?.content) {
-        content = String(wrapper.choices[0].message.content);
+      const wrapper = JSON.parse(text);
+      if (
+        wrapper &&
+        typeof wrapper === "object" &&
+        Array.isArray(wrapper.choices) &&
+        wrapper.choices[0]?.message &&
+        "content" in wrapper.choices[0].message
+      ) {
+        content = String(wrapper.choices[0].message.content ?? "");
+      } else {
+        content = text;
       }
     } catch {
-      // not a wrapper; treat raw response as the content
+      content = text;
     }
 
-    const json = extractLastJson(content);
+    if (content.length > MAX_CONTENT_BYTES) {
+      throw new Error(`response content exceeded ${MAX_CONTENT_BYTES} bytes`);
+    }
+
+    const cleaned = stripCodeFences(content);
+    const json = extractLastJsonObject(cleaned);
     if (!json) {
-      throw new Error("no JSON object found in response");
+      const preview = cleaned.slice(0, 200).replace(/\s+/g, " ");
+      throw new Error(`no JSON object found in response: ${preview}`);
     }
 
-    const data = JSON.parse(json);
+    const data = JSON.parse(json) as unknown;
     if (prompt.type === "specify") {
-      return { type: "specify", data: data as LlmSpecifyResponse };
+      if (!data || typeof data !== "object" || typeof (data as LlmSpecifyResponse).body !== "string") {
+        throw new Error("specify response missing required 'body' string field");
+      }
+      return data as LlmSpecifyResponse;
     }
-    return { type: "decompose", data: data as LlmDecomposeResponse };
+    if (!data || typeof data !== "object" || !Array.isArray((data as LlmDecomposeResponse).children)) {
+      throw new Error("decompose response missing required 'children' array field");
+    }
+    return data as LlmDecomposeResponse;
   } catch (err: any) {
     if (err.name === "AbortError") {
       throw new Error("request timed out");

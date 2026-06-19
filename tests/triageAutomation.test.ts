@@ -104,6 +104,48 @@ describe("triage automation model", () => {
       expect(result.assignee).toBe("parent");
     });
 
+    it("empty-string title and assignee from LLM preserve existing values", async () => {
+      process.env.KDI_TRIAGE_LLM_API_KEY = "sk-test";
+      setFlag(FF_TRIAGE_AUTOMATION, true);
+
+      const task = initTask({ title: "Keep me", assignee: "parent" });
+      mockFetch({ body: "LLM body", title: "   ", assignee: "" });
+
+      const result = await specifyTaskWithLlm(task.id);
+      expect(result.title).toBe("Keep me");
+      expect(result.assignee).toBe("parent");
+    });
+
+    it("blocks and emits LLM failure when task leaves triage mid-call", async () => {
+      process.env.KDI_TRIAGE_LLM_API_KEY = "sk-test";
+      setFlag(FF_TRIAGE_AUTOMATION, true);
+
+      const task = initTask();
+
+      // Simulate a concurrent operation moving the task out of triage
+      // between the LLM call and the UPDATE in specifyTaskWithLlm.
+      global.fetch = mock(async () => {
+        const { getDb } = await import("../src/db");
+        getDb().run(
+          `UPDATE tasks SET status = 'todo', updated_at = unixepoch() WHERE id = ?`,
+          [task.id]
+        );
+        return new Response(
+          JSON.stringify({
+            choices: [{ message: { content: JSON.stringify({ body: "LLM body", title: "new" }) } }],
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } }
+        );
+      });
+
+      await expect(specifyTaskWithLlm(task.id)).rejects.toThrow(
+        "LLM specify failed: Task " + task.id + " is not in triage status (concurrent change)"
+      );
+      const updated = showTask(task.id)!;
+      expect(updated.status).toBe("blocked");
+      expect(updated.block_reason).toContain("concurrent change");
+    });
+
     it("missing API key throws without mutating", async () => {
       setFlag(FF_TRIAGE_AUTOMATION, true);
       const task = initTask();
@@ -225,7 +267,7 @@ describe("triage automation model", () => {
       const task = initTask();
       expect(() =>
         decomposeTask(task.id, { children: [{ title: "A" }, { title: "B", dependencies: [1] }] })
-      ).toThrow();
+      ).toThrow("self-dependency at index 1");
       expect(showTask(task.id)!.status).toBe("blocked");
     });
 
@@ -233,7 +275,23 @@ describe("triage automation model", () => {
       const task = initTask();
       expect(() =>
         decomposeTask(task.id, { children: [{ title: "A" }, { title: "B", dependencies: [99] }] })
-      ).toThrow();
+      ).toThrow("invalid dependency index 99 in child 1");
+      expect(showTask(task.id)!.status).toBe("blocked");
+    });
+
+    it("rejects negative dependency index", () => {
+      const task = initTask();
+      expect(() =>
+        decomposeTask(task.id, { children: [{ title: "A" }, { title: "B", dependencies: [-1] }] })
+      ).toThrow("invalid dependency index -1 in child 1");
+      expect(showTask(task.id)!.status).toBe("blocked");
+    });
+
+    it("rejects non-integer dependency index", () => {
+      const task = initTask();
+      expect(() =>
+        decomposeTask(task.id, { children: [{ title: "A" }, { title: "B", dependencies: [0.5] }] })
+      ).toThrow("invalid dependency index 0.5 in child 1");
       expect(showTask(task.id)!.status).toBe("blocked");
     });
 
@@ -246,7 +304,7 @@ describe("triage automation model", () => {
             { title: "B", dependencies: [0] },
           ],
         })
-      ).toThrow();
+      ).toThrow("Circular dependency is not allowed");
       expect(showTask(task.id)!.status).toBe("blocked");
     });
 

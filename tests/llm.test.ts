@@ -94,10 +94,9 @@ describe("llm client", () => {
       model: "gpt-4o-mini",
       messages: expect.any(Array),
     });
-    expect(result.type).toBe("specify");
-    expect((result.data as LlmSpecifyResponse).body).toBe("Detailed body");
-    expect((result.data as LlmSpecifyResponse).title).toBe("Refined title");
-    expect((result.data as LlmSpecifyResponse).assignee).toBe("bob");
+    expect(result.body).toBe("Detailed body");
+    expect(result.title).toBe("Refined title");
+    expect(result.assignee).toBe("bob");
   });
 
   it("callTriageLlm parses decompose response", async () => {
@@ -119,16 +118,33 @@ describe("llm client", () => {
     const task = initTask();
     const result = await callTriageLlm(buildDecomposePrompt(task));
 
-    expect(result.type).toBe("decompose");
-    const decomposed = result.data as LlmDecomposeResponse;
-    expect(decomposed.children).toHaveLength(2);
-    expect(decomposed.children[1].dependencies).toEqual([0]);
+    expect(result.children).toHaveLength(2);
+    expect(result.children[1].dependencies).toEqual([0]);
   });
 
-  it("callTriageLlm extracts last JSON line", async () => {
+  it("callTriageLlm extracts last JSON object from pretty-printed multi-line response", async () => {
+    process.env.KDI_TRIAGE_LLM_API_KEY = "sk-test";
+    const pretty = `Here is the JSON:
+{
+  "body": "Refined body",
+  "title": "Refined title",
+  "assignee": "bob"
+}`;
+    global.fetch = mock(async () => {
+      return new Response(pretty, { status: 200, headers: { "Content-Type": "application/json" } });
+    });
+
+    const task = initTask();
+    const result = await callTriageLlm(buildSpecifyPrompt(task));
+    expect(result.body).toBe("Refined body");
+    expect(result.title).toBe("Refined title");
+    expect(result.assignee).toBe("bob");
+  });
+
+  it("callTriageLlm extracts last JSON object when content is wrapped in code fence", async () => {
     process.env.KDI_TRIAGE_LLM_API_KEY = "sk-test";
     global.fetch = mock(async () => {
-      return new Response(`Here is the JSON:\n{"body":"only line"}`, {
+      return new Response("```json\n{\n  \"body\": \"fenced\"\n}\n```", {
         status: 200,
         headers: { "Content-Type": "application/json" },
       });
@@ -136,7 +152,7 @@ describe("llm client", () => {
 
     const task = initTask();
     const result = await callTriageLlm(buildSpecifyPrompt(task));
-    expect((result.data as LlmSpecifyResponse).body).toBe("only line");
+    expect(result.body).toBe("fenced");
   });
 
   it("callTriageLlm throws on missing API key", async () => {
@@ -146,14 +162,76 @@ describe("llm client", () => {
     );
   });
 
-  it("callTriageLlm throws on non-JSON response", async () => {
+  it("callTriageLlm throws on non-JSON response with content preview", async () => {
     process.env.KDI_TRIAGE_LLM_API_KEY = "sk-test";
     global.fetch = mock(async () => {
-      return new Response("not json", { status: 200 });
+      return new Response("not json at all", { status: 200 });
     });
 
     const task = initTask();
-    await expect(callTriageLlm(buildSpecifyPrompt(task))).rejects.toThrow();
+    await expect(callTriageLlm(buildSpecifyPrompt(task))).rejects.toThrow(
+      "no JSON object found in response: not json at all"
+    );
+  });
+
+  it("callTriageLlm throws when wrapper content is empty", async () => {
+    process.env.KDI_TRIAGE_LLM_API_KEY = "sk-test";
+    global.fetch = mock(async () => {
+      return new Response('{"choices":[{"message":{"content":""}}]}', {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    const task = initTask();
+    await expect(callTriageLlm(buildSpecifyPrompt(task))).rejects.toThrow(
+      "no JSON object found in response"
+    );
+  });
+
+  it("callTriageLlm throws when wrapper content is null", async () => {
+    process.env.KDI_TRIAGE_LLM_API_KEY = "sk-test";
+    global.fetch = mock(async () => {
+      return new Response('{"choices":[{"message":{"content":null}}]}', {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    const task = initTask();
+    await expect(callTriageLlm(buildSpecifyPrompt(task))).rejects.toThrow(
+      "no JSON object found in response"
+    );
+  });
+
+  it("callTriageLlm throws when specify response is missing body field", async () => {
+    process.env.KDI_TRIAGE_LLM_API_KEY = "sk-test";
+    global.fetch = mock(async () => {
+      return new Response(
+        '{"choices":[{"message":{"content":"{\\"title\\":\\"only title\\"}"}}]}',
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    });
+
+    const task = initTask();
+    await expect(callTriageLlm(buildSpecifyPrompt(task))).rejects.toThrow(
+      "specify response missing required 'body' string field"
+    );
+  });
+
+  it("callTriageLlm throws when decompose response is missing children field", async () => {
+    process.env.KDI_TRIAGE_LLM_API_KEY = "sk-test";
+    global.fetch = mock(async () => {
+      return new Response(
+        '{"choices":[{"message":{"content":"{\\"tasks\\":[{\\"title\\":\\"A\\"},{\\"title\\":\\"B\\"}]}"}}]}',
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    });
+
+    const task = initTask();
+    await expect(callTriageLlm(buildDecomposePrompt(task))).rejects.toThrow(
+      "decompose response missing required 'children' array field"
+    );
   });
 
   it("callTriageLlm throws on HTTP error", async () => {
