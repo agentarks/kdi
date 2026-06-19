@@ -6,7 +6,7 @@ import { initDb, closeDb, getDb } from "../src/db";
 import { createBoard } from "../src/models/board";
 import { createTask, promoteTask, showTask } from "../src/models/task";
 import { addDependency } from "../src/models/dependency";
-import { setFlag, clearOverrides, FF_RATE_LIMIT_EXIT_CODE, FF_NOTIFY_SUBS, FF_DISPATCH_CONTROLS } from "../src/flags";
+import { setFlag, clearOverrides, FF_RATE_LIMIT_EXIT_CODE, FF_NOTIFY_SUBS, FF_DISPATCH_CONTROLS, FF_GOAL_MODE, FF_ENABLE_KANBAN_DISPATCH } from "../src/flags";
 import { subscribe } from "../src/models/notifySub";
 import { atomicClaim, heartbeat } from "../src/models/claim";
 import { tick, startDispatcher } from "../src/dispatcher";
@@ -1534,5 +1534,190 @@ describe("dispatcher", () => {
 
       expect(warnings.some((w) => w.includes("failure limit of 1 reached"))).toBe(true);
     });
+  });
+});
+
+// KDI-038: goal-mode dispatcher tests
+describe("dispatcher goal mode", () => {
+  beforeEach(() => {
+    testDbPath = join(tmpdir(), `kdi-dispatcher-test-${Date.now()}-${Math.random().toString(36).slice(2)}.db`);
+    cleanupDb(testDbPath);
+    initDb(testDbPath);
+    setFlag("FF_ENABLE_KANBAN_DISPATCH", true);
+    setFlag(FF_GOAL_MODE, true);
+  });
+
+  afterEach(() => {
+    clearOverrides();
+    closeDb();
+    cleanupDb(testDbPath);
+  });
+
+  it("non-satisfied turn requeues task with decremented remaining turns", async () => {
+    const board = createBoard("goal-board", "/tmp/goal-board");
+    const task = createTask({
+      board_id: board.id,
+      title: "Goal refactor",
+      assignee: "opencode",
+      goal_mode: true,
+      goal_max_turns: 2,
+      goal_judge_profile: "opencode",
+    });
+    promoteTask(task.id);
+
+    const mockHarness = mock(() => Promise.resolve({ stdout: "turn output", stderr: "fail", exitCode: 1 }));
+    const mockCreateWorktree = mock(() => "/tmp/mock-worktree");
+    const mockRemoveWorktree = mock(() => ({ worktreeRemoved: true, branchDeleted: true, found: true }));
+
+    await tick({
+      spawnHarness: mockHarness,
+      createWorktree: mockCreateWorktree,
+      removeWorktree: mockRemoveWorktree,
+    });
+
+    const updated = showTask(task.id);
+    expect(updated!.status).toBe("ready");
+    expect(updated!.goal_remaining_turns).toBe(1);
+
+    const events = getEvents(task.id);
+    const turnEvents = events.filter((e) => e.kind === "goal_turn");
+    expect(turnEvents.length).toBe(1);
+    expect(turnEvents[0].payload).toContain("\"verdict\":\"continue\"");
+  });
+
+  it("exhausted turn budget blocks the task with 'Goal max turns exhausted'", async () => {
+    const board = createBoard("goal-board2", "/tmp/goal-board2");
+    const task = createTask({
+      board_id: board.id,
+      title: "Goal exhaust",
+      assignee: "opencode",
+      goal_mode: true,
+      goal_max_turns: 1,
+      goal_judge_profile: "opencode",
+    });
+    promoteTask(task.id);
+
+    const mockHarness = mock(() => Promise.resolve({ stdout: "", stderr: "boom", exitCode: 1 }));
+    const mockCreateWorktree = mock(() => "/tmp/mock-worktree");
+    const mockRemoveWorktree = mock(() => ({ worktreeRemoved: true, branchDeleted: true, found: true }));
+
+    await tick({
+      spawnHarness: mockHarness,
+      createWorktree: mockCreateWorktree,
+      removeWorktree: mockRemoveWorktree,
+    });
+
+    const updated = showTask(task.id);
+    expect(updated!.status).toBe("blocked");
+    expect(updated!.block_reason).toBe("Goal max turns exhausted");
+    expect(updated!.goal_remaining_turns).toBe(0);
+
+    const events = getEvents(task.id);
+    const turnEvents = events.filter((e) => e.kind === "goal_turn");
+    expect(turnEvents.length).toBe(1);
+    expect(turnEvents[0].payload).toContain("\"verdict\":\"exhausted\"");
+  });
+
+  it("successful harness on goal task satisfies the goal and finishes", async () => {
+    const board = createBoard("goal-board3", "/tmp/goal-board3");
+    const task = createTask({
+      board_id: board.id,
+      title: "Goal done",
+      assignee: "opencode",
+      goal_mode: true,
+      goal_max_turns: 5,
+      goal_judge_profile: "opencode",
+    });
+    promoteTask(task.id);
+
+    const mockHarness = mock(() => Promise.resolve({ stdout: "all good", stderr: "", exitCode: 0 }));
+    const mockCreateWorktree = mock(() => "/tmp/mock-worktree");
+    const mockRemoveWorktree = mock(() => ({ worktreeRemoved: true, branchDeleted: true, found: true }));
+
+    await tick({
+      spawnHarness: mockHarness,
+      createWorktree: mockCreateWorktree,
+      removeWorktree: mockRemoveWorktree,
+    });
+
+    const updated = showTask(task.id);
+    expect(updated!.status).toBe("done");
+    expect(updated!.consecutive_failures).toBe(0);
+  });
+
+  it("goal tasks behave as normal tasks when FF_GOAL_MODE is disabled", async () => {
+    setFlag(FF_GOAL_MODE, false);
+    const board = createBoard("goal-board4", "/tmp/goal-board4");
+    // Bypass createTask validation by writing goal_mode directly to the DB.
+    const { getDb } = await import("../src/db");
+    const created = createTask({ board_id: board.id, title: "Direct goal task", assignee: "opencode" });
+    getDb().run(`UPDATE tasks SET goal_mode = 1, goal_max_turns = 2, goal_remaining_turns = 2, goal_judge_profile = 'opencode' WHERE id = ?`, [created.id]);
+    promoteTask(created.id);
+
+    const mockHarness = mock(() => Promise.resolve({ stdout: "ok", stderr: "", exitCode: 0 }));
+    const mockCreateWorktree = mock(() => "/tmp/mock-worktree");
+    const mockRemoveWorktree = mock(() => ({ worktreeRemoved: true, branchDeleted: true, found: true }));
+
+    await tick({
+      spawnHarness: mockHarness,
+      createWorktree: mockCreateWorktree,
+      removeWorktree: mockRemoveWorktree,
+    });
+
+    const updated = showTask(created.id);
+    expect(updated!.status).toBe("done");
+  });
+
+  it("non-goal task with FF_GOAL_MODE enabled is unaffected", async () => {
+    const board = createBoard("nongoal-board", "/tmp/nongoal-board");
+    const task = createTask({ board_id: board.id, title: "Normal task", assignee: "opencode" });
+    promoteTask(task.id);
+
+    const mockHarness = mock(() => Promise.resolve({ stdout: "ok", stderr: "", exitCode: 0 }));
+    const mockCreateWorktree = mock(() => "/tmp/mock-worktree");
+    const mockRemoveWorktree = mock(() => ({ worktreeRemoved: true, branchDeleted: true, found: true }));
+
+    await tick({
+      spawnHarness: mockHarness,
+      createWorktree: mockCreateWorktree,
+      removeWorktree: mockRemoveWorktree,
+    });
+
+    const updated = showTask(task.id);
+    expect(updated!.status).toBe("done");
+  });
+
+  it("passes KDI_GOAL_* env vars to the harness on goal-mode tasks", async () => {
+    const board = createBoard("goal-env-board", "/tmp/goal-env-board");
+    const task = createTask({
+      board_id: board.id,
+      title: "Env vars",
+      assignee: "opencode",
+      goal_mode: true,
+      goal_max_turns: 4,
+      goal_judge_profile: "opencode",
+    });
+    promoteTask(task.id);
+
+    let capturedEnv: Record<string, string> | undefined;
+    const mockHarness = mock((cmd: string, cwd: string, logPath: string | undefined, timeoutMs: number | undefined, env?: Record<string, string>) => {
+      capturedEnv = env;
+      return Promise.resolve({ stdout: "ok", stderr: "", exitCode: 0 });
+    });
+    const mockCreateWorktree = mock(() => "/tmp/mock-worktree");
+    const mockRemoveWorktree = mock(() => ({ worktreeRemoved: true, branchDeleted: true, found: true }));
+
+    await tick({
+      spawnHarness: mockHarness as any,
+      createWorktree: mockCreateWorktree,
+      removeWorktree: mockRemoveWorktree,
+    });
+
+    expect(capturedEnv).toBeDefined();
+    expect(capturedEnv!.KDI_GOAL_MODE).toBe("true");
+    expect(capturedEnv!.KDI_GOAL_MAX_TURNS).toBe("4");
+    expect(capturedEnv!.KDI_GOAL_REMAINING_TURNS).toBe("4");
+    expect(capturedEnv!.KDI_GOAL_TURN).toBe("1");
+    expect(capturedEnv!.KDI_GOAL_VERDICT_FILE).toContain(".kdi-goal-verdict.json");
   });
 });

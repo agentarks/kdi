@@ -10,7 +10,8 @@ export const TASK_COLUMNS =
   "workspace_kind, workspace, branch, result, summary, block_reason, schedule_reason, review_reason, " +
   "created_by, created_at, updated_at, started_at, archived_at, current_run_id, " +
   "claim_lock, claim_expires, last_heartbeat_at, max_runtime_seconds, max_retries, consecutive_failures, idempotency_key, model_override, rate_limited_until, scheduled_at, skills, " +
-  "session_id, workflow_template_id, current_step_key, swarm_parent_id";
+  "session_id, workflow_template_id, current_step_key, swarm_parent_id, " +
+  "goal_mode, goal_max_turns, goal_remaining_turns, goal_judge_profile";
 
 export interface Task {
   id: number;
@@ -50,6 +51,10 @@ export interface Task {
   workflow_template_id: string | null;
   current_step_key: string | null;
   swarm_parent_id: number | null;
+  goal_mode: boolean;
+  goal_max_turns: number | null;
+  goal_remaining_turns: number | null;
+  goal_judge_profile: string | null;
 }
 
 export type InitialTaskStatus = Exclude<Task["status"], "archived">;
@@ -77,6 +82,9 @@ export interface CreateTaskInput {
   workflow_template_id?: string;
   current_step_key?: string;
   swarm_parent_id?: number;
+  goal_mode?: boolean;
+  goal_max_turns?: number;
+  goal_judge_profile?: string;
 }
 
 export interface CompleteTaskInput {
@@ -204,10 +212,15 @@ export function createTask(input: CreateTaskInput): Task {
 
   const skillsJson = input.skills && input.skills.length > 0 ? JSON.stringify(input.skills) : null;
 
+  const goalMode = input.goal_mode ?? false;
+  const goalMaxTurns = goalMode ? (input.goal_max_turns ?? null) : null;
+  const goalRemainingTurns = goalMode ? (input.goal_max_turns ?? null) : null;
+  const goalJudgeProfile = goalMode ? (input.goal_judge_profile ?? null) : null;
+
   const insert = db.transaction(() => {
     const result = db.run(
-      `INSERT INTO tasks (board_id, title, body, assignee, status, priority, tenant, workspace_kind, workspace, branch, idempotency_key, scheduled_at, created_by, max_runtime_seconds, max_retries, skills, model_override, session_id, workflow_template_id, current_step_key, swarm_parent_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO tasks (board_id, title, body, assignee, status, priority, tenant, workspace_kind, workspace, branch, idempotency_key, scheduled_at, created_by, max_runtime_seconds, max_retries, skills, model_override, session_id, workflow_template_id, current_step_key, swarm_parent_id, goal_mode, goal_max_turns, goal_remaining_turns, goal_judge_profile)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         input.board_id,
         input.title,
@@ -230,6 +243,10 @@ export function createTask(input: CreateTaskInput): Task {
         input.workflow_template_id ?? null,
         input.current_step_key ?? null,
         input.swarm_parent_id ?? null,
+        goalMode ? 1 : 0,
+        goalMaxTurns,
+        goalRemainingTurns,
+        goalJudgeProfile,
       ]
     );
     return Number(result.lastInsertRowid);
@@ -289,6 +306,10 @@ export function createTask(input: CreateTaskInput): Task {
     workflow_template_id: input.workflow_template_id ?? null,
     current_step_key: input.current_step_key ?? null,
     swarm_parent_id: input.swarm_parent_id ?? null,
+    goal_mode: goalMode,
+    goal_max_turns: goalMaxTurns,
+    goal_remaining_turns: goalRemainingTurns,
+    goal_judge_profile: goalJudgeProfile,
   };
   addEvent(task.id, "created");
   return task;
@@ -422,7 +443,44 @@ export function hydrateTask(raw: unknown): Task {
   task.max_retries = task.max_retries === null || task.max_retries === undefined ? null : Number(task.max_retries);
   task.rate_limited_until = task.rate_limited_until === null || task.rate_limited_until === undefined ? null : Number(task.rate_limited_until);
   task.swarm_parent_id = task.swarm_parent_id === null || task.swarm_parent_id === undefined ? null : Number(task.swarm_parent_id);
+  // KDI-038: goal_mode comes from SQLite as INTEGER (0/1); coerce to boolean.
+  task.goal_mode = Number((raw as any).goal_mode ?? 0) === 1;
+  task.goal_max_turns = task.goal_max_turns === null || task.goal_max_turns === undefined ? null : Number(task.goal_max_turns);
+  task.goal_remaining_turns = task.goal_remaining_turns === null || task.goal_remaining_turns === undefined ? null : Number(task.goal_remaining_turns);
   return task;
+}
+
+export function decrementGoalTurns(id: number): Task {
+  const db = getDb();
+  const task = showTask(id);
+  if (!task) throw new Error(`Task ${id} not found`);
+  if (task.goal_remaining_turns === null) {
+    throw new Error(`Task ${id} has no goal_remaining_turns to decrement`);
+  }
+  const next = task.goal_remaining_turns - 1;
+  db.run(
+    `UPDATE tasks SET goal_remaining_turns = ?, updated_at = unixepoch() WHERE id = ?`,
+    [next, id]
+  );
+  const updated = showTask(id);
+  if (!updated) throw new Error(`Task ${id} not found after decrement`);
+  return updated;
+}
+
+export function resetGoalTurns(id: number): Task {
+  const db = getDb();
+  const task = showTask(id);
+  if (!task) throw new Error(`Task ${id} not found`);
+  if (task.goal_max_turns === null) {
+    throw new Error(`Task ${id} has no goal_max_turns to reset to`);
+  }
+  db.run(
+    `UPDATE tasks SET goal_remaining_turns = ?, updated_at = unixepoch() WHERE id = ?`,
+    [task.goal_max_turns, id]
+  );
+  const updated = showTask(id);
+  if (!updated) throw new Error(`Task ${id} not found after reset`);
+  return updated;
 }
 
 export function editTask(id: number, body: string): Task {
@@ -495,6 +553,14 @@ export function unblockTask(id: number, reason?: string): Task {
     db.run(
       `INSERT INTO comments (task_id, text, created_at) VALUES (?, ?, unixepoch())`,
       [id, reason]
+    );
+  }
+
+  // KDI-038: unblocking an exhausted goal task resets the turn budget.
+  if (task.status === "blocked" && task.block_reason === "Goal max turns exhausted" && task.goal_max_turns !== null) {
+    db.run(
+      `UPDATE tasks SET goal_remaining_turns = ? WHERE id = ?`,
+      [task.goal_max_turns, id]
     );
   }
 

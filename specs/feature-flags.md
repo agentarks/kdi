@@ -64,7 +64,8 @@ stateDiagram-v2
 | `ff_watch_filters` | `FF_WATCH_FILTERS` | CLI / observability | InDev | `false` | KDI-035 | `kdi watch --assignee`/`--tenant`/`--kinds`/`--interval` filters.
 | `ff_workflow_templates` | `FF_WORKFLOW_TEMPLATES` | CLI / task lifecycle | InDev | `false` | KDI-039 | Step-key driven workflow templates; `kdi create --workflow-template-id`, `kdi step`, `kdi workflows`.
 | `ff_triage_automation` | `FF_TRIAGE_AUTOMATION` | CLI / task lifecycle | InDev | `false` | KDI-040 | LLM-powered triage automation; `kdi specify` (LLM path) and `kdi decompose`. |
-| `ff_swarm_mode` | `FF_SWARM_MODE` | CLI / dispatcher | Planned | `false` | KDI-041 | Multi-agent task graph: `kdi swarm` creates parallel workers, a verifier, and a synthesizer bound by dependencies.
+| `ff_swarm_mode` | `FF_SWARM_MODE` | CLI / dispatcher | Planned | `false` | KDI-041 | Multi-agent task graph: `kdi swarm` creates parallel workers, a verifier, and a synthesizer bound by dependencies. |
+| `ff_goal_mode` | `FF_GOAL_MODE` | CLI / create + dispatcher | InDev | `false` | KDI-038 | Ralph-style multi-turn goal loop; `kdi create --goal`/`--goal-max-turns`/`--goal-judge`; dispatcher decrements a turn budget and requeues until the (v1 approximated) judge says done.
 
 ## Lifecycle Notes
 
@@ -572,6 +573,23 @@ stateDiagram-v2
   - The orchestrator auto-completes when the synthesizer completes, or auto-blocks if any swarm child fails.
   - `--dry-run` prints the planned graph without mutating state.
 - **Rollback / deactivation:** Set `FF_SWARM_MODE=false` to reject the `kdi swarm` command and disable the dispatcher swarm watcher.
+- **Deprecation plan:** N/A
+
+### `ff_goal_mode` — InDev
+
+- **Owner:** kdi core team
+- **BRD:** [BRD-KDI-038](brd-kdi-038-goal-mode.md)
+- **Status transitions:**
+  - `InDev` → `Active` when the goal loop is stable and the v1 judge approximation is replaced with a real judge profile integration.
+- **Schema note:** Adds `goal_mode INTEGER NOT NULL DEFAULT 0`, `goal_max_turns INTEGER`, `goal_remaining_turns INTEGER`, and `goal_judge_profile TEXT` columns to `tasks` with an `idx_tasks_goal_mode` index. Also extends `task_runs.outcome` CHECK to include `'goal_continue'`. Migrations are additive; the table is only recreated when the new enum value is missing.
+- **Activation criteria:**
+  - `kdi create --goal --goal-max-turns <n> --goal-judge <profile>` creates a goal-mode task with `goal_mode = 1`, `goal_remaining_turns = n`, and `goal_judge_profile = <profile>`.
+  - `--goal` is rejected with a clear error when `--goal-max-turns` is missing, when `--goal-max-turns` is non-positive, or when the judge profile is unknown.
+  - `--goal*` options are rejected when `FF_GOAL_MODE=false`.
+  - The dispatcher requeues a goal task with `goal_remaining_turns` decremented when the (v1 approximated) judge returns "not satisfied", and blocks the task with reason "Goal max turns exhausted" when the budget hits 0.
+  - Unblocking a goal task whose `block_reason` is "Goal max turns exhausted" resets `goal_remaining_turns` to `goal_max_turns`.
+  - `kdi show <id>` displays `Goal: <remaining>/<max> turns, judge=<profile>` when the flag is enabled and the task is goal-mode.
+- **Rollback / deactivation:** Set `FF_GOAL_MODE=false` to reject the goal-mode CLI options and skip the dispatcher goal loop; existing goal-mode rows are dispatched as normal single-turn tasks.
 - **Deprecation plan:** N/A
 
 ### `ff_kanban_dispatch` — Planned

@@ -31,10 +31,11 @@ import { getRuns, getRunsFiltered } from "../models/taskRun";
 import { getEvents, tailEvents, getRecentEvents, getEventsAfter, type WatchFilters } from "../models/taskEvent";
 import { atomicClaim, reclaimTask, heartbeat } from "../models/claim";
 import { getTaskLogPath } from "../observability";
-import { isEnabled, FF_SCHEDULED_STATUS, FF_REVIEW_STATUS, FF_COMPLETE_METADATA, FF_PRIORITY_INTEGER, FF_SKILLS_ARRAY, FF_MAX_RUNTIME, FF_MAX_RETRIES, FF_TENANT_NAMESPACE, FF_CREATED_BY, FF_MODEL_OVERRIDE, FF_DEFAULT_WORKDIR, FF_WORKER_LOG_CAPTURE, FF_ASSIGN_REASSIGN, FF_CRASH_GRACE_PERIOD, FF_HEARTBEAT, FF_RATE_LIMIT_EXIT_CODE, FF_TASK_ATTACHMENTS, FF_LIST_FILTERS_SORT, FF_SHOW_RUN_FILTERING, FF_BULK_OPERATIONS, FF_COMMENT_ENHANCEMENTS, FF_WATCH_FILTERS, FF_WORKFLOW_TEMPLATES, FF_TRIAGE_AUTOMATION } from "../flags";
+import { isEnabled, FF_SCHEDULED_STATUS, FF_REVIEW_STATUS, FF_COMPLETE_METADATA, FF_PRIORITY_INTEGER, FF_SKILLS_ARRAY, FF_MAX_RUNTIME, FF_MAX_RETRIES, FF_TENANT_NAMESPACE, FF_CREATED_BY, FF_MODEL_OVERRIDE, FF_DEFAULT_WORKDIR, FF_WORKER_LOG_CAPTURE, FF_ASSIGN_REASSIGN, FF_CRASH_GRACE_PERIOD, FF_HEARTBEAT, FF_RATE_LIMIT_EXIT_CODE, FF_TASK_ATTACHMENTS, FF_LIST_FILTERS_SORT, FF_SHOW_RUN_FILTERING, FF_BULK_OPERATIONS, FF_COMMENT_ENHANCEMENTS, FF_WATCH_FILTERS, FF_WORKFLOW_TEMPLATES, FF_TRIAGE_AUTOMATION, FF_GOAL_MODE } from "../flags";
 import { getWorkflowTemplate, validateStepKey, advanceTaskStep, setTaskStep } from "../models/workflowTemplate";
 import { resolveBoard } from "../resolveBoard";
 import { buildSpecifyPrompt, buildDecomposePrompt, callTriageLlm } from "../llm";
+import { getProfile } from "../profiles";
 
 const VALID_STATUSES = ["triage", "todo", "scheduled", "ready", "running", "done", "blocked", "review"] as const;
 type ValidStatus = typeof VALID_STATUSES[number];
@@ -153,7 +154,10 @@ export const createTaskCommand = new Command("create")
   .option("--session <session_id>", "Originating session ID. Feature-flagged.")
   .option("--workflow-template-id <id>", "Workflow template ID. Feature-flagged.")
   .option("--step-key <key>", "Initial workflow step key (requires --workflow-template-id). Feature-flagged.")
-  .action(function (this: Command, title: string, options: { board?: string; assignee?: string; body?: string; triage?: boolean; initialStatus?: string; at?: string; priority?: string; idempotencyKey?: string; maxRuntime?: string; maxRetries?: string; tenant?: string; skill: string[]; createdBy?: string; model?: string; workspace?: string; session?: string; workflowTemplateId?: string; stepKey?: string }) {
+  .option("--goal", "Create as a goal-mode task (Ralph-style multi-turn loop). Requires --goal-max-turns and a judge profile. Feature-flagged.")
+  .option("--goal-max-turns <n>", "Maximum number of turns for a goal-mode task (positive integer). Requires --goal. Feature-flagged.")
+  .option("--goal-judge <profile>", "Judge profile name for a goal-mode task. Falls back to KDI_GOAL_JUDGE_PROFILE env. Requires --goal. Feature-flagged.")
+  .action(function (this: Command, title: string, options: { board?: string; assignee?: string; body?: string; triage?: boolean; initialStatus?: string; at?: string; priority?: string; idempotencyKey?: string; maxRuntime?: string; maxRetries?: string; tenant?: string; skill: string[]; createdBy?: string; model?: string; workspace?: string; session?: string; workflowTemplateId?: string; stepKey?: string; goal?: boolean; goalMaxTurns?: string; goalJudge?: string }) {
     try {
       if (!title || title.trim() === "") {
         throw new Error("Title is required.");
@@ -322,6 +326,46 @@ export const createTaskCommand = new Command("create")
         throw new Error("--step-key requires --workflow-template-id.");
       }
 
+      // KDI-038: goal-mode validation.
+      const goalOptionsUsed = options.goal || options.goalMaxTurns !== undefined || options.goalJudge !== undefined;
+      if (goalOptionsUsed && !isEnabled(FF_GOAL_MODE)) {
+        throw new Error("Goal mode feature is not enabled.");
+      }
+      if (options.goalMaxTurns !== undefined && !options.goal) {
+        throw new Error("--goal-max-turns requires --goal.");
+      }
+
+      let goalMode: boolean | undefined;
+      let goalMaxTurns: number | undefined;
+      let goalJudgeProfile: string | undefined;
+
+      if (options.goal) {
+        if (options.goalMaxTurns === undefined) {
+          throw new Error("--goal requires --goal-max-turns <n>.");
+        }
+        if (options.goalMaxTurns.trim() === "") {
+          throw new Error("Goal max turns cannot be empty.");
+        }
+        const parsedTurns = Number(options.goalMaxTurns);
+        if (!Number.isInteger(parsedTurns) || parsedTurns <= 0) {
+          throw new Error(`--goal-max-turns must be a positive integer, got "${options.goalMaxTurns}"`);
+        }
+        goalMaxTurns = parsedTurns;
+
+        const judge = options.goalJudge?.trim() || Bun.env.KDI_GOAL_JUDGE_PROFILE?.trim() || "";
+        if (judge === "") {
+          throw new Error("--goal requires a judge profile via --goal-judge or KDI_GOAL_JUDGE_PROFILE.");
+        }
+        // Validate the profile is known at create time so we fail fast on typos.
+        try {
+          getProfile(judge);
+        } catch {
+          throw new Error(`Unknown judge profile "${judge}".`);
+        }
+        goalJudgeProfile = judge;
+        goalMode = true;
+      }
+
       const task = createTask({
         board_id: board.id,
         title,
@@ -342,6 +386,9 @@ export const createTaskCommand = new Command("create")
         session_id: options.session,
         workflow_template_id: workflowTemplateId,
         current_step_key: currentStepKey,
+        goal_mode: goalMode,
+        goal_max_turns: goalMaxTurns,
+        goal_judge_profile: goalJudgeProfile,
       });
       console.log(task.id);
     } catch (err: any) {
@@ -500,6 +547,11 @@ export const showTaskCommand = new Command("show")
         if (task.current_step_key) {
           console.log(`Current step: ${task.current_step_key}`);
         }
+      }
+      if (isEnabled(FF_GOAL_MODE) && task.goal_mode) {
+        const max = task.goal_max_turns ?? 0;
+        const remaining = task.goal_remaining_turns ?? 0;
+        console.log(`Goal: ${remaining}/${max} turns, judge=${task.goal_judge_profile ?? ""}`);
       }
 
       const comments = getComments(id);
