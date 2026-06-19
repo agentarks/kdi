@@ -37,6 +37,7 @@ export const FF_WORKFLOW_TEMPLATES = "FF_WORKFLOW_TEMPLATES";
 export const FF_TRIAGE_AUTOMATION = "FF_TRIAGE_AUTOMATION";
 export const FF_SWARM_MODE = "FF_SWARM_MODE";
 export const FF_DISPATCHER_PRESENCE_WARNING = "FF_DISPATCHER_PRESENCE_WARNING";
+export const FF_GOAL_MODE = "FF_GOAL_MODE";
 
 const flagRegistry = new Map<string, boolean>();
 const flagOverrides = new Map<string, boolean>();
@@ -117,3 +118,4 @@ registerFlag(FF_WORKFLOW_TEMPLATES, false);
 registerFlag(FF_TRIAGE_AUTOMATION, false);
 registerFlag(FF_SWARM_MODE, false);
 registerFlag(FF_DISPATCHER_PRESENCE_WARNING, false);
+registerFlag(FF_GOAL_MODE, false);
