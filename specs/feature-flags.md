@@ -58,13 +58,16 @@ stateDiagram-v2
 | `ff_notify_subs` | `FF_NOTIFY_SUBS` | CLI / notifier watcher | InDev | `false` | KDI-025 | Notification subscriptions; `notify-subscribe/list/unsubscribe` commands; notifier watcher in dispatcher tick.
 | `ff_list_filters_sort` | `FF_LIST_FILTERS_SORT` | CLI / task listing | InDev | `false` | KDI-030 | `kdi list` filters (`--mine`, `--session`, `--archived`, workflow/step-key) and sort options; `create --session`.
 | `ff_show_run_filtering` | `FF_SHOW_RUN_FILTERING` | CLI / task inspection | InDev | `false` | KDI-031 | `kdi show` run section and `--state-type`/`--state-name` run filtering.
+| `ff_runs_filtering` | `FF_RUNS_FILTERING` | CLI / task inspection | InDev | `false` | KDI-036 | `kdi runs` `--state-type`/`--state-name` run filtering.
 | `ff_bulk_operations` | `FF_BULK_OPERATIONS` | CLI / task lifecycle | InDev | `false` | KDI-032 | Bulk `block`/`promote`/`archive --rm`; `promote --force` and `--dry-run`.
 | `ff_comment_enhancements` | `FF_COMMENT_ENHANCEMENTS` | CLI / task metadata | InDev | `false` | KDI-033 | `kdi comment --author`/`--max-len` and author display in `kdi show`.
 | `ff_dispatch_controls` | `FF_DISPATCH_CONTROLS` | CLI / dispatcher | InDev | `false` | KDI-034 | `kdi dispatch --failure-limit` per-pass failure threshold.
 | `ff_watch_filters` | `FF_WATCH_FILTERS` | CLI / observability | InDev | `false` | KDI-035 | `kdi watch --assignee`/`--tenant`/`--kinds`/`--interval` filters.
 | `ff_workflow_templates` | `FF_WORKFLOW_TEMPLATES` | CLI / task lifecycle | InDev | `false` | KDI-039 | Step-key driven workflow templates; `kdi create --workflow-template-id`, `kdi step`, `kdi workflows`.
 | `ff_triage_automation` | `FF_TRIAGE_AUTOMATION` | CLI / task lifecycle | InDev | `false` | KDI-040 | LLM-powered triage automation; `kdi specify` (LLM path) and `kdi decompose`. |
-| `ff_swarm_mode` | `FF_SWARM_MODE` | CLI / dispatcher | InDev | `false` | KDI-041 | Multi-agent task graph: `kdi swarm` creates parallel workers, a verifier, and a synthesizer bound by dependencies.
+| `ff_swarm_mode` | `FF_SWARM_MODE` | CLI / dispatcher | InDev | `false` | KDI-041 | Multi-agent task graph: `kdi swarm` creates parallel workers, a verifier, and a synthesizer bound by dependencies. |
+| `ff_dispatcher_presence_warning` | `FF_DISPATCHER_PRESENCE_WARNING` | CLI / dispatcher + create | InDev | `false` | KDI-037 | `kdi create` warns on stderr when no live dispatcher is detected for the target board; `--no-dispatcher-warning` per-invocation escape. |
+| `ff_goal_mode` | `FF_GOAL_MODE` | CLI / create + dispatcher | InDev | `false` | KDI-038 | Ralph-style multi-turn goal loop; `kdi create --goal`/`--goal-max-turns`/`--goal-judge`; dispatcher decrements a turn budget and requeues until the (v1 approximated) judge says done.
 
 ## Lifecycle Notes
 
@@ -468,6 +471,21 @@ stateDiagram-v2
 - **Rollback / deactivation:** Set `FF_SHOW_RUN_FILTERING=false` to hide the run section and reject the filter options.
 - **Deprecation plan:** N/A
 
+### `ff_runs_filtering` — InDev
+
+- **Owner:** kdi core team
+- **BRD:** [BRD-KDI-036](brd-kdi-036-runs-filtering.md)
+- **Status transitions:**
+  - `Planned` → `InDev` when `kdi runs --state-type`/`--state-name` filtering is implemented.
+- **Schema note:** No schema changes; reuses the `getRunsFiltered(taskId, filter)` helper from KDI-031 and the existing `task_runs` table plus `idx_runs_task` index.
+- **Activation criteria:**
+  - `FF_RUNS_FILTERING=true kdi runs <task_id> --state-type {status,outcome} --state-name VALUE` filters the listed runs to matching rows.
+  - Unfiltered `kdi runs <task_id>` output is byte-for-byte unchanged when the flag is disabled or no filter options are supplied.
+  - Partial pairs and invalid `--state-type` values are rejected with clear errors.
+  - `getRunsFiltered` model helper from KDI-031 is reused as the single source of truth for SQL.
+- **Rollback / deactivation:** Set `FF_RUNS_FILTERING=false` to reject `--state-type`/`--state-name` and keep the unfiltered `kdi runs` behavior.
+- **Deprecation plan:** N/A
+
 ### `ff_bulk_operations` — InDev
 
 - **Owner:** kdi core team
@@ -572,6 +590,38 @@ stateDiagram-v2
   - The orchestrator auto-completes when the synthesizer completes, or auto-blocks if any swarm child fails.
   - `--dry-run` prints the planned graph without mutating state.
 - **Rollback / deactivation:** Set `FF_SWARM_MODE=false` to reject the `kdi swarm` command and disable the dispatcher swarm watcher.
+- **Deprecation plan:** N/A
+
+### `ff_dispatcher_presence_warning` — InDev
+
+- **Owner:** kdi core team
+- **BRD:** [BRD-KDI-037](brd-kdi-037-dispatcher-presence-warning.md)
+- **Status transitions:**
+  - `InDev` → `Active` when the warning is safe to enable by default.
+- **Activation criteria:**
+  - `FF_DISPATCHER_PRESENCE_WARNING=true kdi create ...` probes for a live dispatcher and prints a single warning to stderr when none is detected.
+  - The warning never blocks task creation and the command exits `0`.
+  - `--no-dispatcher-warning` per-invocation flag suppresses the warning even when the feature flag is on.
+  - When the flag is off, `kdi create` performs no probe, emits no warning, and ignores `--no-dispatcher-warning`.
+- **Schema note:** No schema changes. The probe reads `<boardDataDir>/dispatcher.pid` which the dispatcher writes when it starts and removes on clean shutdown.
+- **Rollback / deactivation:** Set `FF_DISPATCHER_PRESENCE_WARNING=false` to disable the probe and warning entirely.
+- **Deprecation plan:** N/A
+
+### `ff_goal_mode` — InDev
+
+- **Owner:** kdi core team
+- **BRD:** [BRD-KDI-038](brd-kdi-038-goal-mode.md)
+- **Status transitions:**
+  - `InDev` → `Active` when the goal loop is stable and the v1 judge approximation is replaced with a real judge profile integration.
+- **Schema note:** Adds `goal_mode INTEGER NOT NULL DEFAULT 0`, `goal_max_turns INTEGER`, `goal_remaining_turns INTEGER`, and `goal_judge_profile TEXT` columns to `tasks` with an `idx_tasks_goal_mode` index. Also extends `task_runs.outcome` CHECK to include `'goal_continue'`. Migrations are additive; the table is only recreated when the new enum value is missing.
+- **Activation criteria:**
+  - `kdi create --goal --goal-max-turns <n> --goal-judge <profile>` creates a goal-mode task with `goal_mode = 1`, `goal_remaining_turns = n`, and `goal_judge_profile = <profile>`.
+  - `--goal` is rejected with a clear error when `--goal-max-turns` is missing, when `--goal-max-turns` is non-positive, or when the judge profile is unknown.
+  - `--goal*` options are rejected when `FF_GOAL_MODE=false`.
+  - The dispatcher requeues a goal task with `goal_remaining_turns` decremented when the (v1 approximated) judge returns "not satisfied", and blocks the task with reason "Goal max turns exhausted" when the budget hits 0.
+  - Unblocking a goal task whose `block_reason` is "Goal max turns exhausted" resets `goal_remaining_turns` to `goal_max_turns`.
+  - `kdi show <id>` displays `Goal: <remaining>/<max> turns, judge=<profile>` when the flag is enabled and the task is goal-mode.
+- **Rollback / deactivation:** Set `FF_GOAL_MODE=false` to reject the goal-mode CLI options and skip the dispatcher goal loop; existing goal-mode rows are dispatched as normal single-turn tasks.
 - **Deprecation plan:** N/A
 
 ### `ff_kanban_dispatch` — Planned

@@ -19,7 +19,7 @@ export interface TaskRun {
   started_at: number;
   spawned_at: number | null;
   ended_at: number | null;
-  outcome: "completed" | "blocked" | "crashed" | "timed_out" | "spawn_failed" | "gave_up" | "reclaimed" | null;
+  outcome: "completed" | "blocked" | "crashed" | "timed_out" | "spawn_failed" | "gave_up" | "reclaimed" | "goal_continue" | null;
   summary: string | null;
   metadata: string | null;
   error: string | null;
@@ -205,6 +205,8 @@ function outcomeToStatus(outcome: NonNullable<TaskRun["outcome"]>): TaskRun["sta
     case "gave_up":
       return "failed";
     case "reclaimed":
+      return "released";
+    case "goal_continue":
       return "released";
   }
 }

@@ -19,6 +19,8 @@ import {
   reassignTask,
   promoteTaskAdvanced,
   archiveTaskHard,
+  decrementGoalTurns,
+  resetGoalTurns,
   type Task,
 } from "../src/models/task";
 import { createBoard } from "../src/models/board";
@@ -1214,5 +1216,107 @@ describe("archiveTaskHard", () => {
     // Clean up temp file
     const { rmSync } = require("node:fs");
     try { rmSync(tmpFile, { force: true }); } catch {}
+  });
+});
+
+// KDI-038: goal-mode model helpers
+describe("goal mode", () => {
+  beforeEach(() => {
+    cleanupDb(TEST_DB);
+    initDb(TEST_DB);
+  });
+
+  afterEach(() => {
+    cleanupDb(TEST_DB);
+  });
+
+  it("createTask persists goal_mode, goal_max_turns, goal_remaining_turns, goal_judge_profile", () => {
+    const board = createBoard("goal-board", "/tmp/goal-board");
+    const task = createTask({
+      board_id: board.id,
+      title: "Refactor auth",
+      goal_mode: true,
+      goal_max_turns: 5,
+      goal_judge_profile: "ralph",
+    });
+
+    expect(task.goal_mode).toBe(true);
+    expect(task.goal_max_turns).toBe(5);
+    expect(task.goal_remaining_turns).toBe(5);
+    expect(task.goal_judge_profile).toBe("ralph");
+  });
+
+  it("createTask without goal_mode leaves goal fields null/false", () => {
+    const board = createBoard("goal-board", "/tmp/goal-board");
+    const task = createTask({ board_id: board.id, title: "Normal task" });
+
+    expect(task.goal_mode).toBe(false);
+    expect(task.goal_max_turns).toBeNull();
+    expect(task.goal_remaining_turns).toBeNull();
+    expect(task.goal_judge_profile).toBeNull();
+  });
+
+  it("showTask round-trips goal columns through the DB", () => {
+    const board = createBoard("goal-board", "/tmp/goal-board");
+    const created = createTask({
+      board_id: board.id,
+      title: "Refactor",
+      goal_mode: true,
+      goal_max_turns: 3,
+      goal_judge_profile: "ralph",
+    });
+
+    const fetched = showTask(created.id);
+    expect(fetched).not.toBeNull();
+    expect(fetched!.goal_mode).toBe(true);
+    expect(fetched!.goal_max_turns).toBe(3);
+    expect(fetched!.goal_remaining_turns).toBe(3);
+    expect(fetched!.goal_judge_profile).toBe("ralph");
+  });
+
+  it("decrementGoalTurns reduces remaining by 1", () => {
+    const board = createBoard("goal-board", "/tmp/goal-board");
+    const task = createTask({
+      board_id: board.id,
+      title: "Decrement test",
+      goal_mode: true,
+      goal_max_turns: 3,
+      goal_judge_profile: "ralph",
+    });
+
+    const updated = decrementGoalTurns(task.id);
+    expect(updated.goal_remaining_turns).toBe(2);
+  });
+
+  it("decrementGoalTurns decrements to 0", () => {
+    const board = createBoard("goal-board", "/tmp/goal-board");
+    const task = createTask({
+      board_id: board.id,
+      title: "Decrement to zero",
+      goal_mode: true,
+      goal_max_turns: 1,
+      goal_judge_profile: "ralph",
+    });
+
+    const updated = decrementGoalTurns(task.id);
+    expect(updated.goal_remaining_turns).toBe(0);
+  });
+
+  it("resetGoalTurns restores remaining to max", () => {
+    const board = createBoard("goal-board", "/tmp/goal-board");
+    const task = createTask({
+      board_id: board.id,
+      title: "Reset test",
+      goal_mode: true,
+      goal_max_turns: 5,
+      goal_judge_profile: "ralph",
+    });
+
+    decrementGoalTurns(task.id);
+    decrementGoalTurns(task.id);
+    decrementGoalTurns(task.id);
+
+    const reset = resetGoalTurns(task.id);
+    expect(reset.goal_remaining_turns).toBe(5);
   });
 });

@@ -6,10 +6,11 @@ import { TASK_COLUMNS, type Task, promoteScheduledTasks, hydrateTask, showTask }
 import { finishRun, updateRun } from "./models/taskRun";
 import { addEvent } from "./models/taskEvent";
 import { atomicClaim, heartbeat } from "./models/claim";
+import { decrementGoalTurns } from "./models/task";
 import { isBlockedByDependencies } from "./models/dependency";
 import { getProfile, substituteCommand } from "./profiles";
 import { createWorktree, removeWorktree, type RemoveWorktreeResult } from "./worktree";
-import { isEnabled, FF_ENABLE_KANBAN_DISPATCH, FF_WORKER_LOG_CAPTURE, FF_CRASH_GRACE_PERIOD, FF_HEARTBEAT, FF_RATE_LIMIT_EXIT_CODE, FF_NOTIFY_SUBS, FF_SWARM_MODE } from "./flags";
+import { isEnabled, FF_ENABLE_KANBAN_DISPATCH, FF_WORKER_LOG_CAPTURE, FF_CRASH_GRACE_PERIOD, FF_HEARTBEAT, FF_RATE_LIMIT_EXIT_CODE, FF_NOTIFY_SUBS, FF_SWARM_MODE, FF_GOAL_MODE } from "./flags";
 import { runNotifierWatcher, getLastSeenEventId, setLastSeenEventId } from "./notifiers";
 import {
   recordTick,
@@ -293,6 +294,52 @@ function isProcessAlive(pid: number): boolean {
   }
 }
 
+// ponytail: v1 judge approximation. A harness that exits 0 is treated as "goal satisfied";
+// any non-zero exit is treated as "not satisfied, run another turn". When the real judge
+// lands, this helper will spawn task.goal_judge_profile with KDI_GOAL_* env vars and parse
+// the verdict from KDI_GOAL_VERDICT_FILE (schema: { verdict: "done"|"continue", ... }).
+function isGoalSatisfied(exitCode: number): boolean {
+  return exitCode === 0;
+}
+
+function handleGoalContinue(task: Task, result: string, runError: string, runId: number | null): void {
+  const db = getDb();
+  const max = task.goal_max_turns ?? 0;
+  const remainingBefore = task.goal_remaining_turns ?? 0;
+  const turn = max - remainingBefore + 1;
+
+  const updated = decrementGoalTurns(task.id);
+  const remainingAfter = updated.goal_remaining_turns ?? 0;
+
+  if (remainingAfter <= 0) {
+    // Exhausted — block the task.
+    const reason = "Goal max turns exhausted";
+    db.run(
+      `UPDATE tasks SET status = 'blocked', result = ?, block_reason = ?, claim_lock = NULL, claim_expires = NULL, started_at = NULL, rate_limited_until = NULL, updated_at = unixepoch() WHERE id = ?`,
+      [result, reason, task.id]
+    );
+    if (runId !== null) {
+      finishRun(runId, "blocked", null, null, runError);
+    }
+    addEvent(task.id, "blocked", { reason, run_error: runError }, runId ?? undefined);
+    addEvent(task.id, "goal_turn", { turn, max_turns: max, remaining_after: 0, verdict: "exhausted" }, runId ?? undefined);
+    return;
+  }
+
+  // Requeue for another turn. Preserve context, reset claim.
+  const note = runError ? `[turn ${turn}] ${runError}` : "";
+  const newResult = note ? (task.result ? `${task.result}\n${note}` : note) : task.result;
+  db.run(
+    `UPDATE tasks SET status = 'ready', result = ?, claim_lock = NULL, claim_expires = NULL, started_at = NULL, current_run_id = NULL, rate_limited_until = NULL, updated_at = unixepoch() WHERE id = ?`,
+    [newResult, task.id]
+  );
+  if (runId !== null) {
+    finishRun(runId, "goal_continue", null, null, runError);
+  }
+  addEvent(task.id, "reclaimed", { reason: "goal continue", run_error: runError }, runId ?? undefined);
+  addEvent(task.id, "goal_turn", { turn, max_turns: max, remaining_after: remainingAfter, verdict: "continue" }, runId ?? undefined);
+}
+
 function handleCrash(task: Task, reason: string, runId: number | null): void {
   const db = getDb();
   const consecutiveFailures = task.consecutive_failures + 1;
@@ -521,6 +568,19 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
       if (skillsValue) harnessEnv.KDI_SKILLS = skillsValue;
       if (modelValue) harnessEnv.KDI_MODEL = modelValue;
       if (stepKey) harnessEnv.KDI_CURRENT_STEP_KEY = stepKey;
+      // KDI-038: pass goal-mode context to the harness so it knows which turn this is,
+      // how many turns remain, and where the judge can write its verdict.
+      if (isEnabled(FF_GOAL_MODE) && task.goal_mode) {
+        const goalMax = task.goal_max_turns ?? 0;
+        const goalRemaining = task.goal_remaining_turns ?? 0;
+        const goalTurn = Math.max(1, goalMax - goalRemaining + 1);
+        harnessEnv.KDI_GOAL_MODE = "true";
+        harnessEnv.KDI_GOAL_MAX_TURNS = String(goalMax);
+        harnessEnv.KDI_GOAL_REMAINING_TURNS = String(goalRemaining);
+        harnessEnv.KDI_GOAL_TURN = String(goalTurn);
+        harnessEnv.KDI_GOAL_CONTEXT = task.result ?? "";
+        harnessEnv.KDI_GOAL_VERDICT_FILE = `${worktreePath}/.kdi-goal-verdict.json`;
+      }
       const effectiveHarnessEnv = Object.keys(harnessEnv).length > 0 ? harnessEnv : undefined;
       const harnessTimeoutMs = task.max_runtime_seconds ? task.max_runtime_seconds * 1000 : undefined;
       const harnessStart = Date.now();
@@ -533,6 +593,25 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
 
       if (runId !== null && pid) {
         updateRun(runId, { worker_pid: pid });
+      }
+
+      // KDI-038: goal-mode overrides the normal single-turn outcomes.
+      // v1 approximation: harness exit 0 = goal satisfied; any non-zero exit = not satisfied.
+      if (isEnabled(FF_GOAL_MODE) && task.goal_mode) {
+        if (isGoalSatisfied(exitCode)) {
+          const goalMax = task.goal_max_turns ?? 0;
+          const goalRemaining = task.goal_remaining_turns ?? 0;
+          const goalTurn = goalMax - goalRemaining + 1;
+          addEvent(task.id, "goal_turn", { turn: goalTurn, max_turns: goalMax, remaining_after: goalRemaining, verdict: "done" }, runId ?? undefined);
+          finishTask(task, stdout, runId);
+          processed++;
+        } else {
+          recordAgentError(profile.agent ?? profile.name);
+          handleGoalContinue(task, stdout, `Harness failed (exit ${exitCode}): ${stderr || "unknown error"}`, runId);
+          failuresThisPass++;
+        }
+        spawned++;
+        continue;
       }
 
       if (exitCode === 0) {

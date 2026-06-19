@@ -66,7 +66,11 @@ CREATE TABLE IF NOT EXISTS tasks (
   session_id TEXT,
   workflow_template_id TEXT,
   current_step_key TEXT,
-  swarm_parent_id INTEGER
+  swarm_parent_id INTEGER,
+  goal_mode INTEGER NOT NULL DEFAULT 0,
+  goal_max_turns INTEGER,
+  goal_remaining_turns INTEGER,
+  goal_judge_profile TEXT
 );
 
 CREATE TABLE IF NOT EXISTS comments (
@@ -97,7 +101,7 @@ CREATE TABLE IF NOT EXISTS task_runs (
   started_at INTEGER NOT NULL,
   spawned_at INTEGER,
   ended_at INTEGER,
-  outcome TEXT CHECK (outcome IN ('completed', 'blocked', 'crashed', 'timed_out', 'spawn_failed', 'gave_up', 'reclaimed')),
+  outcome TEXT CHECK (outcome IN ('completed', 'blocked', 'crashed', 'timed_out', 'spawn_failed', 'gave_up', 'reclaimed', 'goal_continue')),
   summary TEXT,
   metadata TEXT,
   error TEXT
@@ -429,6 +433,26 @@ export function initDb(path?: string): Database {
     // Partial unique index for race-safe idempotency
     dbInstance.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_active_idempotency ON tasks(board_id, idempotency_key) WHERE archived_at IS NULL");
 
+    // KDI-038: add goal-mode columns BEFORE the tasks_new table-recreate migration below,
+    // so the SELECT in tasks_new can reference them on legacy databases.
+    const preRecreateTableInfo = dbInstance.query("PRAGMA table_info(tasks)").all() as any[];
+    const hasPreGoalMode = preRecreateTableInfo.some((col) => col.name === "goal_mode");
+    if (!hasPreGoalMode) {
+      dbInstance.exec("ALTER TABLE tasks ADD COLUMN goal_mode INTEGER NOT NULL DEFAULT 0");
+    }
+    const hasPreGoalMaxTurns = preRecreateTableInfo.some((col) => col.name === "goal_max_turns");
+    if (!hasPreGoalMaxTurns) {
+      dbInstance.exec("ALTER TABLE tasks ADD COLUMN goal_max_turns INTEGER");
+    }
+    const hasPreGoalRemainingTurns = preRecreateTableInfo.some((col) => col.name === "goal_remaining_turns");
+    if (!hasPreGoalRemainingTurns) {
+      dbInstance.exec("ALTER TABLE tasks ADD COLUMN goal_remaining_turns INTEGER");
+    }
+    const hasPreGoalJudgeProfile = preRecreateTableInfo.some((col) => col.name === "goal_judge_profile");
+    if (!hasPreGoalJudgeProfile) {
+      dbInstance.exec("ALTER TABLE tasks ADD COLUMN goal_judge_profile TEXT");
+    }
+
     // Migrate: add 'triage' / 'review' / 'scheduled' to status CHECK constraint via table recreation
     const createSql = dbInstance.query(
       "SELECT sql FROM sqlite_master WHERE type='table' AND name='tasks'"
@@ -479,14 +503,18 @@ export function initDb(path?: string): Database {
             session_id TEXT,
             workflow_template_id TEXT,
             current_step_key TEXT,
-            swarm_parent_id INTEGER
+            swarm_parent_id INTEGER,
+            goal_mode INTEGER NOT NULL DEFAULT 0,
+            goal_max_turns INTEGER,
+            goal_remaining_turns INTEGER,
+            goal_judge_profile TEXT
           );
           INSERT INTO tasks_new
-            (id, board_id, title, body, assignee, status, priority, tenant, workspace_kind, workspace, branch, result, summary, block_reason, schedule_reason, review_reason, scheduled_at, created_by, skills, created_at, updated_at, started_at, archived_at, current_run_id, claim_lock, claim_expires, last_heartbeat_at, max_runtime_seconds, max_retries, consecutive_failures, idempotency_key, model_override, rate_limited_until, session_id, workflow_template_id, current_step_key, swarm_parent_id)
+            (id, board_id, title, body, assignee, status, priority, tenant, workspace_kind, workspace, branch, result, summary, block_reason, schedule_reason, review_reason, scheduled_at, created_by, skills, created_at, updated_at, started_at, archived_at, current_run_id, claim_lock, claim_expires, last_heartbeat_at, max_runtime_seconds, max_retries, consecutive_failures, idempotency_key, model_override, rate_limited_until, session_id, workflow_template_id, current_step_key, swarm_parent_id, goal_mode, goal_max_turns, goal_remaining_turns, goal_judge_profile)
           SELECT
             id, board_id, title, body, assignee, status,
             CASE priority WHEN 'low' THEN 1 WHEN 'medium' THEN 2 WHEN 'high' THEN 3 ELSE COALESCE(priority, 0) END,
-            tenant, workspace_kind, workspace, branch, result, summary, block_reason, schedule_reason, review_reason, scheduled_at, COALESCE(created_by, 'unknown'), skills, created_at, updated_at, started_at, archived_at, current_run_id, claim_lock, claim_expires, last_heartbeat_at, max_runtime_seconds, max_retries, COALESCE(consecutive_failures, 0), idempotency_key, model_override, rate_limited_until, NULL, NULL, NULL, NULL AS swarm_parent_id
+            tenant, workspace_kind, workspace, branch, result, summary, block_reason, schedule_reason, review_reason, scheduled_at, COALESCE(created_by, 'unknown'), skills, created_at, updated_at, started_at, archived_at, current_run_id, claim_lock, claim_expires, last_heartbeat_at, max_runtime_seconds, max_retries, COALESCE(consecutive_failures, 0), idempotency_key, model_override, rate_limited_until, NULL, NULL, NULL, NULL AS swarm_parent_id, COALESCE(goal_mode, 0), goal_max_turns, goal_remaining_turns, goal_judge_profile
           FROM tasks;
           DROP TABLE tasks;
           ALTER TABLE tasks_new RENAME TO tasks;
@@ -566,6 +594,54 @@ export function initDb(path?: string): Database {
       dbInstance.exec("ALTER TABLE tasks ADD COLUMN swarm_parent_id INTEGER");
     }
     dbInstance.exec("CREATE INDEX IF NOT EXISTS idx_tasks_swarm_parent ON tasks(board_id, swarm_parent_id)");
+
+    // Goal-mode columns are added above (before the tasks_new table-recreate migration).
+    // The index is created here so legacy databases get it after the table is in its
+    // final shape.
+    dbInstance.exec("CREATE INDEX IF NOT EXISTS idx_tasks_goal_mode ON tasks(status, goal_mode)");
+
+    // Migrate: extend task_runs.outcome CHECK to include 'goal_continue' (KDI-038).
+    // Mirrors the existing tasks_new table-recreate pattern: only recreate if the
+    // current CHECK constraint does not already contain the new value.
+    const runsCreateSql = dbInstance.query(
+      "SELECT sql FROM sqlite_master WHERE type='table' AND name='task_runs'"
+    ).get() as { sql: string } | undefined;
+    const hasGoalContinueOutcome = runsCreateSql?.sql?.includes("'goal_continue'");
+    if (!hasGoalContinueOutcome) {
+      const migrateOutcomes = dbInstance.transaction(() => {
+        dbInstance!.exec(`
+          CREATE TABLE task_runs_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id INTEGER NOT NULL REFERENCES tasks(id),
+            profile TEXT,
+            step_key TEXT,
+            status TEXT NOT NULL CHECK (status IN ('running', 'done', 'blocked', 'crashed', 'timed_out', 'failed', 'released')),
+            claim_lock TEXT,
+            claim_expires INTEGER,
+            worker_pid INTEGER,
+            max_runtime_seconds INTEGER,
+            last_heartbeat_at INTEGER,
+            started_at INTEGER NOT NULL,
+            spawned_at INTEGER,
+            ended_at INTEGER,
+            outcome TEXT CHECK (outcome IN ('completed', 'blocked', 'crashed', 'timed_out', 'spawn_failed', 'gave_up', 'reclaimed', 'goal_continue')),
+            summary TEXT,
+            metadata TEXT,
+            error TEXT
+          );
+          INSERT INTO task_runs_new
+            (id, task_id, profile, step_key, status, claim_lock, claim_expires, worker_pid, max_runtime_seconds, last_heartbeat_at, started_at, spawned_at, ended_at, outcome, summary, metadata, error)
+          SELECT
+            id, task_id, profile, step_key, status, claim_lock, claim_expires, worker_pid, max_runtime_seconds, last_heartbeat_at, started_at, spawned_at, ended_at, outcome, summary, metadata, error
+          FROM task_runs;
+          DROP TABLE task_runs;
+          ALTER TABLE task_runs_new RENAME TO task_runs;
+          CREATE INDEX IF NOT EXISTS idx_runs_task ON task_runs(task_id, started_at);
+          CREATE INDEX IF NOT EXISTS idx_runs_status ON task_runs(status);
+        `);
+      });
+      migrateOutcomes();
+    }
 
   } catch (err) {
     closeDb();

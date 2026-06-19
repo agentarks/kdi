@@ -1,5 +1,17 @@
 # kdi — Status
 
+## Dispatcher Presence Warning (KDI-037) — Done
+- [x] BRD drafted at `specs/brd-kdi-037-dispatcher-presence-warning.md`
+- [x] Feature flag `ff_dispatcher_presence_warning` / `FF_DISPATCHER_PRESENCE_WARNING` registered in `src/flags.ts` and `specs/feature-flags.md`, defaults to `false`
+- [x] `src/dispatcherPresence.ts` exposes `getDispatcherPidPath(slug)` and `isDispatcherPresent(slug)`; `isDispatcherPresent` returns `true` only when the PID file exists, is readable, contains a single positive integer, and `process.kill(pid, 0)` succeeds — any other condition returns `false`
+- [x] `kdi create <title> [--no-dispatcher-warning]` option added to `src/commands/tasks.ts`; warning is printed to stderr (single line via `console.warn`) after the board is resolved and before the task is created, only when the flag is on AND `--no-dispatcher-warning` is not set
+- [x] Warning is non-blocking: task ID is still printed to stdout and the command exits `0`
+- [x] Unit tests in `tests/dispatcherPresence.test.ts` cover missing, empty, non-numeric, negative, zero, dead-PID, live-PID, and non-existent-board-slug cases
+- [x] CLI tests in `tests/commands/tasks.test.ts` (KDI-037 describe block) cover flag-on/live, flag-on/missing, flag-on/dead, flag-on/malformed, `--no-dispatcher-warning` suppression, and flag-off/option-accepted
+- [x] User-loop smoke proven with temp `HOME` and temp `KDI_DB`: warning appears on no-PID/dead-PID, suppressed on live-PID, suppressed by `--no-dispatcher-warning`, and absent when flag is off
+- [x] `bun run lint`, `bun test tests/dispatcherPresence.test.ts tests/commands/tasks.test.ts`, and `bun run build` pass; full suite (807 tests) passes
+- [x] Out of scope (deferred): dispatcher writes per-board PID marker at startup and removes it on clean shutdown (separate scope)
+
 ## Triage Automation (KDI-040) — Done
 - [x] BRD drafted at `specs/brd-kdi-040-triage-automation.md` to match LLM-powered triage automation semantics
 - [x] Feature flag `ff_triage_automation` / `FF_TRIAGE_AUTOMATION` registered in `specs/feature-flags.md` and `src/flags.ts`, defaults to `false`
@@ -296,6 +308,21 @@
 - [x] CLI/e2e tests cover acceptance criteria
 - [x] `bun run lint`, `bun run test`, `bun run build` pass
 
+## KDI-036: `kdi runs` Filtering — Done
+- [x] `kdi runs <task_id>` lists all runs for the task, newest first, format unchanged
+- [x] `--state-type status --state-name <value>` filters runs by status
+- [x] `--state-type outcome --state-name <value>` filters runs by outcome
+- [x] Only passing both `--state-type` and `--state-name` is valid; partial pairs rejected
+- [x] Invalid `--state-type` rejected with clear error listing valid values
+- [x] "No runs found for this task." when task has no runs
+- [x] "No runs match the filter." when filter matches nothing
+- [x] All new options gated by `FF_RUNS_FILTERING` (defaults to `false`)
+- [x] Unfiltered `kdi runs` output byte-for-byte unchanged when flag disabled
+- [x] Reuses the `getRunsFiltered` model helper from KDI-031 as the single source of truth
+- [x] Unit tests for `getRunsFiltered` cover filter matching, validation, empty states
+- [x] CLI/e2e tests cover flag gating, both/neither validation, invalid type, status/outcome match, empty filter, no-runs baseline
+- [x] `bun run lint`, `bun run test`, `bun run build` pass
+
 ## KDI-032: Bulk Operations — Done
 - [x] `kdi block <id1> <id2>... --reason <text>` — bulk block with pre-checks for already-blocked
 - [x] `kdi schedule <id1> <id2>... --at <timestamp> [--reason <text>]` — bulk schedule with per-task try/catch
@@ -352,6 +379,19 @@
 - [x] Combined assignee + tenant AND filtering tested
 - [x] All new options gated by `FF_WATCH_FILTERS` (defaults to `false`)
 - [x] Unit/CLI tests cover filters, combinations, flag gating, edge cases
+- [x] `bun run lint`, `bun run test`, `bun run build` pass
+
+## KDI-038: Goal Mode — Done
+- [x] BRD drafted at `specs/brd-kdi-038-goal-mode.md` to match Ralph-style multi-turn goal loop semantics
+- [x] Feature flag `ff_goal_mode` / `FF_GOAL_MODE` registered in `src/flags.ts` and `specs/feature-flags.md`, defaults to `false`
+- [x] Additive schema migration adds `goal_mode`, `goal_max_turns`, `goal_remaining_turns`, `goal_judge_profile` columns to `tasks` and `idx_tasks_goal_mode` index; `task_runs.outcome` CHECK extended to include `'goal_continue'` via the same `tasks_new`-style table-recreate pattern
+- [x] `Task` interface, `TASK_COLUMNS`, `CreateTaskInput`, `createTask`, `hydrateTask` updated in `src/models/task.ts`
+- [x] `decrementGoalTurns(id)` and `resetGoalTurns(id)` helpers exported from `src/models/task.ts`; `unblockTask` resets `goal_remaining_turns` when unblocking a `"Goal max turns exhausted"` task
+- [x] `kdi create --goal --goal-max-turns <n> --goal-judge <profile>` command in `src/commands/tasks.ts` with validation: `--goal` requires `--goal-max-turns` (positive int) and a known judge profile (CLI flag or `KDI_GOAL_JUDGE_PROFILE` env); rejects unknown profiles and disabled flag with clear errors
+- [x] `kdi show <id>` displays `Goal: <remaining>/<max> turns, judge=<profile>` line when `FF_GOAL_MODE` is enabled and the task is goal-mode
+- [x] Dispatcher goal-loop integration in `src/dispatcher.ts` (gated by `FF_GOAL_MODE`): passes `KDI_GOAL_*` env vars to the harness, and on a non-zero exit decrements `goal_remaining_turns` and requeues the task with a `goal_turn` event, or blocks with `"Goal max turns exhausted"` when the budget hits 0
+- [x] Judge approximation: `isGoalSatisfied()` treats a `exit 0` harness as a satisfied goal; a `ponytail:` comment in `src/dispatcher.ts` names the upgrade path (spawn `task.goal_judge_profile` with the same env vars, parse verdict from `KDI_GOAL_VERDICT_FILE`)
+- [x] Unit, CLI, and dispatcher tests covering schema round-trip, `--goal` validation, `kdi show` goal-mode display, requeue on no-satisfy, exhaustion blocking, flag-disabled behavior, and env-var pass-through
 - [x] `bun run lint`, `bun run test`, `bun run build` pass
 
 ## KDI-039: Workflow Templates — Done
@@ -427,7 +467,7 @@
 ## Task Runs (KDI-000)
 - [x] `task_runs` table with per-attempt history (profile, step_key, status, claim_lock, worker_pid, started_at, ended_at, outcome, summary, metadata, error)
 - [x] Dispatcher creates a `task_runs` row on claim and finalizes it on finish/fail
-- [x] `kdi runs <task_id>` — show attempt history
+- [x] `kdi runs <task_id>` — show attempt history with optional `--state-type`/`--state-name` filters (KDI-036)
 
 ## Task Runs Status (KDI-000e)
 - [x] `status` column on `task_runs`: `running | done | blocked | crashed | timed_out | failed | released`
@@ -473,6 +513,7 @@
 - [x] Capture stdout/stderr/exit code
 - [x] Update task status: done / failed
 - [x] Task runs table (per-attempt history)
+- [ ] Dispatcher writes per-board PID markers and `kdi create` warns when no live dispatcher is detected (KDI-037)
 
 ## Worktree Isolation — Accepted
 - [x] Auto-create worktree branch `wt/<profile>/<task_id>`
