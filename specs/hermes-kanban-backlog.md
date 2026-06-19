@@ -753,5 +753,24 @@ cd .worktrees/verify-hermes-backlog-2026-06-19
 bun install
 bun test
 bun run lint
-KEEP_TMP=1 bash scripts/verify-hermes-backlog.sh
+KEEP_TMP=1 bash scripts/verify-hermes-backlog.sh    # 90 CLI surface tests; 89 PASS / 1 FAIL
+KEEP_TMP=1 bash scripts/e2e-stub-profile.sh         # real end-to-end: dispatcher → stub harness → done
 ```
+
+### End-to-end autonomy proof
+
+`scripts/e2e-stub-profile.sh` adds a temporary `stub` profile to
+`~/.config/kdi/profiles.yaml` (in the temp `HOME`) whose command is a
+no-op `bash -c 'echo ...; touch $KDI_STUB_MARKER; exit 0'`, then runs
+the full pipeline (create → promote → dispatcher tick → claim → spawn
+worker → complete). The script exits 0 only when:
+
+- The marker file appears (proves the worker was spawned)
+- `kdi show <id>` reports `Status: done`
+- `kdi runs <id>` shows `outcome=completed profile=stub`
+- `kdi log <id>` contains the stub harness stdout
+- `kdi tail <id>` shows the autonomous event chain: `created → promoted → claimed → finished`
+
+The temp profile is removed at the end so the user's real config is not
+touched. Full per-assertion output in
+`specs/hermes-backlog-verification-2026-06-19.md`.
