@@ -621,3 +621,15 @@
 - [x] 100 tasks created + dispatched without SQLite contention
 - [x] `kdi --version` returns semantic version
 - [x] Adding new harness profile to `profiles.yaml` requires zero code changes
+
+## Hermes Backlog Verification (2026-06-19)
+
+- [x] `scripts/verify-hermes-backlog.sh` runs **89 / 90 PASS** against `main` (a4b2618) with every `FF_*` flag on, temp `HOME` + temp `KDI_DB`
+- [x] Full per-item report at `specs/hermes-backlog-verification-2026-06-19.md`
+- [x] Backlog updated with a `## Verification (2026-06-19)` section at `specs/hermes-kanban-backlog.md` listing 5 gaps
+- [ ] **Gap: KDI-013 global `--board` flag** — real divergence from hermes; per-subcommand `--board`, `KDI_BOARD`, and `current` file all work, but `kdi --board demo …` errors with `unknown option '--board'`
+- [ ] **Gap: `kdi boards create --switch`** — hermes parity; auto-switch-on-create not implemented
+- [ ] **Gap: `kdi dispatch` is a long-running daemon, not a one-shot pass** — hermes defines `dispatch` as one-shot and `daemon` as long-running; kdi has only the daemon form (`src/dispatcher.ts:679-694`)
+- [ ] **Gap: `kdi link` / `kdi unlink` CLI** — model exists in `src/models/dependency.ts`, no CLI command registered
+- [ ] **Gap: `kdi specify --tenant <name>`** — rejected without `--all` or `<task_id>`; backlog implies it should sweep on its own
+- [x] `bun test` (836 pass) and `tsc --noEmit` (clean) after adding the verification harness

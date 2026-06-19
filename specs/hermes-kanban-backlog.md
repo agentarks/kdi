@@ -720,3 +720,38 @@ Dispatched 4 parallel `pi` agents via cmux. All 135 tests pass. Work committed t
 
 3. **`kdi schedule <task_id> --reason ...` (backlog) vs `--at <timestamp>` required (implementation)**  
    Backlog shows schedule as taking a reason without mentioning `--at`. Implementation correctly requires `--at <timestamp>` (a scheduled task needs a future time) and makes `--reason` optional. This is the correct behavior — the spec was incomplete.
+
+---
+
+## Verification (2026-06-19)
+
+Ran `scripts/verify-hermes-backlog.sh` against `main` (a4b2618) on a temp `HOME` + temp `KDI_DB` with every `FF_*` flag on. **89 / 90 PASS, 1 FAIL.** Existing unit suite still 836 pass; `tsc --noEmit` clean. Full per-item report: `specs/hermes-backlog-verification-2026-06-19.md`.
+
+### Gaps found
+
+1. **KDI-013 — global `--board` flag is not implemented.** The resolution chain works per-subcommand (`kdi list --board demo`), via `KDI_BOARD` env, and via the `current` file written by `kdi boards switch`. But `program.option("--board <slug>")` is missing in `src/index.ts`, so `kdi --board demo boards show` errors with `unknown option '--board'`. Fix: add the global option in `src/index.ts` and thread it through `resolveBoard` when no per-subcommand `--board` is set.
+
+2. **Hermes parity — `kdi boards create --switch` is not implemented.** `kdi boards create` accepts `--name`/`--icon`/`--color` but no `--switch`. Users coming from hermes expect auto-switch on create. Fix: add `.option("--switch", "...")` in `src/commands/boards.ts` and call `writeCurrentBoard(slug)` after successful create.
+
+3. **KDI-034 / KDI-000c — `kdi dispatch` is a long-running daemon, not a one-shot pass.** Hermes defines `dispatch` as a one-shot tick and `daemon` as the long-running form. kdi has only the daemon form (`while (running) { await tick(); setTimeout(...) }` in `src/dispatcher.ts:679-694`); the `kdi dispatch` command does not exit on its own. Per-pass flags (`--max`, `--failure-limit`) configure daemon ticks, not a one-shot pass. Fix: make `kdi dispatch` a one-shot tick by default, or add `--once`. Either way, add a `kdi daemon` for the current long-running behavior.
+
+4. **Hermes parity — `kdi link` / `kdi unlink` are not implemented (was "Planned" in original backlog).** The `dependencies` model and `addDependency` / `removeDependency` / `hasDependencyPath` exist in `src/models/dependency.ts`, and `promoteTaskAdvanced` checks `isBlockedByDependencies`. But no CLI command is registered in `src/index.ts`. No regression; just confirming still unimplemented.
+
+5. **KDI-001 — `kdi specify --tenant <name>` without `--all` or `<task_id>` is rejected.** Backlog implies `--tenant` alone should sweep. Currently: `Error: Task ID is required (or use --all).` Fix: in `src/commands/tasks.ts`, when `options.tenant` is set without a task id, treat it as a sweep (or document that `--all` is required alongside `--tenant`).
+
+### Items not testable from the CLI loop (validated by source inspection)
+
+- KDI-016b crash grace period (30s window in `src/dispatcher.ts`)
+- KDI-016c rate-limit exit code (`EX_TEMPFAIL=75` branch in `src/dispatcher.ts`)
+- KDI-040 triage automation LLM (needs `KDI_TRIAGE_LLM_API_KEY`; basic path covered by KDI-001 with `--skip-llm`)
+- KDI-000d cross-process init lock (validated with two parallel `kdi init` runs; lock at `<db>.init.lock` with PID liveness in `src/db.ts:180-217`)
+
+### Repro
+
+```bash
+cd .worktrees/verify-hermes-backlog-2026-06-19
+bun install
+bun test
+bun run lint
+KEEP_TMP=1 bash scripts/verify-hermes-backlog.sh
+```
