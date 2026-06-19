@@ -1643,6 +1643,11 @@ describe("dispatcher goal mode", () => {
     const updated = showTask(task.id);
     expect(updated!.status).toBe("done");
     expect(updated!.consecutive_failures).toBe(0);
+
+    const events = getEvents(task.id);
+    const turnEvents = events.filter((e) => e.kind === "goal_turn");
+    expect(turnEvents.length).toBe(1);
+    expect(turnEvents[0].payload).toContain("\"verdict\":\"done\"");
   });
 
   it("goal tasks behave as normal tasks when FF_GOAL_MODE is disabled", async () => {

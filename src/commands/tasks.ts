@@ -562,7 +562,10 @@ export const showTaskCommand = new Command("show")
       if (isEnabled(FF_GOAL_MODE) && task.goal_mode) {
         const max = task.goal_max_turns ?? 0;
         const remaining = task.goal_remaining_turns ?? 0;
-        console.log(`Goal: ${remaining}/${max} turns, judge=${task.goal_judge_profile ?? ""}`);
+        console.log("Goal mode: yes");
+        console.log(`Goal max turns: ${max}`);
+        console.log(`Goal remaining turns: ${remaining}`);
+        console.log(`Goal judge profile: ${task.goal_judge_profile ?? ""}`);
       }
 
       const comments = getComments(id);

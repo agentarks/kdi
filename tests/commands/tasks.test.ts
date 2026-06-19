@@ -1142,7 +1142,10 @@ describe("goal mode create command", () => {
       console.log = originalLog;
     }
 
-    expect(logs.some((l) => l.includes("Goal: 4/4 turns, judge=ralph"))).toBe(true);
+    expect(logs.some((l) => l === "Goal mode: yes")).toBe(true);
+    expect(logs.some((l) => l === "Goal max turns: 4")).toBe(true);
+    expect(logs.some((l) => l === "Goal remaining turns: 4")).toBe(true);
+    expect(logs.some((l) => l === "Goal judge profile: ralph")).toBe(true);
   });
 
   it("show command hides goal line when flag is disabled", async () => {

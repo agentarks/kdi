@@ -599,6 +599,10 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
       // v1 approximation: harness exit 0 = goal satisfied; any non-zero exit = not satisfied.
       if (isEnabled(FF_GOAL_MODE) && task.goal_mode) {
         if (isGoalSatisfied(exitCode)) {
+          const goalMax = task.goal_max_turns ?? 0;
+          const goalRemaining = task.goal_remaining_turns ?? 0;
+          const goalTurn = goalMax - goalRemaining + 1;
+          addEvent(task.id, "goal_turn", { turn: goalTurn, max_turns: goalMax, remaining_after: goalRemaining, verdict: "done" }, runId ?? undefined);
           finishTask(task, stdout, runId);
           processed++;
         } else {
