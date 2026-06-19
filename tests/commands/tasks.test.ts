@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
-import { mkdtempSync, writeFileSync, existsSync, rmSync } from "node:fs";
+import { mkdtempSync, writeFileSync, existsSync, rmSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { initDb, closeDb, getBoardDataDir } from "../../src/db";
@@ -8,7 +8,8 @@ import { createBoard } from "../../src/models/board";
 import { createTask, archiveTask, type Task } from "../../src/models/task";
 import { createRun } from "../../src/models/taskRun";
 import { listRunsCommand, attachTaskCommand, showTaskCommand, createTaskCommand, listTasksCommand, watchCommand } from "../../src/commands/tasks";
-import { setFlag, clearOverrides, FF_TASK_ATTACHMENTS, FF_LIST_FILTERS_SORT, FF_COMMENT_ENHANCEMENTS, FF_WATCH_FILTERS, FF_TENANT_NAMESPACE } from "../../src/flags";
+import { setFlag, clearOverrides, FF_TASK_ATTACHMENTS, FF_LIST_FILTERS_SORT, FF_COMMENT_ENHANCEMENTS, FF_WATCH_FILTERS, FF_TENANT_NAMESPACE, FF_DISPATCHER_PRESENCE_WARNING } from "../../src/flags";
+import { getDispatcherPidPath } from "../../src/dispatcherPresence";
 
 const TEST_DB = "/tmp/kdi-commands-tasks-test.db";
 const TEST_SLUGS = ["cmd-board", "attach-board", "show-board"];
@@ -827,5 +828,197 @@ describe("KDI-030 list filters and sort", () => {
     }
 
     expect(message).toContain("List filters and sort feature is not enabled");
+  });
+});
+
+const KDI037_DB = "/tmp/kdi-commands-tasks-037-test.db";
+const KDI037_SLUG = "kdi037";
+
+function ensureBoardDir(): void {
+  mkdirSync(getBoardDataDir(KDI037_SLUG), { recursive: true });
+}
+
+describe("KDI-037 dispatcher presence warning on kdi create", () => {
+  beforeEach(() => {
+    clearOverrides();
+    cleanupDb(KDI037_DB);
+    rmSync(getBoardDataDir(KDI037_SLUG), { recursive: true, force: true });
+    process.env.KDI_DB = KDI037_DB;
+    delete process.env.KDI_DB_PATH;
+    resetCommandOptions(createTaskCommand);
+    _origStderrWrite = process.stderr.write.bind(process.stderr);
+    process.stderr.write = (() => true) as typeof process.stderr.write;
+    initDb(KDI037_DB);
+  });
+
+  afterEach(() => {
+    if (_origStderrWrite) process.stderr.write = _origStderrWrite;
+    clearOverrides();
+    closeDb();
+    cleanupDb(KDI037_DB);
+    rmSync(getBoardDataDir(KDI037_SLUG), { recursive: true, force: true });
+    delete process.env.KDI_DB;
+    delete process.env.KDI_DB_PATH;
+  });
+
+  function captureWarn(): string[] {
+    const warnings: string[] = [];
+    const originalWarn = console.warn;
+    console.warn = (...args: unknown[]) => {
+      warnings.push(args.map(String).join(" "));
+    };
+    return warnings;
+  }
+
+  function restoreWarn(warnings: string[], captured: string[]): void {
+    void warnings;
+    // restore by reading the original from captured later via closure
+  }
+
+  it("does not warn when FF_DISPATCHER_PRESENCE_WARNING is disabled", async () => {
+    setFlag(FF_DISPATCHER_PRESENCE_WARNING, false);
+    createBoard(KDI037_SLUG, `/tmp/${KDI037_SLUG}`);
+
+    const warnings: string[] = [];
+    const originalWarn = console.warn;
+    console.warn = (...args: unknown[]) => { warnings.push(args.map(String).join(" ")); };
+
+    try {
+      await createTaskCommand.parseAsync(["NoWarn task", "--board", KDI037_SLUG], { from: "user" });
+    } finally {
+      console.warn = originalWarn;
+    }
+
+    expect(warnings).toEqual([]);
+  });
+
+  it("does not warn when a live PID file is present", async () => {
+    setFlag(FF_DISPATCHER_PRESENCE_WARNING, true);
+    createBoard(KDI037_SLUG, `/tmp/${KDI037_SLUG}`);
+    ensureBoardDir();
+    writeFileSync(getDispatcherPidPath(KDI037_SLUG), `${process.pid}\n`, "utf8");
+
+    const warnings: string[] = [];
+    const originalWarn = console.warn;
+    console.warn = (...args: unknown[]) => { warnings.push(args.map(String).join(" ")); };
+
+    try {
+      await createTaskCommand.parseAsync(["Live task", "--board", KDI037_SLUG], { from: "user" });
+    } finally {
+      console.warn = originalWarn;
+    }
+
+    expect(warnings).toEqual([]);
+  });
+
+  it("warns when no PID file is present", async () => {
+    setFlag(FF_DISPATCHER_PRESENCE_WARNING, true);
+    createBoard(KDI037_SLUG, `/tmp/${KDI037_SLUG}`);
+    ensureBoardDir();
+    rmSync(getDispatcherPidPath(KDI037_SLUG), { force: true });
+    expect(existsSync(getDispatcherPidPath(KDI037_SLUG))).toBe(false);
+
+    const logs: string[] = [];
+    const warnings: string[] = [];
+    const originalLog = console.log;
+    const originalWarn = console.warn;
+    console.log = (...args: unknown[]) => { logs.push(args.map(String).join(" ")); };
+    console.warn = (...args: unknown[]) => { warnings.push(args.map(String).join(" ")); };
+
+    try {
+      await createTaskCommand.parseAsync(["Missing task", "--board", KDI037_SLUG], { from: "user" });
+    } finally {
+      console.log = originalLog;
+      console.warn = originalWarn;
+    }
+
+    expect(warnings.length).toBe(1);
+    expect(warnings[0]).toContain(`No running dispatcher detected for board "${KDI037_SLUG}"`);
+    // task id printed to stdout
+    expect(logs.length).toBe(1);
+    expect(Number(logs[0])).toBeGreaterThan(0);
+  });
+
+  it("warns when PID file contains a dead PID", async () => {
+    setFlag(FF_DISPATCHER_PRESENCE_WARNING, true);
+    createBoard(KDI037_SLUG, `/tmp/${KDI037_SLUG}`);
+    ensureBoardDir();
+    writeFileSync(getDispatcherPidPath(KDI037_SLUG), "2000000000\n", "utf8");
+
+    const warnings: string[] = [];
+    const originalWarn = console.warn;
+    console.warn = (...args: unknown[]) => { warnings.push(args.map(String).join(" ")); };
+
+    try {
+      await createTaskCommand.parseAsync(["Dead task", "--board", KDI037_SLUG], { from: "user" });
+    } finally {
+      console.warn = originalWarn;
+    }
+
+    expect(warnings.length).toBe(1);
+    expect(warnings[0]).toContain(`No running dispatcher detected for board "${KDI037_SLUG}"`);
+  });
+
+  it("warns when PID file is malformed", async () => {
+    setFlag(FF_DISPATCHER_PRESENCE_WARNING, true);
+    createBoard(KDI037_SLUG, `/tmp/${KDI037_SLUG}`);
+    ensureBoardDir();
+    writeFileSync(getDispatcherPidPath(KDI037_SLUG), "not-a-pid\n", "utf8");
+
+    const warnings: string[] = [];
+    const originalWarn = console.warn;
+    console.warn = (...args: unknown[]) => { warnings.push(args.map(String).join(" ")); };
+
+    try {
+      await createTaskCommand.parseAsync(["Malformed task", "--board", KDI037_SLUG], { from: "user" });
+    } finally {
+      console.warn = originalWarn;
+    }
+
+    expect(warnings.length).toBe(1);
+    expect(warnings[0]).toContain(`No running dispatcher detected for board "${KDI037_SLUG}"`);
+  });
+
+  it("suppresses warning with --no-dispatcher-warning even when flag is on and PID file missing", async () => {
+    setFlag(FF_DISPATCHER_PRESENCE_WARNING, true);
+    createBoard(KDI037_SLUG, `/tmp/${KDI037_SLUG}`);
+    ensureBoardDir();
+    rmSync(getDispatcherPidPath(KDI037_SLUG), { force: true });
+    expect(existsSync(getDispatcherPidPath(KDI037_SLUG))).toBe(false);
+
+    const warnings: string[] = [];
+    const originalWarn = console.warn;
+    console.warn = (...args: unknown[]) => { warnings.push(args.map(String).join(" ")); };
+
+    try {
+      await createTaskCommand.parseAsync(["Suppressed task", "--board", KDI037_SLUG, "--no-dispatcher-warning"], { from: "user" });
+    } finally {
+      console.warn = originalWarn;
+    }
+
+    expect(warnings).toEqual([]);
+  });
+
+  it("--no-dispatcher-warning is accepted when flag is disabled (no probe, no warning)", async () => {
+    setFlag(FF_DISPATCHER_PRESENCE_WARNING, false);
+    createBoard(KDI037_SLUG, `/tmp/${KDI037_SLUG}`);
+
+    const logs: string[] = [];
+    const warnings: string[] = [];
+    const originalLog = console.log;
+    const originalWarn = console.warn;
+    console.log = (...args: unknown[]) => { logs.push(args.map(String).join(" ")); };
+    console.warn = (...args: unknown[]) => { warnings.push(args.map(String).join(" ")); };
+
+    try {
+      await createTaskCommand.parseAsync(["NoFlag task", "--board", KDI037_SLUG, "--no-dispatcher-warning"], { from: "user" });
+    } finally {
+      console.log = originalLog;
+      console.warn = originalWarn;
+    }
+
+    expect(warnings).toEqual([]);
+    expect(logs.length).toBe(1);
+    expect(Number(logs[0])).toBeGreaterThan(0);
   });
 });
