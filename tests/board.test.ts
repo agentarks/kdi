@@ -1,13 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { Database } from "bun:sqlite";
 import { existsSync, mkdirSync, writeFileSync, readFileSync, rmSync, mkdtempSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { initDb, closeDb, getDb, getBoardDataDir } from "../src/db";
 import { createBoard, listBoards, showBoard, archiveBoard, updateBoardMetadata, removeBoard, renameBoard, setDefaultWorkdir } from "../src/models/board";
 import { readCurrentBoard, writeCurrentBoard } from "../src/resolveBoard";
 import { cleanupDb } from "./cleanupDb";
 import { clearOverrides, setFlag, FF_BOARD_RM_DELETE, FF_BOARD_RENAME } from "../src/flags";
+
+const PROJECT_ROOT = resolve(import.meta.dir, "../..");
 
 const TEST_DB = "/tmp/kdi-board-test.db";
 const MIGRATION_DB = "/tmp/kdi-board-migration-test.db";
@@ -360,6 +362,51 @@ describe("board model", () => {
     expect(db.query("SELECT COUNT(*) as c FROM comments WHERE task_id = ?").get(task.id) as { c: number }).toEqual({ c: 0 });
     expect(db.query("SELECT COUNT(*) as c FROM task_runs WHERE task_id = ?").get(task.id) as { c: number }).toEqual({ c: 0 });
     expect(db.query("SELECT COUNT(*) as c FROM task_events WHERE task_id = ?").get(task.id) as { c: number }).toEqual({ c: 0 });
+  });
+});
+
+describe("FF_BOARD_CREATE_SWITCH (boards create --switch)", () => {
+  const CREATE_SWITCH_DB = "/tmp/kdi-board-create-switch-test.db";
+  const TMP_DIR = "/tmp/kdi-board-create-switch-data";
+  let origKdiDb: string | undefined;
+  let origKdiCurrent: string | undefined;
+
+  beforeEach(() => {
+    origKdiDb = process.env.KDI_DB;
+    origKdiCurrent = process.env.KDI_CURRENT_PATH;
+    process.env.KDI_DB = CREATE_SWITCH_DB;
+    cleanupDb(CREATE_SWITCH_DB);
+    initDb(CREATE_SWITCH_DB);
+    rmSync(TMP_DIR, { recursive: true, force: true });
+    mkdirSync(TMP_DIR, { recursive: true });
+    process.env.KDI_CURRENT_PATH = TMP_DIR;
+  });
+
+  afterEach(() => {
+    if (origKdiDb === undefined) delete process.env.KDI_DB; else process.env.KDI_DB = origKdiDb;
+    if (origKdiCurrent === undefined) delete process.env.KDI_CURRENT_PATH; else process.env.KDI_CURRENT_PATH = origKdiCurrent;
+    cleanupDb(CREATE_SWITCH_DB);
+    clearOverrides();
+  });
+
+  it("--switch writes the new board slug to the current-board file", () => {
+    const { execSync } = require("node:child_process");
+    setFlag("FF_BOARD_CREATE_SWITCH" as any, true);
+    execSync(
+      `bun run src/index.ts boards create myproj --workdir /tmp/myproj --switch`,
+      { encoding: "utf-8", cwd: resolve(import.meta.dir, ".."), env: { ...process.env, KDI_DB: CREATE_SWITCH_DB, KDI_CURRENT_PATH: TMP_DIR, FF_BOARD_CREATE_SWITCH: "true", FF_BOARD_SWITCH: "true" } }
+    );
+    expect(readCurrentBoard()).toBe("myproj");
+  });
+
+  it("without --switch, the current-board file is not touched", () => {
+    const { execSync } = require("node:child_process");
+    writeCurrentBoard("other");
+    execSync(
+      `bun run src/index.ts boards create myproj --workdir /tmp/myproj`,
+      { encoding: "utf-8", cwd: resolve(import.meta.dir, ".."), env: { ...process.env, KDI_DB: CREATE_SWITCH_DB, KDI_CURRENT_PATH: TMP_DIR } }
+    );
+    expect(readCurrentBoard()).toBe("other");
   });
 });
 

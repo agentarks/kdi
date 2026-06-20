@@ -1027,6 +1027,11 @@ export const specifyTaskCommand = new Command("specify")
       if (options.tenant !== undefined && options.tenant.trim() === "") {
         throw new Error("Tenant cannot be empty.");
       }
+      // ponytail: --tenant alone implies --all (tenant-restricted sweep)
+      // so the user does not have to pass both flags.
+      if (options.tenant !== undefined && !options.all && taskId === undefined) {
+        options.all = true;
+      }
 
       if (options.all) {
         const tasks = listTasks({ board_id: boardId, status: "triage", tenant: options.tenant });

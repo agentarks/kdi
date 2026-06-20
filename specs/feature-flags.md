@@ -43,6 +43,8 @@ stateDiagram-v2
 | `ff_rate_limit_exit_code` | `FF_RATE_LIMIT_EXIT_CODE` | CLI / dispatcher | InDev | `false` | KDI-016c | Treat harness exit code 75 (EX_TEMPFAIL) as a transient rate limit and requeue with a cooldown instead of counting it as a failure. |
 | `ff_board_metadata` | `FF_BOARD_METADATA` | CLI / board metadata | InDev | `false` | KDI-012 | Board name, icon, and color; `boards create --name/--icon/--color`, `boards edit`, and metadata display. |
 | `ff_board_switch` | `FF_BOARD_SWITCH` | CLI / board management | InDev | `false` | KDI-013 | Board switch command and resolution chain; `boards switch`, `boards show` without slug. |
+| `ff_board_create_switch` | `FF_BOARD_CREATE_SWITCH` | CLI / board management | InDev | `false` | KDI-013x | `boards create --switch` auto-switches to the new board after creation (hermes parity). |
+| `ff_global_board` | `FF_GLOBAL_BOARD` | CLI / board resolution | InDev | `false` | KDI-013 | Program-level `kdi --board <slug>` sets `KDI_BOARD` for the subcommand; lower priority than the subcommand's own `--board`. |
 | `ff_board_rename` | `FF_BOARD_RENAME` | CLI / board management | InDev | `false` | KDI-014 | Board rename command; `boards rename <old> <new>` renames slug and data directory. |
 | `ff_default_workdir` | `FF_DEFAULT_WORKDIR` | CLI / board management + create | InDev | `false` | KDI-015 | Board default task workspace; `boards set-default-workdir`; create inheritance and `--workspace`. |
 | `ff_assignees_listing` | `FF_ASSIGNEES_LISTING` | CLI / observability | InDev | `false` | KDI-024 | `kdi assignees` lists known profiles plus per-profile task counts for the current board. |
@@ -62,6 +64,8 @@ stateDiagram-v2
 | `ff_bulk_operations` | `FF_BULK_OPERATIONS` | CLI / task lifecycle | InDev | `false` | KDI-032 | Bulk `block`/`promote`/`archive --rm`; `promote --force` and `--dry-run`.
 | `ff_comment_enhancements` | `FF_COMMENT_ENHANCEMENTS` | CLI / task metadata | InDev | `false` | KDI-033 | `kdi comment --author`/`--max-len` and author display in `kdi show`.
 | `ff_dispatch_controls` | `FF_DISPATCH_CONTROLS` | CLI / dispatcher | InDev | `false` | KDI-034 | `kdi dispatch --failure-limit` per-pass failure threshold.
+| `ff_dispatch_once` | `FF_DISPATCH_ONCE` | CLI / dispatcher | InDev | `false` | KDI-034x | `kdi dispatch --once` runs a single tick and exits (hermes `dispatch` parity). Default `dispatch` is still a long-running daemon. |
+| `ff_link_unlink` | `FF_LINK_UNLINK` | CLI / task lifecycle | InDev | `false` | KDI-026 | `kdi link` / `kdi unlink` parent<->child dependency CLI; cycles and self-loops rejected. |
 | `ff_watch_filters` | `FF_WATCH_FILTERS` | CLI / observability | InDev | `false` | KDI-035 | `kdi watch --assignee`/`--tenant`/`--kinds`/`--interval` filters.
 | `ff_workflow_templates` | `FF_WORKFLOW_TEMPLATES` | CLI / task lifecycle | InDev | `false` | KDI-039 | Step-key driven workflow templates; `kdi create --workflow-template-id`, `kdi step`, `kdi workflows`.
 | `ff_triage_automation` | `FF_TRIAGE_AUTOMATION` | CLI / task lifecycle | InDev | `false` | KDI-040 | LLM-powered triage automation; `kdi specify` (LLM path) and `kdi decompose`. |

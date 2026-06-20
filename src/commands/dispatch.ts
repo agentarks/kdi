@@ -1,6 +1,6 @@
 import { Command } from "commander";
-import { startDispatcher } from "../dispatcher";
-import { isEnabled, FF_RATE_LIMIT_EXIT_CODE, FF_DISPATCH_CONTROLS } from "../flags";
+import { startDispatcher, tick } from "../dispatcher";
+import { isEnabled, FF_RATE_LIMIT_EXIT_CODE, FF_DISPATCH_CONTROLS, FF_DISPATCH_ONCE } from "../flags";
 import { parseDuration } from "../models/task";
 
 export function parseFailureLimit(raw: string): number {
@@ -16,12 +16,13 @@ export function parseFailureLimit(raw: string): number {
 }
 
 export const dispatchCommand = new Command("dispatch")
-  .description("Dispatch ready tasks to agents")
-  .option("--interval <ms>", "Poll interval in milliseconds", "5000")
+  .description("Dispatch ready tasks to agents (one-shot pass with --once, daemon otherwise)")
+  .option("--interval <ms>", "Poll interval in milliseconds (ignored with --once)", "5000")
   .option("--max <n>", "Max tasks to spawn per tick (0 = unlimited)", "0")
+  .option("--once", "Run a single dispatcher tick and exit (hermes 'dispatch' parity)")
   .option("--rate-limit-cooldown <duration>", "Cooldown after an EX_TEMPFAIL exit code (e.g. 60s, 5m, 1h)")
   .option("--failure-limit <n>", "Stop spawning after N failures/crashes/spawn-fails in this pass")
-  .action(async (options: { interval: string; max: string; rateLimitCooldown?: string; failureLimit?: string }) => {
+  .action(async (options: { interval: string; max: string; once?: boolean; rateLimitCooldown?: string; failureLimit?: string }) => {
     const interval = parseInt(options.interval, 10);
     const max = parseInt(options.max, 10);
 
@@ -51,6 +52,20 @@ export const dispatchCommand = new Command("dispatch")
         process.exit(1);
       }
       failureLimit = parseFailureLimit(options.failureLimit);
+    }
+
+    if (options.once) {
+      if (!isEnabled(FF_DISPATCH_ONCE)) {
+        console.error("Error: --once is not enabled. Set FF_DISPATCH_ONCE=true to use it.");
+        process.exit(1);
+      }
+      const result = await tick({
+        maxSpawnsPerTick: max > 0 ? max : undefined,
+        rateLimitCooldownSeconds,
+        failureLimit,
+      });
+      console.log(`Dispatched (one-shot). processed=${result.processed}`);
+      return;
     }
 
     console.log(`Starting dispatcher with ${interval}ms interval...`);

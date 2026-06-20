@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import { createBoard, listBoards, showBoard, archiveBoard, updateBoardMetadata, removeBoard, renameBoard, setDefaultWorkdir } from "../models/board";
-import { isEnabled, FF_BOARD_METADATA, FF_BOARD_RM_DELETE, FF_BOARD_SWITCH, FF_BOARD_RENAME, FF_DEFAULT_WORKDIR } from "../flags";
+import { isEnabled, FF_BOARD_METADATA, FF_BOARD_RM_DELETE, FF_BOARD_SWITCH, FF_BOARD_CREATE_SWITCH, FF_BOARD_RENAME, FF_DEFAULT_WORKDIR } from "../flags";
 import { assertValidBoardSlug } from "../slugs";
 import { readCurrentBoard, writeCurrentBoard, resolveBoard } from "../resolveBoard";
 
@@ -15,18 +15,28 @@ boardsCommand
   .option("--name <name>", "Display name for the board")
   .option("--icon <icon>", "Icon for the board")
   .option("--color <color>", "Color for the board")
-  .action((slug: string, options: { workdir: string; baseRef: string; name?: string; icon?: string; color?: string }) => {
+  .option("--switch", "Switch to this board after creation")
+  .action((slug: string, options: { workdir: string; baseRef: string; name?: string; icon?: string; color?: string; switch?: boolean }) => {
     try {
       assertValidBoardSlug(slug);
       const metadataRequested = options.name !== undefined || options.icon !== undefined || options.color !== undefined;
       if (metadataRequested && !isEnabled(FF_BOARD_METADATA)) {
         throw new Error("Board metadata feature is not enabled.");
       }
+      if (options.switch && !isEnabled(FF_BOARD_CREATE_SWITCH)) {
+        throw new Error("Board create --switch feature is not enabled.");
+      }
+      if (options.switch && !isEnabled(FF_BOARD_SWITCH)) {
+        throw new Error("Board switch feature is not enabled.");
+      }
 
       const metadata = metadataRequested
         ? { name: options.name, icon: options.icon, color: options.color }
         : {};
       const board = createBoard(slug, options.workdir, options.baseRef, metadata);
+      if (options.switch) {
+        writeCurrentBoard(slug);
+      }
       console.log(`Created board "${board.slug}" with workdir ${board.workdir} base-ref ${board.base_ref}`);
     } catch (err: any) {
       console.error(`Error: ${err.message}`);
