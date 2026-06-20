@@ -1,14 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { initDb } from "../src/db";
-import { createBoard } from "../src/models/board";
-import { createTask, listTasks } from "../src/models/task";
 import { cleanupDb } from "./cleanupDb";
-import { clearOverrides, setFlag } from "../src/flags";
+import { clearOverrides } from "../src/flags";
 
 const PROJECT_ROOT = resolve(import.meta.dir, "..");
 
@@ -31,8 +26,6 @@ describe("FF_DISPATCH_ONCE (kdi dispatch --once)", () => {
   beforeEach(() => {
     cleanupDb(TEST_DB);
     initDb(TEST_DB);
-    setFlag("FF_ENABLE_KANBAN_DISPATCH" as any, true);
-    setFlag("FF_DISPATCH_ONCE" as any, true);
   });
 
   afterEach(() => {
@@ -50,9 +43,6 @@ describe("FF_DISPATCH_ONCE (kdi dispatch --once)", () => {
   });
 
   it("--once without FF_DISPATCH_ONCE errors with a clear message", () => {
-    // Override is set in beforeEach; clear it for this test.
-    clearOverrides();
-    setFlag("FF_ENABLE_KANBAN_DISPATCH" as any, true);
     const r = runKdi(
       ["dispatch", "--once"],
       { FF_ENABLE_KANBAN_DISPATCH: "true" }

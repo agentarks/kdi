@@ -1,15 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { initDb } from "../src/db";
 import { createBoard } from "../src/models/board";
 import { createTask, promoteTask } from "../src/models/task";
-import { addDependency, removeDependency, isBlockedByDependencies } from "../src/models/dependency";
+import { addDependency, isBlockedByDependencies } from "../src/models/dependency";
 import { cleanupDb } from "./cleanupDb";
-import { clearOverrides, setFlag } from "../src/flags";
+import { clearOverrides } from "../src/flags";
 
 const PROJECT_ROOT = resolve(import.meta.dir, "..");
 
@@ -47,11 +44,9 @@ describe("FF_LINK_UNLINK (kdi link / kdi unlink)", () => {
     promoteTask(c.id);
     expect(isBlockedByDependencies(c.id)).toBe(false);
 
-    setFlag("FF_LINK_UNLINK" as any, true);
-    const r = runKdi(["link", String(p.id), String(c.id)], { FF_LINK_UNLINK: "true", KDI_DB: TEST_DB });
+    const r = runKdi(["link", String(p.id), String(c.id)], { FF_LINK_UNLINK: "true" });
     expect(r.ok).toBe(true);
     expect(r.stdout).toContain(`Linked ${p.id} -> ${c.id}`);
-
     expect(isBlockedByDependencies(c.id)).toBe(true);
   });
 
@@ -62,8 +57,7 @@ describe("FF_LINK_UNLINK (kdi link / kdi unlink)", () => {
     addDependency(p.id, c.id);
     expect(isBlockedByDependencies(c.id)).toBe(true);
 
-    setFlag("FF_LINK_UNLINK" as any, true);
-    const r = runKdi(["unlink", String(p.id), String(c.id)], { FF_LINK_UNLINK: "true", KDI_DB: TEST_DB });
+    const r = runKdi(["unlink", String(p.id), String(c.id)], { FF_LINK_UNLINK: "true" });
     expect(r.ok).toBe(true);
     expect(r.stdout).toContain(`Unlinked ${p.id} -> ${c.id}`);
     expect(isBlockedByDependencies(c.id)).toBe(false);
@@ -72,8 +66,7 @@ describe("FF_LINK_UNLINK (kdi link / kdi unlink)", () => {
   it("kdi link errors on self-dependency", () => {
     const board = createBoard("b1", "/tmp/b1");
     const p = createTask({ board_id: board.id, title: "P", body: "p" });
-    setFlag("FF_LINK_UNLINK" as any, true);
-    const r = runKdi(["link", String(p.id), String(p.id)], { FF_LINK_UNLINK: "true", KDI_DB: TEST_DB });
+    const r = runKdi(["link", String(p.id), String(p.id)], { FF_LINK_UNLINK: "true" });
     expect(r.ok).toBe(false);
     expect(r.stdout + r.stderr).toContain("Self-dependency");
   });
@@ -83,9 +76,7 @@ describe("FF_LINK_UNLINK (kdi link / kdi unlink)", () => {
     const a = createTask({ board_id: board.id, title: "A", body: "a" });
     const b = createTask({ board_id: board.id, title: "B", body: "b" });
     addDependency(a.id, b.id);
-    setFlag("FF_LINK_UNLINK" as any, true);
-    // Try b -> a, which would create a cycle.
-    const r = runKdi(["link", String(b.id), String(a.id)], { FF_LINK_UNLINK: "true", KDI_DB: TEST_DB });
+    const r = runKdi(["link", String(b.id), String(a.id)], { FF_LINK_UNLINK: "true" });
     expect(r.ok).toBe(false);
     expect(r.stdout + r.stderr).toContain("Circular");
   });

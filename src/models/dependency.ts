@@ -50,20 +50,6 @@ export function removeDependency(parentId: number, childId: number): boolean {
   return result.changes > 0;
 }
 
-export function getDependencies(taskId: number): { parents: number[]; children: number[] } {
-  const db = getDb();
-  const parents = db.query(
-    "SELECT parent_id FROM dependencies WHERE child_id = ?"
-  ).all(taskId) as { parent_id: number }[];
-  const children = db.query(
-    "SELECT child_id FROM dependencies WHERE parent_id = ?"
-  ).all(taskId) as { child_id: number }[];
-  return {
-    parents: parents.map((r) => r.parent_id),
-    children: children.map((r) => r.child_id),
-  };
-}
-
 export function isBlockedByDependencies(taskId: number): boolean {
   const db = getDb();
   const result = db.query(
