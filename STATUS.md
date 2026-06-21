@@ -2,12 +2,12 @@
 
 ## Hermes Kanban Parity Verification — 2026-06-20/21 (in progress)
 - [x] Live CLI verification run via `kdi-new-feature-loop` with temp `HOME`/`KDI_DB` and all feature flags enabled.
-- [x] Critical bug: global/subcommand `--board` flag is ignored; only `KDI_BOARD` env and current-board file resolve correctly. This cascades into 100+ e2e test failures.
+- [x] ~~Critical bug: global/subcommand `--board` flag is ignored; only `KDI_BOARD` env and current-board file resolve correctly.~~ **Fixed by KDI-042.**
 - [x] Critical bug: `src/flags.ts` contained unresolved git merge conflict markers that broke `bun run build`/`dev`; resolved during verification.
 - [x] Additional verified gaps documented in `specs/hermes-kanban-backlog.md` (KDI-042 through KDI-052).
-- [x] Test suite health: `bun run lint` passes; `bun test` reports **711 pass / 125 fail** (836 tests, 36 files).
+- [x] Test suite health: `bun run lint` passes; `bun test` reports **854 pass / 0 fail** (854 tests, 40 files) when run with isolated `KDI_DB`.
 - [x] **Real harness end-to-end test with opencode**: dispatcher creates worktree `wt/opencode/1`, spawns `opencode run`, agent edits `README.md`, task moves to `done`. Verified worktree isolation, log capture, and run recording.
-- [ ] Fix `--board` flag resolution, pass task context to harnesses, clean up result/summary capture, and stabilize test suite before claiming parity.
+- [ ] Pass task context to harnesses, clean up result/summary capture, and continue parity work (tracked in KDI-052 / KDI-053).
 
 ## Dispatcher Presence Warning (KDI-037) — Done
 - [x] BRD drafted at `specs/brd-kdi-037-dispatcher-presence-warning.md`
@@ -20,6 +20,16 @@
 - [x] User-loop smoke proven with temp `HOME` and temp `KDI_DB`: warning appears on no-PID/dead-PID, suppressed on live-PID, suppressed by `--no-dispatcher-warning`, and absent when flag is off
 - [x] `bun run lint`, `bun test tests/dispatcherPresence.test.ts tests/commands/tasks.test.ts`, and `bun run build` pass; full suite (807 tests) passes
 - [x] Out of scope (deferred): dispatcher writes per-board PID marker at startup and removes it on clean shutdown (separate scope)
+
+## Global `--board` Flag Resolution (KDI-042) — Done
+- [x] Root Commander program registers `--board <slug>` as a global option in `src/index.ts`
+- [x] `preAction` hook copies the global `--board` value into `KDI_BOARD` when the subcommand does not provide its own `--board`; gated by `FF_GLOBAL_BOARD`
+- [x] Subcommand `--board` continues to take precedence over the global `--board`
+- [x] Resolution chain honored: explicit `--board` flag (global or subcommand) → `KDI_BOARD` env → current-board file → `"default"`
+- [x] `kdi dispatch` accepts `--board <slug>` and filters the one-shot/daemon tick to that board
+- [x] E2e coverage in `tests/global-board.test.ts` proves global `--board` works for `create`, `list`, `show`, `dispatch`, and `swarm`
+- [x] Feature flag `FF_GLOBAL_BOARD` remains registered and defaults to `false`
+- [x] `bun run lint`, `bun run test`, and `bun run build` pass in the worktree with isolated `KDI_DB`
 
 ## Triage Automation (KDI-040) — Done
 - [x] BRD drafted at `specs/brd-kdi-040-triage-automation.md` to match LLM-powered triage automation semantics

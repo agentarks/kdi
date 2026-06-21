@@ -759,7 +759,7 @@ The bulk of failures are cascading from bug #1 (`--board` ignored). Fixing that 
 
 Add to the appropriate phases above:
 
-- [ ] **KDI-042: Fix `--board` flag resolution**  
+- [x] **KDI-042: Fix `--board` flag resolution**  
   Global and subcommand `--board` must both resolve to the explicit board. Add e2e coverage for `--board` on `create`, `list`, `show`, `dispatch`, and `swarm`.
 
 - [ ] **KDI-043: Implement `boards create --switch`**  
