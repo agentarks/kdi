@@ -1,11 +1,17 @@
 # kdi — Status
 
+## KDI-042–045 Consolidated PR — In Review
+- Consolidated branch: `feat/kdi-042-045-consolidated` (worktree `.worktrees/feat-kdi-042-045-consolidated`)
+- Includes: KDI-042 (global `--board`), KDI-043 (`boards create --switch`), KDI-044 (`--description` board metadata), KDI-045 (`create --parent`)
+- Verification: `bun run lint` ✅, `bun run build` ✅, `bun test` ✅ **866 pass / 0 fail**
+- Pushed to origin and PR opened.
+
 ## Hermes Kanban Parity Verification — 2026-06-20/21 (in progress)
 - [x] Live CLI verification run via `kdi-new-feature-loop` with temp `HOME`/`KDI_DB` and all feature flags enabled.
 - [x] ~~Critical bug: global/subcommand `--board` flag is ignored; only `KDI_BOARD` env and current-board file resolve correctly.~~ **Fixed by KDI-042.**
 - [x] Critical bug: `src/flags.ts` contained unresolved git merge conflict markers that broke `bun run build`/`dev`; resolved during verification.
 - [x] Additional verified gaps documented in `specs/hermes-kanban-backlog.md` (KDI-042 through KDI-052); **KDI-043 is done**.
-- [x] Test suite health: `bun run lint` passes; `bun test` reports **856 pass / 0 fail** (856 tests, 41 files) when run with isolated `KDI_DB`.
+- [x] Test suite health: `bun run lint` passes; `bun test` reports **866 pass / 0 fail** (866 tests, 41 files) when run with isolated `KDI_DB`.
 - [x] **Real harness end-to-end test with opencode**: dispatcher creates worktree `wt/opencode/1`, spawns `opencode run`, agent edits `README.md`, task moves to `done`. Verified worktree isolation, log capture, and run recording.
 - [ ] Pass task context to harnesses, clean up result/summary capture, and continue parity work (tracked in KDI-052 / KDI-053).
 

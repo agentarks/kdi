@@ -762,10 +762,10 @@ Add to the appropriate phases above:
 - [x] **KDI-042: Fix `--board` flag resolution**  
   Global and subcommand `--board` must both resolve to the explicit board. Add e2e coverage for `--board` on `create`, `list`, `show`, `dispatch`, and `swarm`.
 
-- [ ] **KDI-043: Implement `boards create --switch`**  
+- [x] **KDI-043: Implement `boards create --switch`**  
   Auto-switch to the newly created board (currently marked done in KDI-012 but missing in CLI).
 
-- [ ] **KDI-044: Add `--description` to board metadata**  
+- [x] **KDI-044: Add `--description` to board metadata**  
   Store and display board description, matching Hermes `boards create --description`.
 
 - [x] **KDI-045: Add `--parent` repeatable option to `kdi create`**  
