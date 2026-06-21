@@ -66,6 +66,7 @@ stateDiagram-v2
 | `ff_dispatch_controls` | `FF_DISPATCH_CONTROLS` | CLI / dispatcher | InDev | `false` | KDI-034 | `kdi dispatch --failure-limit` per-pass failure threshold.
 | `ff_dispatch_once` | `FF_DISPATCH_ONCE` | CLI / dispatcher | InDev | `false` | KDI-034x | `kdi dispatch --once` runs a single tick and exits (hermes `dispatch` parity). Default `dispatch` is still a long-running daemon. |
 | `ff_link_unlink` | `FF_LINK_UNLINK` | CLI / task lifecycle | InDev | `false` | KDI-026 | `kdi link` / `kdi unlink` parent<->child dependency CLI; cycles and self-loops rejected. |
+| `ff_create_parent` | `FF_CREATE_PARENT` | CLI / task lifecycle | InDev | `false` | KDI-045 | `kdi create --parent <task_id>` repeatable; create parent->child dependencies at task creation time. |
 | `ff_watch_filters` | `FF_WATCH_FILTERS` | CLI / observability | InDev | `false` | KDI-035 | `kdi watch --assignee`/`--tenant`/`--kinds`/`--interval` filters.
 | `ff_workflow_templates` | `FF_WORKFLOW_TEMPLATES` | CLI / task lifecycle | InDev | `false` | KDI-039 | Step-key driven workflow templates; `kdi create --workflow-template-id`, `kdi step`, `kdi workflows`.
 | `ff_triage_automation` | `FF_TRIAGE_AUTOMATION` | CLI / task lifecycle | InDev | `false` | KDI-040 | LLM-powered triage automation; `kdi specify` (LLM path) and `kdi decompose`. |
@@ -515,6 +516,20 @@ stateDiagram-v2
   - `kdi dispatch --failure-limit <n>` stops spawning additional workers after `<n>` distinct failures/crashes/spawn-failures in a single pass.
   - `--max <n>` continues to work unchanged and ungated.
 - **Rollback / deactivation:** Set `FF_DISPATCH_CONTROLS=false` to reject `--failure-limit`.
+- **Deprecation plan:** N/A
+
+### `ff_create_parent` — InDev
+
+- **Owner:** kdi core team
+- **BRD:** KDI-045
+- **Status transitions:**
+  - `Planned` → `InDev` when `kdi create --parent` repeatable option is implemented.
+- **Schema note:** No schema changes; reuses the existing `dependencies` table with `parent_id`/`child_id` primary key.
+- **Activation criteria:**
+  - `kdi create "title" --parent <task_id>` creates a parent->child dependency for each repeated `--parent` value.
+  - Invalid parent IDs, missing parents, self-dependencies, and circular dependencies are rejected with clear errors.
+  - Duplicate parent links are idempotent (no error on re-creation).
+- **Rollback / deactivation:** Set `FF_CREATE_PARENT=false` to reject the `--parent` option.
 - **Deprecation plan:** N/A
 
 ### `ff_watch_filters` — InDev

@@ -9,6 +9,16 @@
 - [x] **Real harness end-to-end test with opencode**: dispatcher creates worktree `wt/opencode/1`, spawns `opencode run`, agent edits `README.md`, task moves to `done`. Verified worktree isolation, log capture, and run recording.
 - [ ] Fix `--board` flag resolution, pass task context to harnesses, clean up result/summary capture, and stabilize test suite before claiming parity.
 
+## KDI-045: `kdi create --parent` — Done
+- [x] BRD drafted at `specs/brd-kdi-045-create-parent.md`
+- [x] Feature flag `ff_create_parent` / `FF_CREATE_PARENT` registered in `src/flags.ts` and `specs/feature-flags.md`, defaults to `false`
+- [x] `kdi create <title> --parent <task_id>` repeatable option added to `src/commands/tasks.ts`
+- [x] Each `--parent` value creates a parent-\u003echild dependency via `addDependency`
+- [x] Missing parents, self-dependencies, and circular dependencies rejected with clear errors
+- [x] Duplicate parent links are idempotent (ignored on UNIQUE constraint)
+- [x] Unit tests in `tests/create-parent.test.ts` cover single parent, multiple parents, flag gating, missing parent, self-dependency, circular dependency, and idempotency with `--idempotency-key`
+- [x] `bun run lint`, `bun test tests/create-parent.test.ts`, and `bun run build` pass
+
 ## Dispatcher Presence Warning (KDI-037) — Done
 - [x] BRD drafted at `specs/brd-kdi-037-dispatcher-presence-warning.md`
 - [x] Feature flag `ff_dispatcher_presence_warning` / `FF_DISPATCHER_PRESENCE_WARNING` registered in `src/flags.ts` and `specs/feature-flags.md`, defaults to `false`

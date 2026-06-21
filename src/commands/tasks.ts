@@ -26,12 +26,13 @@ import {
   VALID_SORT_KEYS,
 } from "../models/task";
 import { addComment, getComments } from "../models/comment";
+import { addDependency } from "../models/dependency";
 import { createAttachment, listAttachments } from "../models/taskAttachment";
 import { getRuns, getRunsFiltered } from "../models/taskRun";
 import { getEvents, tailEvents, getRecentEvents, getEventsAfter, type WatchFilters } from "../models/taskEvent";
 import { atomicClaim, reclaimTask, heartbeat } from "../models/claim";
 import { getTaskLogPath } from "../observability";
-import { isEnabled, FF_SCHEDULED_STATUS, FF_REVIEW_STATUS, FF_COMPLETE_METADATA, FF_PRIORITY_INTEGER, FF_SKILLS_ARRAY, FF_MAX_RUNTIME, FF_MAX_RETRIES, FF_TENANT_NAMESPACE, FF_CREATED_BY, FF_MODEL_OVERRIDE, FF_DEFAULT_WORKDIR, FF_WORKER_LOG_CAPTURE, FF_ASSIGN_REASSIGN, FF_CRASH_GRACE_PERIOD, FF_HEARTBEAT, FF_RATE_LIMIT_EXIT_CODE, FF_TASK_ATTACHMENTS, FF_LIST_FILTERS_SORT, FF_SHOW_RUN_FILTERING, FF_RUNS_FILTERING, FF_BULK_OPERATIONS, FF_COMMENT_ENHANCEMENTS, FF_WATCH_FILTERS, FF_WORKFLOW_TEMPLATES, FF_TRIAGE_AUTOMATION, FF_DISPATCHER_PRESENCE_WARNING, FF_GOAL_MODE } from "../flags";
+import { isEnabled, FF_SCHEDULED_STATUS, FF_REVIEW_STATUS, FF_COMPLETE_METADATA, FF_PRIORITY_INTEGER, FF_SKILLS_ARRAY, FF_MAX_RUNTIME, FF_MAX_RETRIES, FF_TENANT_NAMESPACE, FF_CREATED_BY, FF_MODEL_OVERRIDE, FF_DEFAULT_WORKDIR, FF_WORKER_LOG_CAPTURE, FF_ASSIGN_REASSIGN, FF_CRASH_GRACE_PERIOD, FF_HEARTBEAT, FF_RATE_LIMIT_EXIT_CODE, FF_TASK_ATTACHMENTS, FF_LIST_FILTERS_SORT, FF_SHOW_RUN_FILTERING, FF_RUNS_FILTERING, FF_BULK_OPERATIONS, FF_COMMENT_ENHANCEMENTS, FF_WATCH_FILTERS, FF_WORKFLOW_TEMPLATES, FF_TRIAGE_AUTOMATION, FF_DISPATCHER_PRESENCE_WARNING, FF_GOAL_MODE, FF_CREATE_PARENT } from "../flags";
 import { getWorkflowTemplate, validateStepKey, advanceTaskStep, setTaskStep } from "../models/workflowTemplate";
 import { resolveBoard } from "../resolveBoard";
 import { isDispatcherPresent } from "../dispatcherPresence";
@@ -100,6 +101,25 @@ function collectSkill(value: string, previous: string[] = []): string[] {
   return previous.concat(value);
 }
 
+function collectParent(value: string, previous: string[] = []): string[] {
+  return previous.concat(value);
+}
+
+function linkParent(parentId: number, childId: number): void {
+  if (!showTask(parentId)) {
+    throw new Error(`Parent task ${parentId} not found.`);
+  }
+  try {
+    addDependency(parentId, childId);
+  } catch (err: any) {
+    // Idempotent: ignore duplicate parent links.
+    if (/UNIQUE constraint failed/i.test(err.message)) {
+      return;
+    }
+    throw err;
+  }
+}
+
 const SKILL_NAME_PATTERN = /^[a-zA-Z0-9_-]+$/;
 
 function validateSkillName(name: string): void {
@@ -149,6 +169,7 @@ export const createTaskCommand = new Command("create")
   .option("--max-retries <n>", "Maximum consecutive failures before blocking (non-negative integer). Feature-flagged.")
   .option("--tenant <name>", "Tenant namespace for the task")
   .option("--skill <skill>", "Add a skill to the task (repeatable)", collectSkill, [])
+  .option("--parent <task_id>", "Add a parent dependency (repeatable)", collectParent, [])
   .option("--model <model>", "Model override for the harness")
   .option("--created-by <actor>", "Actor that created the task")
   .option("--workspace <path>", "Workspace path for this task. Feature-flagged.")
@@ -159,7 +180,7 @@ export const createTaskCommand = new Command("create")
   .option("--goal", "Create as a goal-mode task (Ralph-style multi-turn loop). Requires --goal-max-turns and a judge profile. Feature-flagged.")
   .option("--goal-max-turns <n>", "Maximum number of turns for a goal-mode task (positive integer). Requires --goal. Feature-flagged.")
   .option("--goal-judge <profile>", "Judge profile name for a goal-mode task. Falls back to KDI_GOAL_JUDGE_PROFILE env. Requires --goal. Feature-flagged.")
-  .action(function (this: Command, title: string, options: { board?: string; assignee?: string; body?: string; triage?: boolean; initialStatus?: string; at?: string; priority?: string; idempotencyKey?: string; maxRuntime?: string; maxRetries?: string; tenant?: string; skill: string[]; createdBy?: string; model?: string; workspace?: string; session?: string; workflowTemplateId?: string; stepKey?: string; dispatcherWarning?: boolean; goal?: boolean; goalMaxTurns?: string; goalJudge?: string }) {
+  .action(function (this: Command, title: string, options: { board?: string; assignee?: string; body?: string; triage?: boolean; initialStatus?: string; at?: string; priority?: string; idempotencyKey?: string; maxRuntime?: string; maxRetries?: string; tenant?: string; skill: string[]; parent: string[]; createdBy?: string; model?: string; workspace?: string; session?: string; workflowTemplateId?: string; stepKey?: string; dispatcherWarning?: boolean; goal?: boolean; goalMaxTurns?: string; goalJudge?: string }) {
     try {
       if (!title || title.trim() === "") {
         throw new Error("Title is required.");
@@ -245,6 +266,24 @@ export const createTaskCommand = new Command("create")
         skills = options.skill.filter((s) => s.trim() !== "");
         for (const skill of skills) {
           validateSkillName(skill);
+        }
+      }
+
+      const parents: number[] = [];
+      if (options.parent.length > 0) {
+        if (!isEnabled(FF_CREATE_PARENT)) {
+          throw new Error("Create-parent feature is not enabled.");
+        }
+        for (const raw of options.parent) {
+          if (raw.trim() === "") {
+            throw new Error("Parent task ID cannot be empty.");
+          }
+          parents.push(parseTaskId(raw));
+        }
+        for (const parentId of parents) {
+          if (!showTask(parentId)) {
+            throw new Error(`Parent task ${parentId} not found.`);
+          }
         }
       }
 
@@ -401,6 +440,11 @@ export const createTaskCommand = new Command("create")
         goal_max_turns: goalMaxTurns,
         goal_judge_profile: goalJudgeProfile,
       });
+
+      for (const parentId of parents) {
+        linkParent(parentId, task.id);
+      }
+
       console.log(task.id);
     } catch (err: any) {
       this.error(err.message);
