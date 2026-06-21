@@ -81,6 +81,19 @@
 - [x] `kdi boards list` shows metadata compactly when flag enabled
 - [x] Board name defaults to slug when omitted; icon and color default to null
 
+## Board Description (KDI-044) — Done
+- [x] `description` column added to `boards` table (schema + migration)
+- [x] `kdi boards create <slug> --workdir <path> [--description <description>]` — stores board description when `ff_board_metadata` enabled
+- [x] `kdi boards edit <slug> [--description <description>]` — updates board description when `ff_board_metadata` enabled
+- [x] `kdi boards show <slug>` displays Description when set and `ff_board_metadata` enabled
+- [x] `--description` is rejected when `ff_board_metadata` is disabled
+- [x] Empty/whitespace-only descriptions are rejected
+- [x] Description defaults to null when omitted
+- [x] Existing databases are migrated to include the `description` column
+- [x] Unit tests in `tests/board.test.ts` and CLI/e2e tests in `tests/e2e.test.ts` cover create, edit, show, flag gating, trimming, and migration
+- [x] `bun run lint`, `bun run test tests/board.test.ts tests/e2e.test.ts`, `bun run build` pass
+- [x] User-loop smoke proven with temp `HOME` and temp `KDI_DB`
+
 ## Board Rename (KDI-014) — Done
 - [x] `FF_BOARD_RENAME` flag registered in `src/flags.ts`, defaults to `false`
 - [x] `kdi boards rename <old-slug> <new-slug>` command added to `src/commands/boards.ts`

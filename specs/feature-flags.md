@@ -41,7 +41,7 @@ stateDiagram-v2
 | `ff_model_override` | `FF_MODEL_OVERRIDE` | CLI / create + dispatcher | InDev | `false` | KDI-010 | Per-task model override; `create --model`; dispatcher passes `{{model}}` and `KDI_MODEL` to harness. |
 | `ff_max_retries` | `FF_MAX_RETRIES` | CLI / create + dispatcher | InDev | `false` | KDI-011 | Per-task max retries; auto-block after N consecutive spawn/execution failures. |
 | `ff_rate_limit_exit_code` | `FF_RATE_LIMIT_EXIT_CODE` | CLI / dispatcher | InDev | `false` | KDI-016c | Treat harness exit code 75 (EX_TEMPFAIL) as a transient rate limit and requeue with a cooldown instead of counting it as a failure. |
-| `ff_board_metadata` | `FF_BOARD_METADATA` | CLI / board metadata | InDev | `false` | KDI-012 | Board name, icon, and color; `boards create --name/--icon/--color`, `boards edit`, and metadata display. |
+| `ff_board_metadata` | `FF_BOARD_METADATA` | CLI / board metadata | InDev | `false` | KDI-012 | Board name, icon, color, and description; `boards create --name/--icon/--color/--description`, `boards edit`, and metadata display. |
 | `ff_board_switch` | `FF_BOARD_SWITCH` | CLI / board management | InDev | `false` | KDI-013 | Board switch command and resolution chain; `boards switch`, `boards show` without slug. |
 | `ff_board_create_switch` | `FF_BOARD_CREATE_SWITCH` | CLI / board management | InDev | `false` | KDI-013x | `boards create --switch` auto-switches to the new board after creation (hermes parity). |
 | `ff_global_board` | `FF_GLOBAL_BOARD` | CLI / board resolution | InDev | `false` | KDI-013 | Program-level `kdi --board <slug>` sets `KDI_BOARD` for the subcommand; lower priority than the subcommand's own `--board`. |
@@ -236,9 +236,9 @@ stateDiagram-v2
 - **BRD:** KDI-012
 - **Status transitions:**
   - `Planned` → `InDev` when `boards` metadata columns and CLI options are implemented.
-- **Schema note:** `name`, `icon`, and `color` are schema-level TEXT columns on `boards` — this flag gates the CLI options and display; the schema migrations always run.
+- **Schema note:** `name`, `icon`, `color`, and `description` are schema-level TEXT columns on `boards` — this flag gates the CLI options and display; the schema migrations always run.
 - **Activation criteria:**
-  - `boards create --name/--icon/--color` stores metadata on the board.
+  - `boards create --name/--icon/--color/--description` stores metadata on the board.
   - `boards edit` updates board metadata.
   - `boards show` and `boards list` display metadata when set.
 - **Rollback / deactivation:** Set `FF_BOARD_METADATA=false` to hide/gate the `--name`, `--icon`, `--color`, and `boards edit` options.
