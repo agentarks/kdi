@@ -4,8 +4,8 @@
 - [x] Live CLI verification run via `kdi-new-feature-loop` with temp `HOME`/`KDI_DB` and all feature flags enabled.
 - [x] ~~Critical bug: global/subcommand `--board` flag is ignored; only `KDI_BOARD` env and current-board file resolve correctly.~~ **Fixed by KDI-042.**
 - [x] Critical bug: `src/flags.ts` contained unresolved git merge conflict markers that broke `bun run build`/`dev`; resolved during verification.
-- [x] Additional verified gaps documented in `specs/hermes-kanban-backlog.md` (KDI-042 through KDI-052).
-- [x] Test suite health: `bun run lint` passes; `bun test` reports **854 pass / 0 fail** (854 tests, 40 files) when run with isolated `KDI_DB`.
+- [x] Additional verified gaps documented in `specs/hermes-kanban-backlog.md` (KDI-042 through KDI-052); **KDI-043 is done**.
+- [x] Test suite health: `bun run lint` passes; `bun test` reports **856 pass / 0 fail** (856 tests, 41 files) when run with isolated `KDI_DB`.
 - [x] **Real harness end-to-end test with opencode**: dispatcher creates worktree `wt/opencode/1`, spawns `opencode run`, agent edits `README.md`, task moves to `done`. Verified worktree isolation, log capture, and run recording.
 - [ ] Pass task context to harnesses, clean up result/summary capture, and continue parity work (tracked in KDI-052 / KDI-053).
 
@@ -128,6 +128,17 @@
 - [x] `kdi create <title> --board <slug>` inherits the board default when `--workspace` is omitted and the flag is enabled
 - [x] `kdi create <title> --board <slug> --workspace <path>` overrides the board default when the flag is enabled
 - [x] When `FF_DEFAULT_WORKDIR=false`, the command/`--workspace` option are rejected and default inheritance is skipped
+
+## `kdi boards create --switch` (KDI-043) — Done
+- [x] Feature flag `ff_board_create_switch` / `FF_BOARD_CREATE_SWITCH` registered in `src/flags.ts` and `specs/feature-flags.md`, defaults to `false`
+- [x] `kdi boards create <slug> --workdir <path> --switch` auto-switches to the newly created board when `FF_BOARD_CREATE_SWITCH=true`
+- [x] `--switch` is gated solely by `FF_BOARD_CREATE_SWITCH` (does not require `FF_BOARD_SWITCH`)
+- [x] Without `--switch`, the current-board file is left unchanged
+- [x] With `--switch` and `FF_BOARD_CREATE_SWITCH=false`, the command errors with a clear message and does not touch the current-board file
+- [x] Invalid slugs are rejected before any current-board file mutation
+- [x] Tests in `tests/board.test.ts` cover flag-on + `--switch`, flag-on + no `--switch`, flag-off + `--switch`, and invalid slug + `--switch`
+- [x] User-loop smoke verified with temp `HOME` and temp `KDI_DB`: `--switch` switches to new board, no-switch leaves current board unchanged, flag-off errors cleanly
+- [x] `bun run lint`, `bun run test`, and `bun run build` pass
 
 ## Heartbeat (KDI-016) — Done
 - [x] BRD drafted at `specs/brd-kdi-016-heartbeat.md`

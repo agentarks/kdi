@@ -26,9 +26,6 @@ boardsCommand
       if (options.switch && !isEnabled(FF_BOARD_CREATE_SWITCH)) {
         throw new Error("Board create --switch feature is not enabled.");
       }
-      if (options.switch && !isEnabled(FF_BOARD_SWITCH)) {
-        throw new Error("Board switch feature is not enabled.");
-      }
 
       const metadata = metadataRequested
         ? { name: options.name, icon: options.icon, color: options.color }

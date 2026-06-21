@@ -7,7 +7,7 @@ import { initDb, closeDb, getDb, getBoardDataDir } from "../src/db";
 import { createBoard, listBoards, showBoard, archiveBoard, updateBoardMetadata, removeBoard, renameBoard, setDefaultWorkdir } from "../src/models/board";
 import { readCurrentBoard, writeCurrentBoard } from "../src/resolveBoard";
 import { cleanupDb } from "./cleanupDb";
-import { clearOverrides, setFlag, FF_BOARD_RM_DELETE, FF_BOARD_RENAME } from "../src/flags";
+import { clearOverrides, setFlag, FF_BOARD_RM_DELETE, FF_BOARD_RENAME, FF_BOARD_CREATE_SWITCH } from "../src/flags";
 
 const PROJECT_ROOT = resolve(import.meta.dir, "../..");
 
@@ -389,23 +389,46 @@ describe("FF_BOARD_CREATE_SWITCH (boards create --switch)", () => {
     clearOverrides();
   });
 
-  it("--switch writes the new board slug to the current-board file", () => {
+  it("flag-on + --switch writes the new board slug to the current-board file", () => {
     const { execSync } = require("node:child_process");
-    setFlag("FF_BOARD_CREATE_SWITCH" as any, true);
     execSync(
       `bun run src/index.ts boards create myproj --workdir /tmp/myproj --switch`,
-      { encoding: "utf-8", cwd: resolve(import.meta.dir, ".."), env: { ...process.env, KDI_DB: CREATE_SWITCH_DB, KDI_CURRENT_PATH: TMP_DIR, FF_BOARD_CREATE_SWITCH: "true", FF_BOARD_SWITCH: "true" } }
+      { encoding: "utf-8", cwd: resolve(import.meta.dir, ".."), env: { ...process.env, KDI_DB: CREATE_SWITCH_DB, KDI_CURRENT_PATH: TMP_DIR, FF_BOARD_CREATE_SWITCH: "true" } }
     );
     expect(readCurrentBoard()).toBe("myproj");
   });
 
-  it("without --switch, the current-board file is not touched", () => {
+  it("flag-on + no --switch leaves the current-board file untouched", () => {
     const { execSync } = require("node:child_process");
     writeCurrentBoard("other");
     execSync(
       `bun run src/index.ts boards create myproj --workdir /tmp/myproj`,
-      { encoding: "utf-8", cwd: resolve(import.meta.dir, ".."), env: { ...process.env, KDI_DB: CREATE_SWITCH_DB, KDI_CURRENT_PATH: TMP_DIR } }
+      { encoding: "utf-8", cwd: resolve(import.meta.dir, ".."), env: { ...process.env, KDI_DB: CREATE_SWITCH_DB, KDI_CURRENT_PATH: TMP_DIR, FF_BOARD_CREATE_SWITCH: "true" } }
     );
+    expect(readCurrentBoard()).toBe("other");
+  });
+
+  it("flag-off + --switch errors and does not touch the current-board file", () => {
+    const { execSync } = require("node:child_process");
+    writeCurrentBoard("other");
+    expect(() =>
+      execSync(
+        `bun run src/index.ts boards create myproj --workdir /tmp/myproj --switch`,
+        { encoding: "utf-8", cwd: resolve(import.meta.dir, ".."), env: { ...process.env, KDI_DB: CREATE_SWITCH_DB, KDI_CURRENT_PATH: TMP_DIR, FF_BOARD_CREATE_SWITCH: "false" } }
+      )
+    ).toThrow();
+    expect(readCurrentBoard()).toBe("other");
+  });
+
+  it("flag-on + --switch + invalid slug errors and does not touch the current-board file", () => {
+    const { execSync } = require("node:child_process");
+    writeCurrentBoard("other");
+    expect(() =>
+      execSync(
+        `bun run src/index.ts boards create bad/slug --workdir /tmp/myproj --switch`,
+        { encoding: "utf-8", cwd: resolve(import.meta.dir, ".."), env: { ...process.env, KDI_DB: CREATE_SWITCH_DB, KDI_CURRENT_PATH: TMP_DIR, FF_BOARD_CREATE_SWITCH: "true" } }
+      )
+    ).toThrow();
     expect(readCurrentBoard()).toBe("other");
   });
 });
