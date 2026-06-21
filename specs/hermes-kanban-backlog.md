@@ -693,6 +693,119 @@
 
 ---
 
+## Live CLI Verification — 2026-06-20
+
+> Method: `kdi-new-feature-loop` with temp `HOME` + temp `KDI_DB`, all feature flags enabled via environment, compared against live `NousResearch/hermes-agent` source.
+> Commands verified: `init`, `boards`, `create`, `list`, `show`, `promote`, `block`, `unblock`, `schedule`, `archive`, `assign`, `reassign`, `claim`, `reclaim`, `heartbeat`, `complete`, `runs`, `tail`, `stats`, `diagnostics`, `assignees`, `context`, `notify-*`, `gc`, `dispatch`, `swarm`.
+
+### Critical Bugs Discovered
+
+1. **Global/subcommand `--board` flag is ignored**  
+   `kdi <cmd> ... --board <slug>` resolves to `default` instead of the supplied slug. Only `KDI_BOARD` env var and the `~/.local/share/kdi/current` file work. This breaks the board resolution chain documented in KDI-013 and causes the entire e2e suite to fail when tests pass `--board myproj`.  
+   Evidence: `bun run src/index.ts create "x" --board myproj --assignee opencode` → `Board "default" not found.`  
+   Hermes behavior: `--board` is honored on every subcommand.
+
+2. **Unresolved git merge conflict in `src/flags.ts`**  
+   `<<<<<<< Updated upstream` / `=======` / `>>>>>>> Stashed changes` markers were present at lines 17 and 52, breaking `bun run build` and `bun run dev`. Resolved during this session by keeping both stashed additions (`FF_BOARD_CREATE_SWITCH`, `FF_GLOBAL_BOARD`).
+
+3. **`kdi boards create --switch` is missing**  
+   Backlog marks this as implemented (KDI-012), but `bun run src/index.ts boards create myproj --workdir ... --switch` returns `error: unknown option '--switch'`.
+
+4. **`kdi boards rename` semantics do not match Hermes**  
+   `kdi boards rename <old-slug> <new-slug>` renames the board slug (and warns if the data directory is missing). Hermes `boards rename <slug> <name>` changes only the display name; the slug is immutable. KDI's display-name rename lives under `kdi boards edit <slug> --name <name>`, which is the Hermes-equivalent operation.
+
+5. **`kdi create` default initial status is `todo`, not `running`**  
+   Hermes defaults `--initial-status` to `running`. KDI defaults to `todo`, so a plain `kdi create "title"` parks the card instead of making it dispatchable.
+
+6. **`kdi create` has no `--parent` / `--dependency` option**  
+   Hermes supports repeatable `--parent <task_id>` on create to build dependency graphs at creation time. KDI requires a separate `link` / `unlink` command (if it exists), but those commands are not exposed in the top-level help and the create-time path is missing.
+
+7. **`kdi boards create` has no `--description` option**  
+   Hermes boards carry `description` metadata. KDI stores `name`, `icon`, and `color` only.
+
+8. **`kdi unblock` accepts only a single task ID**  
+   Hermes `unblock <task_ids...>` supports bulk unblocking. KDI usage is `unblock [options] <task_id>`; passing multiple IDs silently ignores all but the first.
+
+9. **`kdi archive` bulk archive is broken**  
+   Help text advertises `[task_ids...]`, but `kdi archive 1 2` returns `Error: Archive only supports a single task ID (use --rm for bulk deletion of archived tasks)`. Bulk `--rm` of archived tasks works; bulk archive does not.
+
+10. **`kdi tail` has no non-following / `--lines` mode**  
+    Hermes `tail` follows by default but can be piped/limited by the caller. KDI `tail <task_id>` blocks forever following events; there is no CLI flag to print the last N events and exit.
+
+11. **`kdi init` does not ensure a `default` board exists**  
+    Hermes treats `default` as always-present. After `kdi init`, `kdi boards show` (with no current board) fails with `Board "default" not found.`
+
+12. **`kdi dispatch` is daemon-only; no one-shot tick mode**  
+    Hermes `dispatch` performs one dispatcher pass and exits. KDI `dispatch` starts a long-running loop (`--interval` defaults to 5000 ms) with no documented `--once` / `--tick` flag.
+
+13. **`kdi swarm` CLI differs from Hermes**  
+    Hermes: `swarm <goal> --worker PROFILE:TITLE[:SKILL,SKILL] --verifier ... --synthesizer ...`. KDI: `swarm --worker profile:title` with no goal positional and no skills suffix.
+
+### Test Suite Health
+
+```
+bun run lint   # passes (tsc --noEmit)
+bun test       # 711 pass, 125 fail, 1660 expect() calls, 836 tests across 36 files
+```
+
+The bulk of failures are cascading from bug #1 (`--board` ignored). Fixing that is the highest-leverage repair. Remaining failures cluster in:
+- `kdi list` filters/sort ( `--mine`, `--session`, `--archived`, `--sort`, workflow filters )
+- `kdi show` / `kdi runs` state filtering
+- `kdi assign` / `reassign` / `reclaim` / `heartbeat`
+- `kdi log` / worker log capture
+- `kdi stats`, `diagnostics`, `assignees`, `gc`, `notify-*`, `swarm`
+
+### New Backlog Items
+
+Add to the appropriate phases above:
+
+- [ ] **KDI-042: Fix `--board` flag resolution**  
+  Global and subcommand `--board` must both resolve to the explicit board. Add e2e coverage for `--board` on `create`, `list`, `show`, `dispatch`, and `swarm`.
+
+- [ ] **KDI-043: Implement `boards create --switch`**  
+  Auto-switch to the newly created board (currently marked done in KDI-012 but missing in CLI).
+
+- [ ] **KDI-044: Add `--description` to board metadata**  
+  Store and display board description, matching Hermes `boards create --description`.
+
+- [ ] **KDI-045: Add `--parent` repeatable option to `kdi create`**  
+  Create task links at creation time; equivalent to Hermes `--parent`.
+
+- [ ] **KDI-046: Align `boards rename` with Hermes semantics**  
+  Make `rename` change display name; introduce `boards rename-slug` (or similar) if slug rename is still needed.
+
+- [ ] **KDI-047: Support multiple task IDs in `kdi unblock`**  
+  Bulk unblock matching Hermes `unblock <task_ids...>`.
+
+- [ ] **KDI-048: Fix bulk archive**  
+  `kdi archive <id> <id>...` should archive all supplied IDs; only `--rm` should be restricted to already-archived IDs.
+
+- [ ] **KDI-049: Add non-following `tail` mode**  
+  Add `kdi tail --lines N` (or `--no-follow`) to print recent events and exit.
+
+- [ ] **KDI-050: Ensure `default` board exists after `kdi init`**  
+  `kdi init` should create the `default` board so `kdi boards show` and board-less commands work.
+
+- [ ] **KDI-051: Add one-shot dispatch mode**  
+  `kdi dispatch --once` (or `--tick`) for a single dispatcher pass, matching Hermes behavior.
+
+- [ ] **KDI-052: Pass task title/body to harness**  
+  Real harness test showed kdi does not expose task title/body to the spawned command. Hermes injects task context into the worker environment (e.g., `KDI_TASK_TITLE`, `KDI_TASK_BODY`) or supports `{{title}}`/`{{body}}` template substitution. Without this, agents cannot act on the task unless the user bakes it into the profile. Add `{{title}}` and `{{body}}` to `ALLOWED_TEMPLATES` and substitute them in `substituteCommand`; also export `KDI_TASK_TITLE`, `KDI_TASK_BODY`, `KDI_TASK_ID`, `KDI_BOARD` into harness env.
+
+- [ ] **KDI-053: Store clean result/summary from harness output**  
+  Currently the entire raw JSON stream from `opencode run --format json` is dumped into `tasks.result`. Hermes expects a human-readable result/summary. Provide a convention for harnesses to emit a result file (e.g., `{{workdir}}/.kdi-result.txt`) or parse the last text chunk from JSON-mode output; store that as `result`/`summary` instead of raw stdout.
+
+- [ ] **KDI-054: Real harness parity test**  
+  Add a real-harness smoke test to the suite (gated by an env var or opt-in) that proves `kdi create --assignee opencode` → `promote` → `dispatch` results in an actual file edit in the worktree and a clean result in `kdi show`.
+
+- [ ] **KDI-055: Consider whether task changes should propagate to original repo**  
+  Worktree isolation is correct, but downstream workflows may expect the original board workdir to reflect the completed edit. Document the intended handoff (worktree branch stays until merged/pushed) or add an option to copy/commit changes back.
+
+- [ ] **KDI-052: Stabilize test suite**  
+  Repair the 125 failing tests; root-cause the non-cascading failures after KDI-042 is fixed.
+
+---
+
 ## Agent Batch — 2026-06-11
 
 Dispatched 4 parallel `pi` agents via cmux. All 135 tests pass. Work committed to working tree (not yet committed to git).

@@ -1,5 +1,14 @@
 # kdi — Status
 
+## Hermes Kanban Parity Verification — 2026-06-20/21 (in progress)
+- [x] Live CLI verification run via `kdi-new-feature-loop` with temp `HOME`/`KDI_DB` and all feature flags enabled.
+- [x] Critical bug: global/subcommand `--board` flag is ignored; only `KDI_BOARD` env and current-board file resolve correctly. This cascades into 100+ e2e test failures.
+- [x] Critical bug: `src/flags.ts` contained unresolved git merge conflict markers that broke `bun run build`/`dev`; resolved during verification.
+- [x] Additional verified gaps documented in `specs/hermes-kanban-backlog.md` (KDI-042 through KDI-052).
+- [x] Test suite health: `bun run lint` passes; `bun test` reports **711 pass / 125 fail** (836 tests, 36 files).
+- [x] **Real harness end-to-end test with opencode**: dispatcher creates worktree `wt/opencode/1`, spawns `opencode run`, agent edits `README.md`, task moves to `done`. Verified worktree isolation, log capture, and run recording.
+- [ ] Fix `--board` flag resolution, pass task context to harnesses, clean up result/summary capture, and stabilize test suite before claiming parity.
+
 ## Dispatcher Presence Warning (KDI-037) — Done
 - [x] BRD drafted at `specs/brd-kdi-037-dispatcher-presence-warning.md`
 - [x] Feature flag `ff_dispatcher_presence_warning` / `FF_DISPATCHER_PRESENCE_WARNING` registered in `src/flags.ts` and `specs/feature-flags.md`, defaults to `false`
