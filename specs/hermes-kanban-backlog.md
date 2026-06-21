@@ -768,7 +768,7 @@ Add to the appropriate phases above:
 - [ ] **KDI-044: Add `--description` to board metadata**  
   Store and display board description, matching Hermes `boards create --description`.
 
-- [ ] **KDI-045: Add `--parent` repeatable option to `kdi create`**  
+- [x] **KDI-045: Add `--parent` repeatable option to `kdi create`**  
   Create task links at creation time; equivalent to Hermes `--parent`.
 
 - [ ] **KDI-046: Align `boards rename` with Hermes semantics**  
