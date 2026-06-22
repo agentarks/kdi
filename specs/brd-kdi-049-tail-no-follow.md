@@ -162,20 +162,20 @@ Test Plan
 -------------------------------------------------------------------------------
 Acceptance Criteria
 -------------------------------------------------------------------------------
-- [ ] `FF_TAIL_NO_FOLLOW=true kdi tail <task_id> --lines 10` prints the last
+- [x] `FF_TAIL_NO_FOLLOW=true kdi tail <task_id> --lines 10` prints the last
       10 events and exits 0.
-- [ ] `FF_TAIL_NO_FOLLOW=true kdi tail <task_id> --no-follow` prints all
+- [x] `FF_TAIL_NO_FOLLOW=true kdi tail <task_id> --no-follow` prints all
       events and exits 0.
-- [ ] `--lines` and `--no-follow` may be combined without changing the result.
-- [ ] `kdi tail <task_id>` without the new options continues to follow live
+- [x] `--lines` and `--no-follow` may be combined without changing the result.
+- [x] `kdi tail <task_id>` without the new options continues to follow live
       events.
-- [ ] `--lines` rejects non-numeric, zero, and negative values.
-- [ ] `FF_TAIL_NO_FOLLOW=false kdi tail <task_id> --lines 5` exits with
+- [x] `--lines` rejects non-numeric, zero, and negative values.
+- [x] `FF_TAIL_NO_FOLLOW=false kdi tail <task_id> --lines 5` exits with
       "Tail no-follow feature is not enabled."
-- [ ] Missing task handling is unchanged.
-- [ ] Unit and CLI tests cover the new options, validation, flag gating, and
+- [x] Missing task handling is unchanged.
+- [x] Unit and CLI tests cover the new options, validation, flag gating, and
       default behavior preservation.
-- [ ] `bun run lint`, `bun run test`, and `bun run build` pass.
+- [x] `bun run lint`, `bun run test`, and `bun run build` pass.
 
 -------------------------------------------------------------------------------
 Risks / Open Questions

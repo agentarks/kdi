@@ -781,7 +781,7 @@ Add to the appropriate phases above:
 - [ ] **KDI-048: Fix bulk archive**  
   `kdi archive <id> <id>...` should archive all supplied IDs; only `--rm` should be restricted to already-archived IDs.
 
-- [ ] **KDI-049: Add non-following `tail` mode**  
+- [x] **KDI-049: Add non-following `tail` mode**  
   Add `kdi tail --lines N` (or `--no-follow`) to print recent events and exit.
 
 - [ ] **KDI-050: Ensure `default` board exists after `kdi init`**  
