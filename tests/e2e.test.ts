@@ -87,6 +87,26 @@ describe("kdi e2e acceptance", () => {
     rmSync(tmp, { recursive: true, force: true });
   });
 
+  it("boards list shows description when metadata flag is enabled", () => {
+    const tmp = makeTempDir("board-list-desc");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = {
+      KDI_DB: dbPath,
+      HOME: tmp,
+      FF_BOARD_METADATA: "true",
+    };
+
+    runKdi(`boards create myproj --workdir ${repoDir} --description "My project board"`, env);
+    const listOutput = runKdi(`boards list`, env);
+    expect(listOutput).toContain("myproj");
+    expect(listOutput).toContain("description=My project board");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
   it("create returns task ID", () => {
     const tmp = makeTempDir("create");
     const dbPath = join(tmp, "kdi.db");

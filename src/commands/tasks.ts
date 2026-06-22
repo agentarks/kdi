@@ -112,8 +112,8 @@ function linkParent(parentId: number, childId: number): void {
   try {
     addDependency(parentId, childId);
   } catch (err: any) {
-    // Idempotent: ignore duplicate parent links.
-    if (/UNIQUE constraint failed/i.test(err.message)) {
+    // Idempotent: ignore only the exact duplicate parent->child link.
+    if (err.message?.includes("UNIQUE constraint failed: dependencies.parent_id, dependencies.child_id")) {
       return;
     }
     throw err;

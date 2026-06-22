@@ -58,8 +58,10 @@ boardsCommand
         const archived = board.archived_at ? " (archived)" : "";
         const metadataParts: string[] = [];
         if (isEnabled(FF_BOARD_METADATA)) {
+          if (board.name) metadataParts.push(`name=${board.name}`);
           if (board.icon) metadataParts.push(`icon=${board.icon}`);
           if (board.color) metadataParts.push(`color=${board.color}`);
+          if (board.description) metadataParts.push(`description=${board.description}`);
         }
         const metadata = metadataParts.length > 0 ? ` (${metadataParts.join(", ")})` : "";
         console.log(`  ${board.slug}: ${board.name}${metadata}${archived}`);
