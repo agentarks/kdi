@@ -549,7 +549,7 @@
 
 ## Task Events (KDI-000b)
 - [x] `task_events` table with task_id, run_id, kind, payload, created_at
-- [x] `kdi tail <task_id>` — follow events live (poll 1s)
+- [x] `kdi tail <task_id>` — follow events live (poll 1s), with optional `--lines N` / `--no-follow` non-following mode (KDI-049)
 - [x] `kdi watch` — board-wide event stream (poll 0.5s) with optional `--assignee`, `--tenant`, `--kinds`, and `--interval` filters (KDI-035)
 - [x] Event emissions: created, promoted, blocked, unblocked, completed, archived, claimed, finished
 

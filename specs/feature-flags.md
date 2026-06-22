@@ -657,6 +657,22 @@ stateDiagram-v2
 - **Rollback / deactivation:** Set `FF_GOAL_MODE=false` to reject the goal-mode CLI options and skip the dispatcher goal loop; existing goal-mode rows are dispatched as normal single-turn tasks.
 - **Deprecation plan:** N/A
 
+### `ff_tail_no_follow` — InDev
+
+- **Owner:** kdi core team
+- **BRD:** [BRD-KDI-049](brd-kdi-049-tail-no-follow.md)
+- **Status transitions:**
+  - `Planned` → `InDev` when `--lines` / `--no-follow` options are implemented.
+  - `InDev` → `Active` when non-following tail output is stable and safe to enable by default.
+- **Schema note:** No schema changes; reads from the existing `task_events` table and `idx_events_task` index.
+- **Activation criteria:**
+  - `kdi tail <task_id> --lines N` prints the last N events in chronological order and exits.
+  - `kdi tail <task_id> --no-follow` prints all events in chronological order and exits.
+  - Default `kdi tail <task_id>` continues to print existing events and follow new ones.
+  - `--lines` rejects non-numeric, zero, and negative values.
+- **Rollback / deactivation:** Set `FF_TAIL_NO_FOLLOW=false` to reject `--lines` and `--no-follow`.
+- **Deprecation plan:** N/A
+
 ### `ff_kanban_dispatch` — Planned
 
 - **Owner:** kdi core team
