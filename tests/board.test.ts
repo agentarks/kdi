@@ -7,7 +7,7 @@ import { initDb, closeDb, getDb, getBoardDataDir } from "../src/db";
 import { createBoard, listBoards, showBoard, archiveBoard, updateBoardMetadata, removeBoard, renameBoard, setDefaultWorkdir } from "../src/models/board";
 import { readCurrentBoard, writeCurrentBoard } from "../src/resolveBoard";
 import { cleanupDb } from "./cleanupDb";
-import { clearOverrides, setFlag, FF_BOARD_RM_DELETE, FF_BOARD_RENAME } from "../src/flags";
+import { clearOverrides, setFlag, FF_BOARD_RM_DELETE, FF_BOARD_RENAME, FF_BOARD_CREATE_SWITCH } from "../src/flags";
 
 const PROJECT_ROOT = resolve(import.meta.dir, "../..");
 
@@ -83,15 +83,17 @@ describe("board model", () => {
     expect(() => setDefaultWorkdir("missing", "/tmp/project")).toThrow(/not found/);
   });
 
-  it("createBoard stores name, icon, and color when provided", () => {
+  it("createBoard stores name, icon, color, and description when provided", () => {
     const board = createBoard("alpha", "/tmp/alpha", "origin/main", {
       name: "Alpha Board",
       icon: "rocket",
       color: "#ff0000",
+      description: "Alpha test board",
     });
     expect(board.name).toBe("Alpha Board");
     expect(board.icon).toBe("rocket");
     expect(board.color).toBe("#ff0000");
+    expect(board.description).toBe("Alpha test board");
   });
 
   it("createBoard trims metadata values", () => {
@@ -99,21 +101,25 @@ describe("board model", () => {
       name: "  Alpha Board  ",
       icon: "  rocket  ",
       color: "  #ff0000  ",
+      description: "  Alpha test board  ",
     });
     expect(board.name).toBe("Alpha Board");
     expect(board.icon).toBe("rocket");
     expect(board.color).toBe("#ff0000");
+    expect(board.description).toBe("Alpha test board");
   });
 
   it("createBoard rejects empty metadata strings", () => {
     expect(() => createBoard("alpha", "/tmp/alpha", "origin/main", { name: "" })).toThrow();
     expect(() => createBoard("alpha", "/tmp/alpha", "origin/main", { icon: "" })).toThrow();
     expect(() => createBoard("alpha", "/tmp/alpha", "origin/main", { color: "" })).toThrow();
+    expect(() => createBoard("alpha", "/tmp/alpha", "origin/main", { description: "" })).toThrow();
     expect(() => createBoard("alpha", "/tmp/alpha", "origin/main", { name: "   " })).toThrow();
+    expect(() => createBoard("alpha", "/tmp/alpha", "origin/main", { description: "   " })).toThrow();
   });
 
   it("listBoards returns metadata fields", () => {
-    createBoard("alpha", "/tmp/alpha", "origin/main", { name: "Alpha", icon: "a", color: "red" });
+    createBoard("alpha", "/tmp/alpha", "origin/main", { name: "Alpha", icon: "a", color: "red", description: "alpha desc" });
     createBoard("beta", "/tmp/beta");
     const boards = listBoards();
     const alpha = boards.find((b) => b.slug === "alpha");
@@ -121,9 +127,11 @@ describe("board model", () => {
     expect(alpha?.name).toBe("Alpha");
     expect(alpha?.icon).toBe("a");
     expect(alpha?.color).toBe("red");
+    expect(alpha?.description).toBe("alpha desc");
     expect(beta?.name).toBe("beta");
     expect(beta?.icon).toBeNull();
     expect(beta?.color).toBeNull();
+    expect(beta?.description).toBeNull();
   });
 
   it("listBoards excludes archived boards by default", () => {
@@ -169,13 +177,14 @@ describe("board model", () => {
   });
 
   it("showBoard returns board details with metadata", () => {
-    createBoard("alpha", "/tmp/alpha", "origin/main", { name: "Alpha", icon: "a", color: "red" });
+    createBoard("alpha", "/tmp/alpha", "origin/main", { name: "Alpha", icon: "a", color: "red", description: "alpha desc" });
     const result = showBoard("alpha");
     expect(result).not.toBeNull();
     expect(result!.slug).toBe("alpha");
     expect(result!.name).toBe("Alpha");
     expect(result!.icon).toBe("a");
     expect(result!.color).toBe("red");
+    expect(result!.description).toBe("alpha desc");
   });
 
   it("showBoard returns board details with task counts per status", () => {
@@ -213,17 +222,19 @@ describe("board model", () => {
     expect(result!.taskCounts.archived).toBe(1);
   });
 
-  it("updateBoardMetadata edits name, icon, and color", () => {
+  it("updateBoardMetadata edits name, icon, color, and description", () => {
     createBoard("alpha", "/tmp/alpha");
-    const updated = updateBoardMetadata("alpha", { name: "Alpha 2", icon: "star", color: "blue" });
+    const updated = updateBoardMetadata("alpha", { name: "Alpha 2", icon: "star", color: "blue", description: "updated desc" });
     expect(updated.name).toBe("Alpha 2");
     expect(updated.icon).toBe("star");
     expect(updated.color).toBe("blue");
+    expect(updated.description).toBe("updated desc");
 
     const result = showBoard("alpha");
     expect(result?.name).toBe("Alpha 2");
     expect(result?.icon).toBe("star");
     expect(result?.color).toBe("blue");
+    expect(result?.description).toBe("updated desc");
   });
 
   it("updateBoardMetadata can update a single field", () => {
@@ -232,14 +243,23 @@ describe("board model", () => {
     expect(updated.name).toBe("Only Name");
     expect(updated.icon).toBeNull();
     expect(updated.color).toBeNull();
+    expect(updated.description).toBeNull();
+  });
+
+  it("updateBoardMetadata can update description only", () => {
+    createBoard("alpha", "/tmp/alpha");
+    const updated = updateBoardMetadata("alpha", { description: "Only Description" });
+    expect(updated.name).toBe("alpha");
+    expect(updated.description).toBe("Only Description");
   });
 
   it("updateBoardMetadata trims whitespace from values", () => {
     createBoard("alpha", "/tmp/alpha");
-    const updated = updateBoardMetadata("alpha", { name: "  Alpha 2  ", icon: "  star  ", color: "  blue  " });
+    const updated = updateBoardMetadata("alpha", { name: "  Alpha 2  ", icon: "  star  ", color: "  blue  ", description: "  updated desc  " });
     expect(updated.name).toBe("Alpha 2");
     expect(updated.icon).toBe("star");
     expect(updated.color).toBe("blue");
+    expect(updated.description).toBe("updated desc");
   });
 
   it("updateBoardMetadata throws when no fields are provided", () => {
@@ -252,6 +272,8 @@ describe("board model", () => {
     expect(() => updateBoardMetadata("alpha", { name: "" })).toThrow();
     expect(() => updateBoardMetadata("alpha", { icon: "" })).toThrow();
     expect(() => updateBoardMetadata("alpha", { color: "" })).toThrow();
+    expect(() => updateBoardMetadata("alpha", { description: "" })).toThrow();
+    expect(() => updateBoardMetadata("alpha", { description: "   " })).toThrow();
   });
 
   it("updateBoardMetadata throws for non-existent board", () => {
@@ -280,7 +302,7 @@ describe("board model", () => {
     expect(() => archiveBoard("nonexistent")).toThrow();
   });
 
-  it("migrates existing boards table to include name, icon, color, and defaultWorkdir columns", () => {
+  it("migrates existing boards table to include name, icon, color, description, and defaultWorkdir columns", () => {
     cleanupDb(MIGRATION_DB);
     // Create a raw database with the pre-metadata boards schema.
     const raw = new Database(MIGRATION_DB);
@@ -302,6 +324,7 @@ describe("board model", () => {
     expect(columns.map((c) => c.name)).toContain("name");
     expect(columns.map((c) => c.name)).toContain("icon");
     expect(columns.map((c) => c.name)).toContain("color");
+    expect(columns.map((c) => c.name)).toContain("description");
     expect(columns.map((c) => c.name)).toContain("default_workdir");
 
     const migrated = showBoard("legacy");
@@ -309,6 +332,7 @@ describe("board model", () => {
     expect(migrated!.name).toBe("legacy");
     expect(migrated!.icon).toBeNull();
     expect(migrated!.color).toBeNull();
+    expect(migrated!.description).toBeNull();
     expect(migrated!.default_workdir).toBeNull();
 
     closeDb();
@@ -389,23 +413,46 @@ describe("FF_BOARD_CREATE_SWITCH (boards create --switch)", () => {
     clearOverrides();
   });
 
-  it("--switch writes the new board slug to the current-board file", () => {
+  it("flag-on + --switch writes the new board slug to the current-board file", () => {
     const { execSync } = require("node:child_process");
-    setFlag("FF_BOARD_CREATE_SWITCH" as any, true);
     execSync(
       `bun run src/index.ts boards create myproj --workdir /tmp/myproj --switch`,
-      { encoding: "utf-8", cwd: resolve(import.meta.dir, ".."), env: { ...process.env, KDI_DB: CREATE_SWITCH_DB, KDI_CURRENT_PATH: TMP_DIR, FF_BOARD_CREATE_SWITCH: "true", FF_BOARD_SWITCH: "true" } }
+      { encoding: "utf-8", cwd: resolve(import.meta.dir, ".."), env: { ...process.env, KDI_DB: CREATE_SWITCH_DB, KDI_CURRENT_PATH: TMP_DIR, FF_BOARD_CREATE_SWITCH: "true" } }
     );
     expect(readCurrentBoard()).toBe("myproj");
   });
 
-  it("without --switch, the current-board file is not touched", () => {
+  it("flag-on + no --switch leaves the current-board file untouched", () => {
     const { execSync } = require("node:child_process");
     writeCurrentBoard("other");
     execSync(
       `bun run src/index.ts boards create myproj --workdir /tmp/myproj`,
-      { encoding: "utf-8", cwd: resolve(import.meta.dir, ".."), env: { ...process.env, KDI_DB: CREATE_SWITCH_DB, KDI_CURRENT_PATH: TMP_DIR } }
+      { encoding: "utf-8", cwd: resolve(import.meta.dir, ".."), env: { ...process.env, KDI_DB: CREATE_SWITCH_DB, KDI_CURRENT_PATH: TMP_DIR, FF_BOARD_CREATE_SWITCH: "true" } }
     );
+    expect(readCurrentBoard()).toBe("other");
+  });
+
+  it("flag-off + --switch errors and does not touch the current-board file", () => {
+    const { execSync } = require("node:child_process");
+    writeCurrentBoard("other");
+    expect(() =>
+      execSync(
+        `bun run src/index.ts boards create myproj --workdir /tmp/myproj --switch`,
+        { encoding: "utf-8", cwd: resolve(import.meta.dir, ".."), env: { ...process.env, KDI_DB: CREATE_SWITCH_DB, KDI_CURRENT_PATH: TMP_DIR, FF_BOARD_CREATE_SWITCH: "false" } }
+      )
+    ).toThrow();
+    expect(readCurrentBoard()).toBe("other");
+  });
+
+  it("flag-on + --switch + invalid slug errors and does not touch the current-board file", () => {
+    const { execSync } = require("node:child_process");
+    writeCurrentBoard("other");
+    expect(() =>
+      execSync(
+        `bun run src/index.ts boards create bad/slug --workdir /tmp/myproj --switch`,
+        { encoding: "utf-8", cwd: resolve(import.meta.dir, ".."), env: { ...process.env, KDI_DB: CREATE_SWITCH_DB, KDI_CURRENT_PATH: TMP_DIR, FF_BOARD_CREATE_SWITCH: "true" } }
+      )
+    ).toThrow();
     expect(readCurrentBoard()).toBe("other");
   });
 });

@@ -15,23 +15,21 @@ boardsCommand
   .option("--name <name>", "Display name for the board")
   .option("--icon <icon>", "Icon for the board")
   .option("--color <color>", "Color for the board")
+  .option("--description <description>", "Description for the board")
   .option("--switch", "Switch to this board after creation")
-  .action((slug: string, options: { workdir: string; baseRef: string; name?: string; icon?: string; color?: string; switch?: boolean }) => {
+  .action((slug: string, options: { workdir: string; baseRef: string; name?: string; icon?: string; color?: string; description?: string; switch?: boolean }) => {
     try {
       assertValidBoardSlug(slug);
-      const metadataRequested = options.name !== undefined || options.icon !== undefined || options.color !== undefined;
+      const metadataRequested = options.name !== undefined || options.icon !== undefined || options.color !== undefined || options.description !== undefined;
       if (metadataRequested && !isEnabled(FF_BOARD_METADATA)) {
         throw new Error("Board metadata feature is not enabled.");
       }
       if (options.switch && !isEnabled(FF_BOARD_CREATE_SWITCH)) {
         throw new Error("Board create --switch feature is not enabled.");
       }
-      if (options.switch && !isEnabled(FF_BOARD_SWITCH)) {
-        throw new Error("Board switch feature is not enabled.");
-      }
 
       const metadata = metadataRequested
-        ? { name: options.name, icon: options.icon, color: options.color }
+        ? { name: options.name, icon: options.icon, color: options.color, description: options.description }
         : {};
       const board = createBoard(slug, options.workdir, options.baseRef, metadata);
       if (options.switch) {
@@ -60,8 +58,10 @@ boardsCommand
         const archived = board.archived_at ? " (archived)" : "";
         const metadataParts: string[] = [];
         if (isEnabled(FF_BOARD_METADATA)) {
+          if (board.name) metadataParts.push(`name=${board.name}`);
           if (board.icon) metadataParts.push(`icon=${board.icon}`);
           if (board.color) metadataParts.push(`color=${board.color}`);
+          if (board.description) metadataParts.push(`description=${board.description}`);
         }
         const metadata = metadataParts.length > 0 ? ` (${metadataParts.join(", ")})` : "";
         console.log(`  ${board.slug}: ${board.name}${metadata}${archived}`);
@@ -111,6 +111,7 @@ boardsCommand
       if (isEnabled(FF_BOARD_METADATA)) {
         if (board.icon) console.log(`Icon: ${board.icon}`);
         if (board.color) console.log(`Color: ${board.color}`);
+        if (board.description) console.log(`Description: ${board.description}`);
       }
       console.log(`Workdir: ${board.workdir}`);
       if (isEnabled(FF_DEFAULT_WORKDIR) && board.default_workdir) {
@@ -140,12 +141,13 @@ boardsCommand
   .option("--name <name>", "Display name for the board")
   .option("--icon <icon>", "Icon for the board")
   .option("--color <color>", "Color for the board")
-  .action((slug: string, options: { name?: string; icon?: string; color?: string }) => {
+  .option("--description <description>", "Description for the board")
+  .action((slug: string, options: { name?: string; icon?: string; color?: string; description?: string }) => {
     try {
       if (!isEnabled(FF_BOARD_METADATA)) {
         throw new Error("Board metadata feature is not enabled.");
       }
-      const metadata = { name: options.name, icon: options.icon, color: options.color };
+      const metadata = { name: options.name, icon: options.icon, color: options.color, description: options.description };
       const board = updateBoardMetadata(slug, metadata);
       console.log(`Updated board "${board.slug}".`);
     } catch (err: any) {

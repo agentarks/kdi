@@ -1,13 +1,30 @@
 # kdi — Status
 
+## KDI-042–045 Consolidated PR — In Review
+- Consolidated branch: `feat/kdi-042-045-consolidated` (worktree `.worktrees/feat-kdi-042-045-consolidated`)
+- Includes: KDI-042 (global `--board`), KDI-043 (`boards create --switch`), KDI-044 (`--description` board metadata), KDI-045 (`create --parent`)
+- Verification: `bun run lint` ✅, `bun run build` ✅, `bun test` ✅ **866 pass / 0 fail**
+- Pushed to origin and PR opened.
+- Review round 1 addressed: description in `boards list`, e2e test, narrowed unique-constraint catch, removed duplicated dispatch assignment.
+
 ## Hermes Kanban Parity Verification — 2026-06-20/21 (in progress)
 - [x] Live CLI verification run via `kdi-new-feature-loop` with temp `HOME`/`KDI_DB` and all feature flags enabled.
-- [x] Critical bug: global/subcommand `--board` flag is ignored; only `KDI_BOARD` env and current-board file resolve correctly. This cascades into 100+ e2e test failures.
+- [x] ~~Critical bug: global/subcommand `--board` flag is ignored; only `KDI_BOARD` env and current-board file resolve correctly.~~ **Fixed by KDI-042.**
 - [x] Critical bug: `src/flags.ts` contained unresolved git merge conflict markers that broke `bun run build`/`dev`; resolved during verification.
-- [x] Additional verified gaps documented in `specs/hermes-kanban-backlog.md` (KDI-042 through KDI-052).
-- [x] Test suite health: `bun run lint` passes; `bun test` reports **711 pass / 125 fail** (836 tests, 36 files).
+- [x] Additional verified gaps documented in `specs/hermes-kanban-backlog.md` (KDI-042 through KDI-052); **KDI-043 is done**.
+- [x] Test suite health: `bun run lint` passes; `bun test` reports **867 pass / 0 fail** (867 tests, 41 files) when run with isolated `KDI_DB`.
 - [x] **Real harness end-to-end test with opencode**: dispatcher creates worktree `wt/opencode/1`, spawns `opencode run`, agent edits `README.md`, task moves to `done`. Verified worktree isolation, log capture, and run recording.
-- [ ] Fix `--board` flag resolution, pass task context to harnesses, clean up result/summary capture, and stabilize test suite before claiming parity.
+- [ ] Pass task context to harnesses, clean up result/summary capture, and continue parity work (tracked in KDI-052 / KDI-053).
+
+## KDI-045: `kdi create --parent` — Done
+- [x] BRD drafted at `specs/brd-kdi-045-create-parent.md`
+- [x] Feature flag `ff_create_parent` / `FF_CREATE_PARENT` registered in `src/flags.ts` and `specs/feature-flags.md`, defaults to `false`
+- [x] `kdi create <title> --parent <task_id>` repeatable option added to `src/commands/tasks.ts`
+- [x] Each `--parent` value creates a parent-\u003echild dependency via `addDependency`
+- [x] Missing parents, self-dependencies, and circular dependencies rejected with clear errors
+- [x] Duplicate parent links are idempotent (ignored on UNIQUE constraint)
+- [x] Unit tests in `tests/create-parent.test.ts` cover single parent, multiple parents, flag gating, missing parent, self-dependency, circular dependency, and idempotency with `--idempotency-key`
+- [x] `bun run lint`, `bun test tests/create-parent.test.ts`, and `bun run build` pass
 
 ## Dispatcher Presence Warning (KDI-037) — Done
 - [x] BRD drafted at `specs/brd-kdi-037-dispatcher-presence-warning.md`
@@ -20,6 +37,16 @@
 - [x] User-loop smoke proven with temp `HOME` and temp `KDI_DB`: warning appears on no-PID/dead-PID, suppressed on live-PID, suppressed by `--no-dispatcher-warning`, and absent when flag is off
 - [x] `bun run lint`, `bun test tests/dispatcherPresence.test.ts tests/commands/tasks.test.ts`, and `bun run build` pass; full suite (807 tests) passes
 - [x] Out of scope (deferred): dispatcher writes per-board PID marker at startup and removes it on clean shutdown (separate scope)
+
+## Global `--board` Flag Resolution (KDI-042) — Done
+- [x] Root Commander program registers `--board <slug>` as a global option in `src/index.ts`
+- [x] `preAction` hook copies the global `--board` value into `KDI_BOARD` when the subcommand does not provide its own `--board`; gated by `FF_GLOBAL_BOARD`
+- [x] Subcommand `--board` continues to take precedence over the global `--board`
+- [x] Resolution chain honored: explicit `--board` flag (global or subcommand) → `KDI_BOARD` env → current-board file → `"default"`
+- [x] `kdi dispatch` accepts `--board <slug>` and filters the one-shot/daemon tick to that board
+- [x] E2e coverage in `tests/global-board.test.ts` proves global `--board` works for `create`, `list`, `show`, `dispatch`, and `swarm`
+- [x] Feature flag `FF_GLOBAL_BOARD` remains registered and defaults to `false`
+- [x] `bun run lint`, `bun run test`, and `bun run build` pass in the worktree with isolated `KDI_DB`
 
 ## Triage Automation (KDI-040) — Done
 - [x] BRD drafted at `specs/brd-kdi-040-triage-automation.md` to match LLM-powered triage automation semantics
@@ -81,6 +108,19 @@
 - [x] `kdi boards list` shows metadata compactly when flag enabled
 - [x] Board name defaults to slug when omitted; icon and color default to null
 
+## Board Description (KDI-044) — Done
+- [x] `description` column added to `boards` table (schema + migration)
+- [x] `kdi boards create <slug> --workdir <path> [--description <description>]` — stores board description when `ff_board_metadata` enabled
+- [x] `kdi boards edit <slug> [--description <description>]` — updates board description when `ff_board_metadata` enabled
+- [x] `kdi boards show <slug>` displays Description when set and `ff_board_metadata` enabled
+- [x] `--description` is rejected when `ff_board_metadata` is disabled
+- [x] Empty/whitespace-only descriptions are rejected
+- [x] Description defaults to null when omitted
+- [x] Existing databases are migrated to include the `description` column
+- [x] Unit tests in `tests/board.test.ts` and CLI/e2e tests in `tests/e2e.test.ts` cover create, edit, show, flag gating, trimming, and migration
+- [x] `bun run lint`, `bun run test tests/board.test.ts tests/e2e.test.ts`, `bun run build` pass
+- [x] User-loop smoke proven with temp `HOME` and temp `KDI_DB`
+
 ## Board Rename (KDI-014) — Done
 - [x] `FF_BOARD_RENAME` flag registered in `src/flags.ts`, defaults to `false`
 - [x] `kdi boards rename <old-slug> <new-slug>` command added to `src/commands/boards.ts`
@@ -118,6 +158,17 @@
 - [x] `kdi create <title> --board <slug>` inherits the board default when `--workspace` is omitted and the flag is enabled
 - [x] `kdi create <title> --board <slug> --workspace <path>` overrides the board default when the flag is enabled
 - [x] When `FF_DEFAULT_WORKDIR=false`, the command/`--workspace` option are rejected and default inheritance is skipped
+
+## `kdi boards create --switch` (KDI-043) — Done
+- [x] Feature flag `ff_board_create_switch` / `FF_BOARD_CREATE_SWITCH` registered in `src/flags.ts` and `specs/feature-flags.md`, defaults to `false`
+- [x] `kdi boards create <slug> --workdir <path> --switch` auto-switches to the newly created board when `FF_BOARD_CREATE_SWITCH=true`
+- [x] `--switch` is gated solely by `FF_BOARD_CREATE_SWITCH` (does not require `FF_BOARD_SWITCH`)
+- [x] Without `--switch`, the current-board file is left unchanged
+- [x] With `--switch` and `FF_BOARD_CREATE_SWITCH=false`, the command errors with a clear message and does not touch the current-board file
+- [x] Invalid slugs are rejected before any current-board file mutation
+- [x] Tests in `tests/board.test.ts` cover flag-on + `--switch`, flag-on + no `--switch`, flag-off + `--switch`, and invalid slug + `--switch`
+- [x] User-loop smoke verified with temp `HOME` and temp `KDI_DB`: `--switch` switches to new board, no-switch leaves current board unchanged, flag-off errors cleanly
+- [x] `bun run lint`, `bun run test`, and `bun run build` pass
 
 ## Heartbeat (KDI-016) — Done
 - [x] BRD drafted at `specs/brd-kdi-016-heartbeat.md`

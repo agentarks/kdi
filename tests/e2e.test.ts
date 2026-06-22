@@ -87,6 +87,26 @@ describe("kdi e2e acceptance", () => {
     rmSync(tmp, { recursive: true, force: true });
   });
 
+  it("boards list shows description when metadata flag is enabled", () => {
+    const tmp = makeTempDir("board-list-desc");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = {
+      KDI_DB: dbPath,
+      HOME: tmp,
+      FF_BOARD_METADATA: "true",
+    };
+
+    runKdi(`boards create myproj --workdir ${repoDir} --description "My project board"`, env);
+    const listOutput = runKdi(`boards list`, env);
+    expect(listOutput).toContain("myproj");
+    expect(listOutput).toContain("description=My project board");
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
   it("create returns task ID", () => {
     const tmp = makeTempDir("create");
     const dbPath = join(tmp, "kdi.db");
@@ -1197,11 +1217,12 @@ describe("kdi e2e acceptance", () => {
     setupGitRepo(repoDir);
     const env = { KDI_DB: dbPath, HOME: tmp, FF_BOARD_METADATA: "true" };
 
-    runKdi(`boards create myproj --workdir ${repoDir} --name "My Project" --icon rocket --color "#123456"`, env);
+    runKdi(`boards create myproj --workdir ${repoDir} --name "My Project" --icon rocket --color "#123456" --description "Project board"`, env);
     const output = runKdi(`boards show myproj`, env);
     expect(output).toContain("Name: My Project");
     expect(output).toContain("Icon: rocket");
     expect(output).toContain("Color: #123456");
+    expect(output).toContain("Description: Project board");
 
     rmSync(tmp, { recursive: true, force: true });
   });
@@ -1228,10 +1249,11 @@ describe("kdi e2e acceptance", () => {
     const env = { KDI_DB: dbPath, HOME: tmp, FF_BOARD_METADATA: "true" };
 
     runKdi(`boards create myproj --workdir ${repoDir}`, env);
-    runKdi(`boards edit myproj --name "Updated" --icon star`, env);
+    runKdi(`boards edit myproj --name "Updated" --icon star --description "Updated description"`, env);
     const output = runKdi(`boards show myproj`, env);
     expect(output).toContain("Name: Updated");
     expect(output).toContain("Icon: star");
+    expect(output).toContain("Description: Updated description");
 
     rmSync(tmp, { recursive: true, force: true });
   });
@@ -1246,6 +1268,19 @@ describe("kdi e2e acceptance", () => {
 
     runKdi(`boards create myproj --workdir ${repoDir}`, env);
     expect(() => runKdi(`boards edit myproj --name "Updated"`, env)).toThrow();
+
+    rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("boards create --description is rejected when flag disabled", () => {
+    const tmp = makeTempDir("board-description-disabled");
+    const dbPath = join(tmp, "kdi.db");
+    const repoDir = join(tmp, "repo");
+    mkdirSync(repoDir, { recursive: true });
+    setupGitRepo(repoDir);
+    const env = { KDI_DB: dbPath, HOME: tmp };
+
+    expect(() => runKdi(`boards create myproj --workdir ${repoDir} --description "Project board"`, env)).toThrow();
 
     rmSync(tmp, { recursive: true, force: true });
   });
