@@ -1,7 +1,15 @@
 # kdi — Status
 
-## KDI-046..049 Consolidated — In Review
-- [x] KDI-046: BRD drafted at `specs/brd-kdi-046-boards-rename-semantics.md`; implementation deferred to follow-up PR
+## Hermes Kanban Parity — KDI-046 (Done)
+- [x] BRD drafted at `specs/brd-kdi-046-boards-rename-semantics.md`
+- [x] Feature flag `ff_board_rename_hermes` / `FF_BOARD_RENAME_HERMES` registered in `specs/feature-flags.md` and `src/flags.ts`, defaults to `false`
+- [x] `kdi boards rename <slug> <name>` implemented: updates `boards.name` only; slug, data directory, and current-board file untouched
+- [x] `kdi boards rename-slug <old-slug> <new-slug>` implemented: preserves existing slug-rename behavior
+- [x] Model function `renameBoard` renamed to `renameBoardSlug`
+- [x] Unit/e2e tests and user-loop smoke pass
+- [x] `bun run lint`, `bun test` (863 pass), `bun run build` pass
+
+## KDI-047..049 Consolidated — In Review
 - [x] KDI-047: Bulk `kdi unblock <id>...` implemented with per-task reporting and tests
 - [x] KDI-048: Bulk `kdi archive <id>...` implemented behind `FF_BULK_OPERATIONS` with tests
 - [x] KDI-049: Non-following `kdi tail --lines N` / `--no-follow` implemented behind `FF_TAIL_NO_FOLLOW` with tests
@@ -109,7 +117,7 @@
 - [x] `kdi boards list` — list all boards (excludes archived; use `--all` to include)
 - [x] `kdi boards show <slug>` — show board details + task counts (triage, todo, ready, running, done, blocked, archived)
 - [x] `kdi boards archive <slug>` — archive board (soft delete)
-- [x] `kdi boards rename <old-slug> <new-slug>` — rename a board (slug, data directory, current-board)
+- [x] `kdi boards rename-slug <old-slug> <new-slug>` — rename a board slug (data directory, current-board)
 
 ## Board Metadata (KDI-012) — Done
 - [x] `name`, `icon`, `color` columns added to `boards` table (schema + migration)
@@ -135,8 +143,8 @@
 
 ## Board Rename (KDI-014) — Done
 - [x] `FF_BOARD_RENAME` flag registered in `src/flags.ts`, defaults to `false`
-- [x] `kdi boards rename <old-slug> <new-slug>` command added to `src/commands/boards.ts`
-- [x] `renameBoard()` model function in `src/models/board.ts` handles DB slug update and directory rename
+- [x] `kdi boards rename-slug <old-slug> <new-slug>` command added to `src/commands/boards.ts`
+- [x] `renameBoardSlug()` model function in `src/models/board.ts` handles DB slug update and directory rename
 - [x] All error cases handled: flag disabled, invalid slugs, same slug, not found, archived, conflict with existing slug (active or archived)
 - [x] Board data directory renamed on disk when it exists; warning on stderr when it doesn't
 - [x] Current-board file updated when it references the old slug

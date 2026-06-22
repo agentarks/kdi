@@ -1,6 +1,6 @@
 import { Command } from "commander";
-import { createBoard, listBoards, showBoard, archiveBoard, updateBoardMetadata, removeBoard, renameBoard, setDefaultWorkdir } from "../models/board";
-import { isEnabled, FF_BOARD_METADATA, FF_BOARD_RM_DELETE, FF_BOARD_SWITCH, FF_BOARD_CREATE_SWITCH, FF_BOARD_RENAME, FF_DEFAULT_WORKDIR } from "../flags";
+import { createBoard, listBoards, showBoard, archiveBoard, updateBoardMetadata, removeBoard, renameBoardSlug, setDefaultWorkdir } from "../models/board";
+import { isEnabled, FF_BOARD_METADATA, FF_BOARD_RM_DELETE, FF_BOARD_SWITCH, FF_BOARD_CREATE_SWITCH, FF_BOARD_RENAME, FF_BOARD_RENAME_HERMES, FF_DEFAULT_WORKDIR } from "../flags";
 import { assertValidBoardSlug } from "../slugs";
 import { readCurrentBoard, writeCurrentBoard, resolveBoard } from "../resolveBoard";
 
@@ -190,8 +190,26 @@ boardsCommand
   });
 
 boardsCommand
-  .command("rename <old-slug> <new-slug>")
-  .description("Rename a board (updates slug, data directory, and current-board file)")
+  .command("rename <slug> <name>")
+  .description("Rename a board's display name (slug stays the same)")
+  .action((slug: string, name: string) => {
+    try {
+      if (!isEnabled(FF_BOARD_RENAME_HERMES)) {
+        throw new Error("Board rename (Hermes semantics) feature is not enabled.");
+      }
+      assertValidBoardSlug(slug, "board slug");
+
+      const board = updateBoardMetadata(slug, { name });
+      console.log(`Renamed board "${slug}" to "${board.name}".`);
+    } catch (err: any) {
+      console.error(`Error: ${err.message}`);
+      process.exit(1);
+    }
+  });
+
+boardsCommand
+  .command("rename-slug <old-slug> <new-slug>")
+  .description("Rename a board slug and its data directory")
   .action((oldSlug: string, newSlug: string) => {
     try {
       if (!isEnabled(FF_BOARD_RENAME)) {
@@ -200,7 +218,7 @@ boardsCommand
       assertValidBoardSlug(oldSlug, "old board slug");
       assertValidBoardSlug(newSlug, "new board slug");
 
-      const { board } = renameBoard(oldSlug, newSlug);
+      const { board } = renameBoardSlug(oldSlug, newSlug);
 
       // Update current-board file if it referenced the old slug
       const current = readCurrentBoard();
