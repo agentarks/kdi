@@ -45,7 +45,7 @@ stateDiagram-v2
 | `ff_board_switch` | `FF_BOARD_SWITCH` | CLI / board management | InDev | `false` | KDI-013 | Board switch command and resolution chain; `boards switch`, `boards show` without slug. |
 | `ff_board_create_switch` | `FF_BOARD_CREATE_SWITCH` | CLI / board management | InDev | `false` | KDI-013x | `boards create --switch` auto-switches to the new board after creation (hermes parity). |
 | `ff_global_board` | `FF_GLOBAL_BOARD` | CLI / board resolution | InDev | `false` | KDI-013 | Program-level `kdi --board <slug>` sets `KDI_BOARD` for the subcommand; lower priority than the subcommand's own `--board`. |
-| `ff_board_rename` | `FF_BOARD_RENAME` | CLI / board management | InDev | `false` | KDI-014 | Board rename command; `boards rename <old> <new>` renames slug and data directory. |
+| `ff_board_rename` | `FF_BOARD_RENAME` | CLI / board management | InDev | `false` | KDI-014 | Board slug rename command; `boards rename-slug <old-slug> <new-slug>` renames slug and data directory. |
 | `ff_board_rename_hermes` | `FF_BOARD_RENAME_HERMES` | CLI / board management | InDev | `false` | KDI-046 | Hermes-parity display-name rename; `boards rename <slug> <name>` changes only the display name. Slug rename moves to `boards rename-slug`. |
 | `ff_default_workdir` | `FF_DEFAULT_WORKDIR` | CLI / board management + create | InDev | `false` | KDI-015 | Board default task workspace; `boards set-default-workdir`; create inheritance and `--workspace`. |
 | `ff_assignees_listing` | `FF_ASSIGNEES_LISTING` | CLI / observability | InDev | `false` | KDI-024 | `kdi assignees` lists known profiles plus per-profile task counts for the current board. |
@@ -264,11 +264,11 @@ stateDiagram-v2
 - **Owner:** kdi core team
 - **BRD:** KDI-014
 - **Status transitions:**
-  - `Planned` → `InDev` when board rename command is implemented.
+  - `Planned` → `InDev` when board slug-rename command is implemented.
 - **Activation criteria:**
-  - `boards rename <old> <new>` updates the slug, renames the data directory, and updates the current-board file.
+  - `boards rename-slug <old-slug> <new-slug>` updates the slug, renames the data directory, and updates the current-board file.
   - All error cases handled: invalid slugs, same slug, not found, archived, slug conflict.
-- **Rollback / deactivation:** Set `FF_BOARD_RENAME=false` to reject the `boards rename` command.
+- **Rollback / deactivation:** Set `FF_BOARD_RENAME=false` to reject the `boards rename-slug` command.
 - **Deprecation plan:** N/A
 
 ### `ff_board_rename_hermes` — InDev
