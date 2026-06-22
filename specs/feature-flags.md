@@ -46,6 +46,7 @@ stateDiagram-v2
 | `ff_board_create_switch` | `FF_BOARD_CREATE_SWITCH` | CLI / board management | InDev | `false` | KDI-013x | `boards create --switch` auto-switches to the new board after creation (hermes parity). |
 | `ff_global_board` | `FF_GLOBAL_BOARD` | CLI / board resolution | InDev | `false` | KDI-013 | Program-level `kdi --board <slug>` sets `KDI_BOARD` for the subcommand; lower priority than the subcommand's own `--board`. |
 | `ff_board_rename` | `FF_BOARD_RENAME` | CLI / board management | InDev | `false` | KDI-014 | Board rename command; `boards rename <old> <new>` renames slug and data directory. |
+| `ff_board_rename_hermes` | `FF_BOARD_RENAME_HERMES` | CLI / board management | Planned | `false` | KDI-046 | Hermes-parity display-name rename; `boards rename <slug> <name>` changes only the display name. Slug rename moves to `boards rename-slug`. |
 | `ff_default_workdir` | `FF_DEFAULT_WORKDIR` | CLI / board management + create | InDev | `false` | KDI-015 | Board default task workspace; `boards set-default-workdir`; create inheritance and `--workspace`. |
 | `ff_assignees_listing` | `FF_ASSIGNEES_LISTING` | CLI / observability | InDev | `false` | KDI-024 | `kdi assignees` lists known profiles plus per-profile task counts for the current board. |
 | `ff_heartbeat` | `FF_HEARTBEAT` | CLI / task lifecycle + dispatcher | InDev | `false` | KDI-016 | Worker heartbeat command and dispatcher stale-heartbeat reclaim. |
@@ -267,6 +268,19 @@ stateDiagram-v2
   - `boards rename <old> <new>` updates the slug, renames the data directory, and updates the current-board file.
   - All error cases handled: invalid slugs, same slug, not found, archived, slug conflict.
 - **Rollback / deactivation:** Set `FF_BOARD_RENAME=false` to reject the `boards rename` command.
+- **Deprecation plan:** N/A
+
+### `ff_board_rename_hermes` — Planned
+
+- **Owner:** kdi core team
+- **BRD:** [BRD-KDI-046](brd-kdi-046-boards-rename-semantics.md)
+- **Status transitions:**
+  - `Planned` → `InDev` when Hermes-parity display-name rename and `rename-slug` command are implemented.
+- **Activation criteria:**
+  - `boards rename <slug> <name>` updates `boards.name` only; slug and data directory are unchanged.
+  - `boards rename-slug <old-slug> <new-slug>` preserves existing slug-rename behavior.
+  - Existing `FF_BOARD_RENAME=true` users can migrate to `rename-slug` for identity moves.
+- **Rollback / deactivation:** Set `FF_BOARD_RENAME_HERMES=false` to reject the Hermes-parity `boards rename` semantics.
 - **Deprecation plan:** N/A
 
 ### `ff_default_workdir` — InDev

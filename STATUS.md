@@ -1,5 +1,14 @@
 # kdi — Status
 
+## Hermes Kanban Parity — KDI-046 (Planned)
+- [x] BRD drafted at `specs/brd-kdi-046-boards-rename-semantics.md`
+- [x] Feature flag `ff_board_rename_hermes` / `FF_BOARD_RENAME_HERMES` registered in `specs/feature-flags.md`, defaults to `false`
+- [ ] Implement `kdi boards rename <slug> <name>` (Hermes parity: display-name only)
+- [ ] Implement `kdi boards rename-slug <old-slug> <new-slug>` (existing slug-rename behavior)
+- [ ] Register flag constant in `src/flags.ts` and wire commands in `src/commands/boards.ts`
+- [ ] Unit/e2e tests and user-loop smoke
+- [ ] `bun run lint`, `bun test`, `bun run build` pass
+
 ## Hermes Kanban Parity Verification — 2026-06-20/21 (in progress)
 - [x] Live CLI verification run via `kdi-new-feature-loop` with temp `HOME`/`KDI_DB` and all feature flags enabled.
 - [x] Critical bug: global/subcommand `--board` flag is ignored; only `KDI_BOARD` env and current-board file resolve correctly. This cascades into 100+ e2e test failures.
