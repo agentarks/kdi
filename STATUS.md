@@ -1,11 +1,12 @@
 # kdi — Status
 
-## KDI-042–045 Consolidated PR — In Review
-- Consolidated branch: `feat/kdi-042-045-consolidated` (worktree `.worktrees/feat-kdi-042-045-consolidated`)
-- Includes: KDI-042 (global `--board`), KDI-043 (`boards create --switch`), KDI-044 (`--description` board metadata), KDI-045 (`create --parent`)
-- Verification: `bun run lint` ✅, `bun run build` ✅, `bun test` ✅ **866 pass / 0 fail**
-- Pushed to origin and PR opened.
-- Review round 1 addressed: description in `boards list`, e2e test, narrowed unique-constraint catch, removed duplicated dispatch assignment.
+## KDI-046..049 Consolidated — In Review
+- [x] KDI-046: BRD drafted at `specs/brd-kdi-046-boards-rename-semantics.md`; implementation deferred to follow-up PR
+- [x] KDI-047: Bulk `kdi unblock <id>...` implemented with per-task reporting and tests
+- [x] KDI-048: Bulk `kdi archive <id>...` implemented behind `FF_BULK_OPERATIONS` with tests
+- [x] KDI-049: Non-following `kdi tail --lines N` / `--no-follow` implemented behind `FF_TAIL_NO_FOLLOW` with tests
+- [x] `bun run lint`, `bun run test` (873 pass), and `bun run build` pass on consolidated branch
+- [ ] Open consolidated PR to `main`
 
 ## Hermes Kanban Parity Verification — 2026-06-20/21 (in progress)
 - [x] Live CLI verification run via `kdi-new-feature-loop` with temp `HOME`/`KDI_DB` and all feature flags enabled.
