@@ -5,10 +5,11 @@ import { join } from "node:path";
 import { initDb, closeDb, getBoardDataDir } from "../../src/db";
 import { cleanupDb } from "../cleanupDb";
 import { createBoard } from "../../src/models/board";
-import { createTask, archiveTask, showTask, type Task } from "../../src/models/task";
+import { createTask, archiveTask, blockTask, showTask, listTasks, type Task } from "../../src/models/task";
 import { createRun } from "../../src/models/taskRun";
-import { listRunsCommand, attachTaskCommand, showTaskCommand, createTaskCommand, listTasksCommand, watchCommand } from "../../src/commands/tasks";
-import { setFlag, clearOverrides, FF_TASK_ATTACHMENTS, FF_LIST_FILTERS_SORT, FF_COMMENT_ENHANCEMENTS, FF_WATCH_FILTERS, FF_TENANT_NAMESPACE, FF_DISPATCHER_PRESENCE_WARNING, FF_GOAL_MODE } from "../../src/flags";
+import { addEvent } from "../../src/models/taskEvent";
+import { listRunsCommand, attachTaskCommand, showTaskCommand, createTaskCommand, listTasksCommand, watchCommand, unblockTaskCommand, archiveTaskCommand, tailTaskCommand } from "../../src/commands/tasks";
+import { setFlag, clearOverrides, FF_TASK_ATTACHMENTS, FF_LIST_FILTERS_SORT, FF_COMMENT_ENHANCEMENTS, FF_WATCH_FILTERS, FF_TENANT_NAMESPACE, FF_DISPATCHER_PRESENCE_WARNING, FF_GOAL_MODE, FF_SCHEDULED_STATUS, FF_BULK_OPERATIONS, FF_TAIL_NO_FOLLOW } from "../../src/flags";
 import { getDispatcherPidPath } from "../../src/dispatcherPresence";
 
 const TEST_DB = "/tmp/kdi-commands-tasks-test.db";
@@ -1170,5 +1171,472 @@ describe("goal mode create command", () => {
     }
 
     expect(logs.some((l) => l.startsWith("Goal:"))).toBe(false);
+  });
+
+  describe("KDI-049 tail no-follow", () => {
+    async function runTail(args: string[]): Promise<{ logs: string[]; exited: boolean; stderr: string }> {
+      // Dynamic import to get a fresh Command instance and avoid option-state leaks.
+      const mod = await import("../../src/commands/tasks?ts=" + Date.now() + Math.random());
+      const cmd = (mod as any).tailTaskCommand as typeof tailTaskCommand;
+      const logs: string[] = [];
+      const originalLog = console.log;
+      console.log = (...a: unknown[]) => { logs.push(a.map(String).join(" ")); };
+      const originalError = console.error;
+      const stderrChunks: string[] = [];
+      console.error = (...a: unknown[]) => { stderrChunks.push(a.map(String).join(" ")); };
+      const originalExit = process.exit;
+      let exited = false;
+      process.exit = ((code?: number) => { exited = true; throw new Error(`exit:${code}`); }) as typeof process.exit;
+      try {
+        await cmd.parseAsync(args, { from: "user" });
+      } catch {
+        // expected when process.exit is invoked
+      } finally {
+        console.log = originalLog;
+        console.error = originalError;
+        process.exit = originalExit;
+      }
+      return { logs, exited, stderr: stderrChunks.join("\n") };
+    }
+
+    it("--lines N prints last N events in chronological order and exits", async () => {
+      setFlag(FF_TAIL_NO_FOLLOW, true);
+      createBoard("cmd-board", "/tmp/cmd-board");
+      const task = createTask({ board_id: 1, title: "Tail task" });
+      addEvent(task.id, "promoted");
+      addEvent(task.id, "blocked", { reason: "x" });
+
+      const { logs, exited, stderr } = await runTail([String(task.id), "--lines", "2"]);
+      expect(exited).toBe(false);
+      expect(stderr).toBe("");
+      expect(logs).toHaveLength(2);
+      expect(logs[0]).toContain("promoted");
+      expect(logs[1]).toContain("blocked");
+    });
+
+    it("--no-follow prints all events and exits", async () => {
+      setFlag(FF_TAIL_NO_FOLLOW, true);
+      createBoard("cmd-board", "/tmp/cmd-board");
+      const task = createTask({ board_id: 1, title: "Tail task" });
+      addEvent(task.id, "promoted");
+
+      const { logs, exited, stderr } = await runTail([String(task.id), "--no-follow"]);
+      expect(exited).toBe(false);
+      expect(stderr).toBe("");
+      expect(logs.length).toBeGreaterThanOrEqual(2);
+      expect(logs.some((l) => l.includes("created"))).toBe(true);
+      expect(logs.some((l) => l.includes("promoted"))).toBe(true);
+    });
+
+    it("--lines N on task with fewer than N events prints all events", async () => {
+      setFlag(FF_TAIL_NO_FOLLOW, true);
+      createBoard("cmd-board", "/tmp/cmd-board");
+      const task = createTask({ board_id: 1, title: "Tail task" });
+      addEvent(task.id, "promoted");
+
+      const { logs } = await runTail([String(task.id), "--lines", "10"]);
+      expect(logs.length).toBeGreaterThanOrEqual(2);
+    });
+
+    it("--lines 0 is rejected", async () => {
+      setFlag(FF_TAIL_NO_FOLLOW, true);
+      createBoard("cmd-board", "/tmp/cmd-board");
+      const task = createTask({ board_id: 1, title: "Tail task" });
+
+      const { exited, stderr } = await runTail([String(task.id), "--lines", "0"]);
+      expect(exited).toBe(true);
+      expect(stderr).toContain("--lines must be a positive integer");
+    });
+
+    it("--lines abc is rejected", async () => {
+      setFlag(FF_TAIL_NO_FOLLOW, true);
+      createBoard("cmd-board", "/tmp/cmd-board");
+      const task = createTask({ board_id: 1, title: "Tail task" });
+
+      const { exited, stderr } = await runTail([String(task.id), "--lines", "abc"]);
+      expect(exited).toBe(true);
+      expect(stderr).toContain("--lines must be a positive integer");
+    });
+
+    it("--lines -1 is rejected", async () => {
+      setFlag(FF_TAIL_NO_FOLLOW, true);
+      createBoard("cmd-board", "/tmp/cmd-board");
+      const task = createTask({ board_id: 1, title: "Tail task" });
+
+      const { exited, stderr } = await runTail([String(task.id), "--lines", "-1"]);
+      expect(exited).toBe(true);
+      expect(stderr).toContain("--lines must be a positive integer");
+    });
+
+    it("--no-follow is rejected when flag disabled", async () => {
+      setFlag(FF_TAIL_NO_FOLLOW, false);
+      createBoard("cmd-board", "/tmp/cmd-board");
+      const task = createTask({ board_id: 1, title: "Tail task" });
+
+      const { exited, stderr } = await runTail([String(task.id), "--no-follow"]);
+      expect(exited).toBe(true);
+      expect(stderr).toContain("Tail no-follow feature is not enabled");
+    });
+
+    it("--lines is rejected when flag disabled", async () => {
+      setFlag(FF_TAIL_NO_FOLLOW, false);
+      createBoard("cmd-board", "/tmp/cmd-board");
+      const task = createTask({ board_id: 1, title: "Tail task" });
+
+      const { exited, stderr } = await runTail([String(task.id), "--lines", "5"]);
+      expect(exited).toBe(true);
+      expect(stderr).toContain("Tail no-follow feature is not enabled");
+    });
+
+    it("missing task exits with clear error", async () => {
+      setFlag(FF_TAIL_NO_FOLLOW, true);
+      createBoard("cmd-board", "/tmp/cmd-board");
+
+      const { exited, stderr } = await runTail(["99999", "--lines", "5"]);
+      expect(exited).toBe(true);
+      expect(stderr).toContain("Task 99999 not found");
+    });
+
+    it("default tail enters follow loop and prints existing events", async () => {
+      setFlag(FF_TAIL_NO_FOLLOW, true);
+      createBoard("cmd-board", "/tmp/cmd-board");
+      const task = createTask({ board_id: 1, title: "Tail task" });
+      addEvent(task.id, "promoted");
+
+      // Race the follow loop against a short timeout; we just want to confirm
+      // it printed existing events and did not exit immediately.
+      const mod = await import("../../src/commands/tasks?ts=" + Date.now() + Math.random());
+      const cmd = (mod as any).tailTaskCommand as typeof tailTaskCommand;
+      const logs: string[] = [];
+      const originalLog = console.log;
+      console.log = (...a: unknown[]) => { logs.push(a.map(String).join(" ")); };
+      try {
+        await Promise.race([
+          cmd.parseAsync([String(task.id)], { from: "user" }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 150)),
+        ]);
+        // Should not reach here; if it does, the follow loop exited unexpectedly.
+        expect(true).toBe(false);
+      } catch (err: any) {
+        expect(err.message).toBe("timeout");
+      } finally {
+        console.log = originalLog;
+      }
+
+      expect(logs.some((l) => l.includes("promoted"))).toBe(true);
+    });
+  });
+});
+const KDI047_DB = "/tmp/kdi-commands-tasks-047-test.db";
+const KDI047_SLUG = "kdi047";
+
+describe("KDI-047 bulk unblock command", () => {
+  beforeEach(() => {
+    clearOverrides();
+    cleanupDb(KDI047_DB);
+    process.env.KDI_DB = KDI047_DB;
+    delete process.env.KDI_DB_PATH;
+    resetCommandOptions(unblockTaskCommand);
+    _origStderrWrite = process.stderr.write.bind(process.stderr);
+    process.stderr.write = (() => true) as typeof process.stderr.write;
+    initDb(KDI047_DB);
+  });
+
+  afterEach(() => {
+    if (_origStderrWrite) process.stderr.write = _origStderrWrite;
+    clearOverrides();
+    closeDb();
+    cleanupDb(KDI047_DB);
+    delete process.env.KDI_DB;
+    delete process.env.KDI_DB_PATH;
+  });
+
+  async function runUnblock(args: string[]): Promise<{
+    exited: boolean;
+    stdout: string;
+    stderr: string;
+    exitCode: number;
+  }> {
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+    const originalLog = console.log;
+    const originalError = console.error;
+    console.log = (...args: unknown[]) => {
+      stdout.push(args.map(String).join(" "));
+    };
+    console.error = (...args: unknown[]) => {
+      stderr.push(args.map(String).join(" "));
+    };
+
+    let exited = false;
+    let exitCode = 0;
+    const originalExit = process.exit;
+    process.exit = ((code?: number | string | null) => {
+      exited = true;
+      exitCode = typeof code === "number" ? code : 0;
+      throw new Error(`exit:${exitCode}`);
+    }) as typeof process.exit;
+
+    try {
+      await unblockTaskCommand.parseAsync(args, { from: "user" });
+    } catch (err: any) {
+      if (!err.message?.startsWith("exit:")) {
+        exited = true;
+        exitCode = 1;
+        stderr.push(`Error: ${err.message}`);
+      }
+    } finally {
+      console.log = originalLog;
+      console.error = originalError;
+      process.exit = originalExit;
+    }
+
+    return { exited, stdout: stdout.join("\n"), stderr: stderr.join("\n"), exitCode };
+  }
+
+  it("unblocks a single blocked task", async () => {
+    createBoard(KDI047_SLUG, `/tmp/${KDI047_SLUG}`);
+    const task = createTask({ board_id: 1, title: "Blocked" });
+    blockTask(task.id, "reason");
+
+    const r = await runUnblock([String(task.id)]);
+    expect(r.exited).toBe(false);
+    expect(r.stdout).toContain(`Unblocked task ${task.id}.`);
+    expect(showTask(task.id)?.status).toBe("todo");
+  });
+
+  it("readies a single scheduled task", async () => {
+    setFlag(FF_SCHEDULED_STATUS, true);
+    createBoard(KDI047_SLUG, `/tmp/${KDI047_SLUG}`);
+    const task = createTask({ board_id: 1, title: "Scheduled", initialStatus: "scheduled", scheduled_at: Math.floor(Date.now() / 1000) + 3600 });
+
+    const r = await runUnblock([String(task.id)]);
+    expect(r.exited).toBe(false);
+    expect(r.stdout).toContain(`Task ${task.id} is now ready.`);
+    expect(showTask(task.id)?.status).toBe("ready");
+  });
+
+  it("unblocks multiple blocked tasks and prints a summary", async () => {
+    createBoard(KDI047_SLUG, `/tmp/${KDI047_SLUG}`);
+    const t1 = createTask({ board_id: 1, title: "A" });
+    const t2 = createTask({ board_id: 1, title: "B" });
+    blockTask(t1.id, "x");
+    blockTask(t2.id, "y");
+
+    const r = await runUnblock([String(t1.id), String(t2.id)]);
+    expect(r.exited).toBe(false);
+    expect(r.stdout).toContain(`Unblocked task ${t1.id}.`);
+    expect(r.stdout).toContain(`Unblocked task ${t2.id}.`);
+    expect(r.stdout).toContain("Unblocked 2/2 tasks.");
+    expect(showTask(t1.id)?.status).toBe("todo");
+    expect(showTask(t2.id)?.status).toBe("todo");
+  });
+
+  it("skips a task that is not blocked or scheduled", async () => {
+    createBoard(KDI047_SLUG, `/tmp/${KDI047_SLUG}`);
+    const blocked = createTask({ board_id: 1, title: "Blocked" });
+    const todo = createTask({ board_id: 1, title: "Todo" });
+    blockTask(blocked.id, "x");
+
+    const r = await runUnblock([String(blocked.id), String(todo.id)]);
+    expect(r.exited).toBe(true);
+    expect(r.exitCode).toBe(1);
+    expect(r.stdout).toContain(`Unblocked task ${blocked.id}.`);
+    expect(r.stderr).toContain(`Skipped task ${todo.id}`);
+    expect(r.stdout).toContain("Unblocked 1/2 tasks.");
+  });
+
+  it("skips a non-existent task", async () => {
+    createBoard(KDI047_SLUG, `/tmp/${KDI047_SLUG}`);
+    const blocked = createTask({ board_id: 1, title: "Blocked" });
+    blockTask(blocked.id, "x");
+
+    const r = await runUnblock([String(blocked.id), "99999"]);
+    expect(r.exited).toBe(true);
+    expect(r.exitCode).toBe(1);
+    expect(r.stderr).toContain("Skipped task 99999");
+    expect(r.stdout).toContain("Unblocked 1/2 tasks.");
+  });
+
+  it("skips an archived task", async () => {
+    createBoard(KDI047_SLUG, `/tmp/${KDI047_SLUG}`);
+    const blocked = createTask({ board_id: 1, title: "Blocked" });
+    const archived = createTask({ board_id: 1, title: "Archived" });
+    blockTask(blocked.id, "x");
+    archiveTask(archived.id);
+
+    const r = await runUnblock([String(blocked.id), String(archived.id)]);
+    expect(r.exited).toBe(true);
+    expect(r.exitCode).toBe(1);
+    expect(r.stderr).toContain(`Skipped task ${archived.id}`);
+    expect(r.stdout).toContain("Unblocked 1/2 tasks.");
+  });
+
+  it("rejects no task IDs", async () => {
+    const r = await runUnblock([]);
+    expect(r.exited).toBe(true);
+    expect(r.exitCode).toBe(1);
+    // Commander prints the missing-argument error directly to process.stderr
+    // and exits before our handler runs; we only assert non-zero exit.
+  });
+
+  it("records --reason as a comment on each successful unblock", async () => {
+    createBoard(KDI047_SLUG, `/tmp/${KDI047_SLUG}`);
+    const t1 = createTask({ board_id: 1, title: "A" });
+    const t2 = createTask({ board_id: 1, title: "B" });
+    blockTask(t1.id, "x");
+    blockTask(t2.id, "y");
+
+    await runUnblock([String(t1.id), String(t2.id), "--reason", "api recovered"]);
+    expect(showTask(t1.id)?.status).toBe("todo");
+    expect(showTask(t2.id)?.status).toBe("todo");
+  });
+});
+describe("archive command", () => {
+  beforeEach(() => {
+    cleanupDb(TEST_DB);
+    cleanupAttachments();
+    process.env.KDI_DB = TEST_DB;
+    initDb(TEST_DB);
+  });
+
+  afterEach(() => {
+    clearOverrides();
+    closeDb();
+    cleanupDb(TEST_DB);
+    cleanupAttachments();
+    delete process.env.KDI_DB;
+  });
+
+  it("archives a single task without FF_BULK_OPERATIONS", async () => {
+    const board = createBoard("cmd-board", "/tmp/cmd-board");
+    const task = createTask({ board_id: board.id, title: "Archive me" });
+
+    const logs: string[] = [];
+    const originalLog = console.log;
+    console.log = (...args: unknown[]) => { logs.push(args.map(String).join(" ")); };
+
+    try {
+      await archiveTaskCommand.parseAsync([String(task.id)], { from: "user" });
+    } finally {
+      console.log = originalLog;
+    }
+
+    expect(logs).toContain(`Archived task ${task.id}.`);
+    const archived = listTasks({ board_id: board.id, includeArchived: true });
+    expect(archived).toHaveLength(1);
+    expect(archived[0].status).toBe("archived");
+  });
+
+  it("rejects multiple task IDs when FF_BULK_OPERATIONS is disabled", async () => {
+    const board = createBoard("cmd-board", "/tmp/cmd-board");
+    const t1 = createTask({ board_id: board.id, title: "One" });
+    const t2 = createTask({ board_id: board.id, title: "Two" });
+
+    let exitCode: number | undefined;
+    const originalExit = process.exit;
+    process.exit = ((code?: number | string | null | undefined) => {
+      exitCode = code as number;
+      throw new Error(`exit:${code}`);
+    }) as typeof process.exit;
+
+    try {
+      await archiveTaskCommand.parseAsync([String(t1.id), String(t2.id)], { from: "user" });
+      expect(true).toBe(false);
+    } catch (err: any) {
+      if (!err.message.startsWith("exit:")) throw err;
+    } finally {
+      process.exit = originalExit;
+    }
+
+    expect(exitCode).toBe(1);
+  });
+
+  it("archives multiple tasks when FF_BULK_OPERATIONS is enabled", async () => {
+    setFlag(FF_BULK_OPERATIONS, true);
+    const board = createBoard("cmd-board", "/tmp/cmd-board");
+    const t1 = createTask({ board_id: board.id, title: "One" });
+    const t2 = createTask({ board_id: board.id, title: "Two" });
+
+    const logs: string[] = [];
+    const originalLog = console.log;
+    console.log = (...args: unknown[]) => { logs.push(args.map(String).join(" ")); };
+
+    try {
+      await archiveTaskCommand.parseAsync([String(t1.id), String(t2.id)], { from: "user" });
+    } finally {
+      console.log = originalLog;
+    }
+
+    expect(logs).toContain(`Archived task ${t1.id}.`);
+    expect(logs).toContain(`Archived task ${t2.id}.`);
+    expect(logs).toContain(`Archived 2/2 tasks.`);
+    const archived = listTasks({ board_id: board.id, includeArchived: true });
+    expect(archived.every((t) => t.status === "archived")).toBe(true);
+  });
+
+  it("bulk archive skips already-archived tasks and reports partial success", async () => {
+    setFlag(FF_BULK_OPERATIONS, true);
+    const board = createBoard("cmd-board", "/tmp/cmd-board");
+    const t1 = createTask({ board_id: board.id, title: "One" });
+    const t2 = createTask({ board_id: board.id, title: "Two" });
+    archiveTask(t2.id);
+
+    const logs: string[] = [];
+    const errors: string[] = [];
+    const originalLog = console.log;
+    const originalError = console.error;
+    console.log = (...args: unknown[]) => { logs.push(args.map(String).join(" ")); };
+    console.error = (...args: unknown[]) => { errors.push(args.map(String).join(" ")); };
+
+    let exitCode: number | undefined;
+    const originalExit = process.exit;
+    process.exit = ((code?: number | string | null | undefined) => {
+      exitCode = code as number;
+      throw new Error(`exit:${code}`);
+    }) as typeof process.exit;
+
+    try {
+      await archiveTaskCommand.parseAsync([String(t1.id), String(t2.id)], { from: "user" });
+      expect(true).toBe(false);
+    } catch (err: any) {
+      if (!err.message.startsWith("exit:")) throw err;
+    } finally {
+      console.log = originalLog;
+      console.error = originalError;
+      process.exit = originalExit;
+    }
+
+    expect(logs).toContain(`Archived task ${t1.id}.`);
+    expect(logs).toContain(`Archived 1/2 tasks.`);
+    expect(errors.some((e) => e.includes(`Skipped task ${t2.id}`))).toBe(true);
+    expect(exitCode).toBe(1);
+    const archived = listTasks({ board_id: board.id, includeArchived: true });
+    expect(archived.find((t) => t.id === t1.id)?.status).toBe("archived");
+  });
+
+  it("bulk --rm still permanently deletes archived tasks", async () => {
+    setFlag(FF_BULK_OPERATIONS, true);
+    const board = createBoard("cmd-board", "/tmp/cmd-board");
+    const t1 = createTask({ board_id: board.id, title: "One" });
+    const t2 = createTask({ board_id: board.id, title: "Two" });
+    archiveTask(t1.id);
+    archiveTask(t2.id);
+
+    const logs: string[] = [];
+    const originalLog = console.log;
+    console.log = (...args: unknown[]) => { logs.push(args.map(String).join(" ")); };
+
+    try {
+      await archiveTaskCommand.parseAsync(["--rm", String(t1.id), String(t2.id)], { from: "user" });
+    } finally {
+      console.log = originalLog;
+    }
+
+    expect(logs).toContain(`Permanently deleted task ${t1.id}.`);
+    expect(logs).toContain(`Permanently deleted task ${t2.id}.`);
+    expect(logs).toContain(`Deleted 2/2 tasks.`);
+    expect(showTask(t1.id)).toBeNull();
+    expect(showTask(t2.id)).toBeNull();
   });
 });

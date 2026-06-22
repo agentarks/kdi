@@ -8,6 +8,7 @@ import {
   tailEvents,
   getRecentEvents,
   getEventsAfter,
+  getRecentTaskEvents,
 } from "../src/models/taskEvent";
 import { setFlag, clearOverrides } from "../src/flags";
 import { FF_TENANT_NAMESPACE } from "../src/flags";
@@ -59,6 +60,19 @@ describe("taskEvent model", () => {
     expect(kinds[0]).toBe("blocked");
     expect(kinds[1]).toBe("promoted");
     expect(kinds[2]).toBe("created");
+  });
+
+  it("getRecentTaskEvents returns the last N events ordered by created_at DESC", () => {
+    const board = createBoard("alpha", "/tmp/alpha");
+    const task = createTask({ board_id: board.id, title: "Test" });
+    addEvent(task.id, "promoted");
+    addEvent(task.id, "blocked", { reason: "x" });
+    addEvent(task.id, "unblocked");
+
+    const events = getRecentTaskEvents(task.id, 2);
+    expect(events).toHaveLength(2);
+    expect(events[0].kind).toBe("unblocked");
+    expect(events[1].kind).toBe("blocked");
   });
 
   it("tailEvents without sinceId returns all events DESC", () => {

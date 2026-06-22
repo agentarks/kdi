@@ -1,11 +1,12 @@
 # kdi — Status
 
-## KDI-042–045 Consolidated PR — In Review
-- Consolidated branch: `feat/kdi-042-045-consolidated` (worktree `.worktrees/feat-kdi-042-045-consolidated`)
-- Includes: KDI-042 (global `--board`), KDI-043 (`boards create --switch`), KDI-044 (`--description` board metadata), KDI-045 (`create --parent`)
-- Verification: `bun run lint` ✅, `bun run build` ✅, `bun test` ✅ **866 pass / 0 fail**
-- Pushed to origin and PR opened.
-- Review round 1 addressed: description in `boards list`, e2e test, narrowed unique-constraint catch, removed duplicated dispatch assignment.
+## KDI-046..049 Consolidated — In Review
+- [x] KDI-046: BRD drafted at `specs/brd-kdi-046-boards-rename-semantics.md`; implementation deferred to follow-up PR
+- [x] KDI-047: Bulk `kdi unblock <id>...` implemented with per-task reporting and tests
+- [x] KDI-048: Bulk `kdi archive <id>...` implemented behind `FF_BULK_OPERATIONS` with tests
+- [x] KDI-049: Non-following `kdi tail --lines N` / `--no-follow` implemented behind `FF_TAIL_NO_FOLLOW` with tests
+- [x] `bun run lint`, `bun run test` (873 pass), and `bun run build` pass on consolidated branch
+- [ ] Open consolidated PR to `main`
 
 ## Hermes Kanban Parity Verification — 2026-06-20/21 (in progress)
 - [x] Live CLI verification run via `kdi-new-feature-loop` with temp `HOME`/`KDI_DB` and all feature flags enabled.
@@ -25,6 +26,17 @@
 - [x] Duplicate parent links are idempotent (ignored on UNIQUE constraint)
 - [x] Unit tests in `tests/create-parent.test.ts` cover single parent, multiple parents, flag gating, missing parent, self-dependency, circular dependency, and idempotency with `--idempotency-key`
 - [x] `bun run lint`, `bun test tests/create-parent.test.ts`, and `bun run build` pass
+
+## Bulk `kdi unblock` (KDI-047) — In Progress
+- [x] BRD drafted at `specs/brd-kdi-047-unblock-bulk.md`
+- [x] `kdi unblock <id1> <id2>...` unblocks or readies multiple tasks at once
+- [x] Per-task success/skip reporting with summary line
+- [x] Exit 1 when any task is skipped
+- [x] Single-task behavior preserved
+- [x] Update `specs/hermes-kanban-backlog.md` KDI-047 status and feature mapping
+- [x] Unit/CLI tests cover single-task, bulk, mixed-status, missing, and archived cases
+- [x] `bun run lint`, `bun run test`, `bun run build` pass
+- [x] User-loop smoke proven with temp `HOME` and temp `KDI_DB`
 
 ## Dispatcher Presence Warning (KDI-037) — Done
 - [x] BRD drafted at `specs/brd-kdi-037-dispatcher-presence-warning.md`
@@ -537,7 +549,7 @@
 
 ## Task Events (KDI-000b)
 - [x] `task_events` table with task_id, run_id, kind, payload, created_at
-- [x] `kdi tail <task_id>` — follow events live (poll 1s)
+- [x] `kdi tail <task_id>` — follow events live (poll 1s), with optional `--lines N` / `--no-follow` non-following mode (KDI-049)
 - [x] `kdi watch` — board-wide event stream (poll 0.5s) with optional `--assignee`, `--tenant`, `--kinds`, and `--interval` filters (KDI-035)
 - [x] Event emissions: created, promoted, blocked, unblocked, completed, archived, claimed, finished
 
