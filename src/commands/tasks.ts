@@ -941,22 +941,41 @@ export const blockTaskCommand = new Command("block")
   });
 
 export const unblockTaskCommand = new Command("unblock")
-  .description("Unblock a task (or immediately ready a scheduled task)")
-  .argument("<task_id>", "Task ID")
+  .description("Unblock one or more tasks (or immediately ready scheduled tasks)")
+  .argument("<task_ids...>", "One or more task IDs")
   .option("--reason <text>", "Optional reason recorded as comment")
-  .action((taskId: string, options: { reason?: string }) => {
+  .action((taskIds: string[], options: { reason?: string }) => {
     try {
-      const id = parseTaskId(taskId);
-      const current = showTask(id);
-      if (current && current.status === "scheduled" && !isEnabled(FF_SCHEDULED_STATUS)) {
-        throw new Error("Scheduled status feature is not enabled.");
+      if (taskIds.length === 0) {
+        throw new Error("At least one task ID is required.");
       }
-      const task = unblockTask(id, options.reason);
-      if (task.status === "ready") {
-        console.log(`Task ${task.id} is now ready.`);
-      } else {
-        console.log(`Unblocked task ${task.id}.`);
+      const ids = taskIds.map(parseTaskId);
+      let skipped = 0;
+      const succeeded: number[] = [];
+
+      for (const id of ids) {
+        try {
+          const current = showTask(id);
+          if (current && current.status === "scheduled" && !isEnabled(FF_SCHEDULED_STATUS)) {
+            throw new Error("Scheduled status feature is not enabled.");
+          }
+          const task = unblockTask(id, options.reason);
+          if (task.status === "ready") {
+            console.log(`Task ${task.id} is now ready.`);
+          } else {
+            console.log(`Unblocked task ${task.id}.`);
+          }
+          succeeded.push(task.id);
+        } catch (err: any) {
+          console.error(`Skipped task ${id}: ${err.message}`);
+          skipped++;
+        }
       }
+
+      if (ids.length > 1) {
+        console.log(`Unblocked ${succeeded.length}/${ids.length} tasks.`);
+      }
+      if (skipped > 0) process.exit(1);
     } catch (err: any) {
       console.error(`Error: ${err.message}`);
       process.exit(1);

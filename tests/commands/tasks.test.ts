@@ -5,10 +5,10 @@ import { join } from "node:path";
 import { initDb, closeDb, getBoardDataDir } from "../../src/db";
 import { cleanupDb } from "../cleanupDb";
 import { createBoard } from "../../src/models/board";
-import { createTask, archiveTask, showTask, type Task } from "../../src/models/task";
+import { createTask, archiveTask, blockTask, showTask, type Task } from "../../src/models/task";
 import { createRun } from "../../src/models/taskRun";
-import { listRunsCommand, attachTaskCommand, showTaskCommand, createTaskCommand, listTasksCommand, watchCommand } from "../../src/commands/tasks";
-import { setFlag, clearOverrides, FF_TASK_ATTACHMENTS, FF_LIST_FILTERS_SORT, FF_COMMENT_ENHANCEMENTS, FF_WATCH_FILTERS, FF_TENANT_NAMESPACE, FF_DISPATCHER_PRESENCE_WARNING, FF_GOAL_MODE } from "../../src/flags";
+import { listRunsCommand, attachTaskCommand, showTaskCommand, createTaskCommand, listTasksCommand, watchCommand, unblockTaskCommand } from "../../src/commands/tasks";
+import { setFlag, clearOverrides, FF_TASK_ATTACHMENTS, FF_LIST_FILTERS_SORT, FF_COMMENT_ENHANCEMENTS, FF_WATCH_FILTERS, FF_TENANT_NAMESPACE, FF_DISPATCHER_PRESENCE_WARNING, FF_GOAL_MODE, FF_SCHEDULED_STATUS } from "../../src/flags";
 import { getDispatcherPidPath } from "../../src/dispatcherPresence";
 
 const TEST_DB = "/tmp/kdi-commands-tasks-test.db";
@@ -1170,5 +1170,171 @@ describe("goal mode create command", () => {
     }
 
     expect(logs.some((l) => l.startsWith("Goal:"))).toBe(false);
+  });
+});
+
+const KDI047_DB = "/tmp/kdi-commands-tasks-047-test.db";
+const KDI047_SLUG = "kdi047";
+
+describe("KDI-047 bulk unblock command", () => {
+  beforeEach(() => {
+    clearOverrides();
+    cleanupDb(KDI047_DB);
+    process.env.KDI_DB = KDI047_DB;
+    delete process.env.KDI_DB_PATH;
+    resetCommandOptions(unblockTaskCommand);
+    _origStderrWrite = process.stderr.write.bind(process.stderr);
+    process.stderr.write = (() => true) as typeof process.stderr.write;
+    initDb(KDI047_DB);
+  });
+
+  afterEach(() => {
+    if (_origStderrWrite) process.stderr.write = _origStderrWrite;
+    clearOverrides();
+    closeDb();
+    cleanupDb(KDI047_DB);
+    delete process.env.KDI_DB;
+    delete process.env.KDI_DB_PATH;
+  });
+
+  async function runUnblock(args: string[]): Promise<{
+    exited: boolean;
+    stdout: string;
+    stderr: string;
+    exitCode: number;
+  }> {
+    const stdout: string[] = [];
+    const stderr: string[] = [];
+    const originalLog = console.log;
+    const originalError = console.error;
+    console.log = (...args: unknown[]) => {
+      stdout.push(args.map(String).join(" "));
+    };
+    console.error = (...args: unknown[]) => {
+      stderr.push(args.map(String).join(" "));
+    };
+
+    let exited = false;
+    let exitCode = 0;
+    const originalExit = process.exit;
+    process.exit = ((code?: number | string | null) => {
+      exited = true;
+      exitCode = typeof code === "number" ? code : 0;
+      throw new Error(`exit:${exitCode}`);
+    }) as typeof process.exit;
+
+    try {
+      await unblockTaskCommand.parseAsync(args, { from: "user" });
+    } catch (err: any) {
+      if (!err.message?.startsWith("exit:")) {
+        exited = true;
+        exitCode = 1;
+        stderr.push(`Error: ${err.message}`);
+      }
+    } finally {
+      console.log = originalLog;
+      console.error = originalError;
+      process.exit = originalExit;
+    }
+
+    return { exited, stdout: stdout.join("\n"), stderr: stderr.join("\n"), exitCode };
+  }
+
+  it("unblocks a single blocked task", async () => {
+    createBoard(KDI047_SLUG, `/tmp/${KDI047_SLUG}`);
+    const task = createTask({ board_id: 1, title: "Blocked" });
+    blockTask(task.id, "reason");
+
+    const r = await runUnblock([String(task.id)]);
+    expect(r.exited).toBe(false);
+    expect(r.stdout).toContain(`Unblocked task ${task.id}.`);
+    expect(showTask(task.id)?.status).toBe("todo");
+  });
+
+  it("readies a single scheduled task", async () => {
+    setFlag(FF_SCHEDULED_STATUS, true);
+    createBoard(KDI047_SLUG, `/tmp/${KDI047_SLUG}`);
+    const task = createTask({ board_id: 1, title: "Scheduled", initialStatus: "scheduled", scheduled_at: Math.floor(Date.now() / 1000) + 3600 });
+
+    const r = await runUnblock([String(task.id)]);
+    expect(r.exited).toBe(false);
+    expect(r.stdout).toContain(`Task ${task.id} is now ready.`);
+    expect(showTask(task.id)?.status).toBe("ready");
+  });
+
+  it("unblocks multiple blocked tasks and prints a summary", async () => {
+    createBoard(KDI047_SLUG, `/tmp/${KDI047_SLUG}`);
+    const t1 = createTask({ board_id: 1, title: "A" });
+    const t2 = createTask({ board_id: 1, title: "B" });
+    blockTask(t1.id, "x");
+    blockTask(t2.id, "y");
+
+    const r = await runUnblock([String(t1.id), String(t2.id)]);
+    expect(r.exited).toBe(false);
+    expect(r.stdout).toContain(`Unblocked task ${t1.id}.`);
+    expect(r.stdout).toContain(`Unblocked task ${t2.id}.`);
+    expect(r.stdout).toContain("Unblocked 2/2 tasks.");
+    expect(showTask(t1.id)?.status).toBe("todo");
+    expect(showTask(t2.id)?.status).toBe("todo");
+  });
+
+  it("skips a task that is not blocked or scheduled", async () => {
+    createBoard(KDI047_SLUG, `/tmp/${KDI047_SLUG}`);
+    const blocked = createTask({ board_id: 1, title: "Blocked" });
+    const todo = createTask({ board_id: 1, title: "Todo" });
+    blockTask(blocked.id, "x");
+
+    const r = await runUnblock([String(blocked.id), String(todo.id)]);
+    expect(r.exited).toBe(true);
+    expect(r.exitCode).toBe(1);
+    expect(r.stdout).toContain(`Unblocked task ${blocked.id}.`);
+    expect(r.stderr).toContain(`Skipped task ${todo.id}`);
+    expect(r.stdout).toContain("Unblocked 1/2 tasks.");
+  });
+
+  it("skips a non-existent task", async () => {
+    createBoard(KDI047_SLUG, `/tmp/${KDI047_SLUG}`);
+    const blocked = createTask({ board_id: 1, title: "Blocked" });
+    blockTask(blocked.id, "x");
+
+    const r = await runUnblock([String(blocked.id), "99999"]);
+    expect(r.exited).toBe(true);
+    expect(r.exitCode).toBe(1);
+    expect(r.stderr).toContain("Skipped task 99999");
+    expect(r.stdout).toContain("Unblocked 1/2 tasks.");
+  });
+
+  it("skips an archived task", async () => {
+    createBoard(KDI047_SLUG, `/tmp/${KDI047_SLUG}`);
+    const blocked = createTask({ board_id: 1, title: "Blocked" });
+    const archived = createTask({ board_id: 1, title: "Archived" });
+    blockTask(blocked.id, "x");
+    archiveTask(archived.id);
+
+    const r = await runUnblock([String(blocked.id), String(archived.id)]);
+    expect(r.exited).toBe(true);
+    expect(r.exitCode).toBe(1);
+    expect(r.stderr).toContain(`Skipped task ${archived.id}`);
+    expect(r.stdout).toContain("Unblocked 1/2 tasks.");
+  });
+
+  it("rejects no task IDs", async () => {
+    const r = await runUnblock([]);
+    expect(r.exited).toBe(true);
+    expect(r.exitCode).toBe(1);
+    // Commander prints the missing-argument error directly to process.stderr
+    // and exits before our handler runs; we only assert non-zero exit.
+  });
+
+  it("records --reason as a comment on each successful unblock", async () => {
+    createBoard(KDI047_SLUG, `/tmp/${KDI047_SLUG}`);
+    const t1 = createTask({ board_id: 1, title: "A" });
+    const t2 = createTask({ board_id: 1, title: "B" });
+    blockTask(t1.id, "x");
+    blockTask(t2.id, "y");
+
+    await runUnblock([String(t1.id), String(t2.id), "--reason", "api recovered"]);
+    expect(showTask(t1.id)?.status).toBe("todo");
+    expect(showTask(t2.id)?.status).toBe("todo");
   });
 });

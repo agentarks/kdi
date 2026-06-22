@@ -27,6 +27,17 @@
 - [x] Unit tests in `tests/create-parent.test.ts` cover single parent, multiple parents, flag gating, missing parent, self-dependency, circular dependency, and idempotency with `--idempotency-key`
 - [x] `bun run lint`, `bun test tests/create-parent.test.ts`, and `bun run build` pass
 
+## Bulk `kdi unblock` (KDI-047) — In Progress
+- [x] BRD drafted at `specs/brd-kdi-047-unblock-bulk.md`
+- [x] `kdi unblock <id1> <id2>...` unblocks or readies multiple tasks at once
+- [x] Per-task success/skip reporting with summary line
+- [x] Exit 1 when any task is skipped
+- [x] Single-task behavior preserved
+- [x] Update `specs/hermes-kanban-backlog.md` KDI-047 status and feature mapping
+- [x] Unit/CLI tests cover single-task, bulk, mixed-status, missing, and archived cases
+- [x] `bun run lint`, `bun run test`, `bun run build` pass
+- [x] User-loop smoke proven with temp `HOME` and temp `KDI_DB`
+
 ## Dispatcher Presence Warning (KDI-037) — Done
 - [x] BRD drafted at `specs/brd-kdi-037-dispatcher-presence-warning.md`
 - [x] Feature flag `ff_dispatcher_presence_warning` / `FF_DISPATCHER_PRESENCE_WARNING` registered in `src/flags.ts` and `specs/feature-flags.md`, defaults to `false`
