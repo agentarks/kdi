@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS boards (
   name TEXT,
   icon TEXT,
   color TEXT,
+  description TEXT,
   created_at INTEGER NOT NULL DEFAULT (unixepoch()),
   archived_at INTEGER
 );
@@ -261,6 +262,10 @@ export function initDb(path?: string): Database {
     const hasBoardColor = boardTableInfo.some((col) => col.name === "color");
     if (!hasBoardColor) {
       dbInstance.exec("ALTER TABLE boards ADD COLUMN color TEXT");
+    }
+    const hasBoardDescription = boardTableInfo.some((col) => col.name === "description");
+    if (!hasBoardDescription) {
+      dbInstance.exec("ALTER TABLE boards ADD COLUMN description TEXT");
     }
 
     // Migrate: add started_at column if missing

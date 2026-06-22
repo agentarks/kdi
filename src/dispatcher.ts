@@ -38,6 +38,8 @@ export interface TickOptions {
   maxSpawnsPerTick?: number;
   rateLimitCooldownSeconds?: number;
   failureLimit?: number;
+  boardId?: number;
+  boardSlug?: string;
 }
 
 export interface TickResult {
@@ -116,13 +118,17 @@ export async function spawnHarness(command: string, cwd: string, logPath?: strin
   });
 }
 
-function listReadyTasks(): Task[] {
+function listReadyTasks(boardId?: number): Task[] {
   const db = getDb();
-  const rows = db.query(
-    `SELECT ${TASK_COLUMNS} FROM tasks WHERE status = 'ready' AND archived_at IS NULL
-     AND (rate_limited_until IS NULL OR rate_limited_until <= unixepoch())
-     ORDER BY priority DESC, created_at ASC`
-  ).all() as Task[];
+  let sql = `SELECT ${TASK_COLUMNS} FROM tasks WHERE status = 'ready' AND archived_at IS NULL
+     AND (rate_limited_until IS NULL OR rate_limited_until <= unixepoch())`;
+  const params: number[] = [];
+  if (boardId !== undefined) {
+    sql += ` AND board_id = ?`;
+    params.push(boardId);
+  }
+  sql += ` ORDER BY priority DESC, created_at ASC`;
+  const rows = db.query(sql).all(...params) as Task[];
   return rows.map(hydrateTask);
 }
 
@@ -472,7 +478,7 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
   const crashCount = checkCrashedRuns();
   checkSwarmFailures();
 
-  const tasks = listReadyTasks();
+  const tasks = listReadyTasks(options.boardId);
   let processed = 0;
   let spawned = 0;
   let failuresThisPass = crashCount;

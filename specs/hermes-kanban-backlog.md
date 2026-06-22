@@ -314,6 +314,7 @@
   - `kdi schedule <task_id> --reason "waiting on deploy"`
   - `kdi schedule --ids <id1> <id2>` — bulk schedule
   - `kdi unblock` returns scheduled → ready
+  - `kdi unblock <task_id>...` — bulk unblock (KDI-047)
   - `kdi unblock --reason "..."` — record reason as comment before unblocking
 
 - [x] **KDI-003: Review status**
@@ -547,7 +548,7 @@
 | `hermes kanban edit` | `kdi edit` | Partial | KDI-005 |
 | `hermes kanban block` | `kdi block` | Exists | — |
 | `hermes kanban schedule` | `kdi schedule` | **Done** | KDI-002 |
-| `hermes kanban unblock` | `kdi unblock` | Exists | — |
+| `hermes kanban unblock` | `kdi unblock` | **Done** | KDI-047 |
 | `hermes kanban promote` | `kdi promote` | Exists | — |
 | `hermes kanban archive` | `kdi archive` | Exists | — |
 | `hermes kanban tail` | `kdi tail` | Exists | KDI-000b |
@@ -582,6 +583,7 @@
 | `block --ids` | `kdi block --ids` | **Done** | KDI-032 |
 | `schedule --ids` | `kdi schedule --ids` | **Done** | KDI-032 |
 | `unblock --reason` | `kdi unblock --reason` | **Done** | KDI-032 |
+| `unblock <task_ids...>` | `kdi unblock <task_ids...>` | **Done** | KDI-047 |
 | `promote --ids/--force/--dry-run` | `kdi promote --ids/--force/--dry-run` | **Done** | KDI-032 |
 | `archive --rm` | `kdi archive --rm` | **Done** | KDI-032 |
 | `claim --ttl` | `kdi claim --ttl` | **Done** | KDI-000c |
@@ -723,8 +725,7 @@
 7. **`kdi boards create` has no `--description` option**  
    Hermes boards carry `description` metadata. KDI stores `name`, `icon`, and `color` only.
 
-8. **`kdi unblock` accepts only a single task ID**  
-   Hermes `unblock <task_ids...>` supports bulk unblocking. KDI usage is `unblock [options] <task_id>`; passing multiple IDs silently ignores all but the first.
+
 
 9. **`kdi archive` bulk archive is broken**  
    Help text advertises `[task_ids...]`, but `kdi archive 1 2` returns `Error: Archive only supports a single task ID (use --rm for bulk deletion of archived tasks)`. Bulk `--rm` of archived tasks works; bulk archive does not.
@@ -759,22 +760,22 @@ The bulk of failures are cascading from bug #1 (`--board` ignored). Fixing that 
 
 Add to the appropriate phases above:
 
-- [ ] **KDI-042: Fix `--board` flag resolution**  
+- [x] **KDI-042: Fix `--board` flag resolution**  
   Global and subcommand `--board` must both resolve to the explicit board. Add e2e coverage for `--board` on `create`, `list`, `show`, `dispatch`, and `swarm`.
 
-- [ ] **KDI-043: Implement `boards create --switch`**  
+- [x] **KDI-043: Implement `boards create --switch`**  
   Auto-switch to the newly created board (currently marked done in KDI-012 but missing in CLI).
 
-- [ ] **KDI-044: Add `--description` to board metadata**  
+- [x] **KDI-044: Add `--description` to board metadata**  
   Store and display board description, matching Hermes `boards create --description`.
 
-- [ ] **KDI-045: Add `--parent` repeatable option to `kdi create`**  
+- [x] **KDI-045: Add `--parent` repeatable option to `kdi create`**  
   Create task links at creation time; equivalent to Hermes `--parent`.
 
 - [ ] **KDI-046: Align `boards rename` with Hermes semantics**  
   Make `rename` change display name; introduce `boards rename-slug` (or similar) if slug rename is still needed.
 
-- [ ] **KDI-047: Support multiple task IDs in `kdi unblock`**  
+- [x] **KDI-047: Support multiple task IDs in `kdi unblock`**  
   Bulk unblock matching Hermes `unblock <task_ids...>`.
 
 - [ ] **KDI-048: Fix bulk archive**  

@@ -11,6 +11,7 @@ export interface Board {
   name: string;
   icon: string | null;
   color: string | null;
+  description: string | null;
   created_at: number;
   archived_at: number | null;
 }
@@ -19,6 +20,7 @@ export interface BoardMetadata {
   name?: string;
   icon?: string;
   color?: string;
+  description?: string;
 }
 
 export interface BoardWithTaskCounts extends Board {
@@ -35,7 +37,7 @@ export interface BoardWithTaskCounts extends Board {
   };
 }
 
-const BOARD_COLUMNS = "id, slug, workdir, default_workdir, base_ref, name, icon, color, created_at, archived_at";
+const BOARD_COLUMNS = "id, slug, workdir, default_workdir, base_ref, name, icon, color, description, created_at, archived_at";
 
 function validateMetadataField(value: string | undefined, field: string): void {
   if (value !== undefined && value.trim() === "") {
@@ -53,16 +55,18 @@ export function createBoard(
   validateMetadataField(metadata.name, "Name");
   validateMetadataField(metadata.icon, "Icon");
   validateMetadataField(metadata.color, "Color");
+  validateMetadataField(metadata.description, "Description");
 
   const name = metadata.name?.trim() ?? slug;
   const icon = metadata.icon?.trim() ?? null;
   const color = metadata.color?.trim() ?? null;
+  const description = metadata.description?.trim() ?? null;
 
   const db = getDb();
   try {
     const result = db.run(
-      "INSERT INTO boards (slug, workdir, base_ref, name, icon, color) VALUES (?, ?, ?, ?, ?, ?)",
-      [slug, workdir, baseRef, name, icon, color]
+      "INSERT INTO boards (slug, workdir, base_ref, name, icon, color, description) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      [slug, workdir, baseRef, name, icon, color, description]
     );
     return {
       id: Number(result.lastInsertRowid),
@@ -73,6 +77,7 @@ export function createBoard(
       name,
       icon,
       color,
+      description,
       created_at: Math.floor(Date.now() / 1000),
       archived_at: null,
     };
@@ -178,6 +183,7 @@ export function updateBoardMetadata(slug: string, metadata: BoardMetadata): Boar
   validateMetadataField(metadata.name, "Name");
   validateMetadataField(metadata.icon, "Icon");
   validateMetadataField(metadata.color, "Color");
+  validateMetadataField(metadata.description, "Description");
 
   const db = getDb();
   const sets: string[] = [];
@@ -194,6 +200,10 @@ export function updateBoardMetadata(slug: string, metadata: BoardMetadata): Boar
   if (metadata.color !== undefined) {
     sets.push("color = ?");
     values.push(metadata.color.trim() || null);
+  }
+  if (metadata.description !== undefined) {
+    sets.push("description = ?");
+    values.push(metadata.description.trim() || null);
   }
 
   if (sets.length === 0) {
