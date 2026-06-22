@@ -1,5 +1,15 @@
 # kdi — Status
 
+## Ensure `default` Board Exists After `kdi init` (KDI-050) — Spec Drafted
+- [x] BRD drafted at `specs/brd-kdi-050-init-default-board.md`
+- [ ] Feature flag: not required; `kdi init` / board creation are foundational and exempt from feature-flag gating
+- [ ] `kdi init` creates an active `default` board when one does not exist
+- [ ] `kdi init` is idempotent when the `default` board already exists
+- [ ] Default board workdir set to `<kdi_data_dir>/boards/default`
+- [ ] `kdi boards show` and `kdi create` work immediately after `kdi init`
+- [ ] Unit/e2e tests and user-loop smoke pass
+- [ ] `bun run lint`, `bun run test`, `bun run build` pass
+
 ## Hermes Kanban Parity — KDI-046 (Done)
 - [x] BRD drafted at `specs/brd-kdi-046-boards-rename-semantics.md`
 - [x] Feature flag `ff_board_rename_hermes` / `FF_BOARD_RENAME_HERMES` registered in `specs/feature-flags.md` and `src/flags.ts`, defaults to `false`
