@@ -5,10 +5,11 @@ import { join } from "node:path";
 import { initDb, closeDb, getBoardDataDir } from "../../src/db";
 import { cleanupDb } from "../cleanupDb";
 import { createBoard } from "../../src/models/board";
-import { createTask, archiveTask, blockTask, showTask, type Task } from "../../src/models/task";
+import { createTask, archiveTask, blockTask, showTask, listTasks, type Task } from "../../src/models/task";
 import { createRun } from "../../src/models/taskRun";
-import { listRunsCommand, attachTaskCommand, showTaskCommand, createTaskCommand, listTasksCommand, watchCommand, unblockTaskCommand } from "../../src/commands/tasks";
-import { setFlag, clearOverrides, FF_TASK_ATTACHMENTS, FF_LIST_FILTERS_SORT, FF_COMMENT_ENHANCEMENTS, FF_WATCH_FILTERS, FF_TENANT_NAMESPACE, FF_DISPATCHER_PRESENCE_WARNING, FF_GOAL_MODE, FF_SCHEDULED_STATUS } from "../../src/flags";
+import { addEvent } from "../../src/models/taskEvent";
+import { listRunsCommand, attachTaskCommand, showTaskCommand, createTaskCommand, listTasksCommand, watchCommand, unblockTaskCommand, archiveTaskCommand, tailTaskCommand } from "../../src/commands/tasks";
+import { setFlag, clearOverrides, FF_TASK_ATTACHMENTS, FF_LIST_FILTERS_SORT, FF_COMMENT_ENHANCEMENTS, FF_WATCH_FILTERS, FF_TENANT_NAMESPACE, FF_DISPATCHER_PRESENCE_WARNING, FF_GOAL_MODE, FF_SCHEDULED_STATUS, FF_BULK_OPERATIONS, FF_TAIL_NO_FOLLOW } from "../../src/flags";
 import { getDispatcherPidPath } from "../../src/dispatcherPresence";
 
 const TEST_DB = "/tmp/kdi-commands-tasks-test.db";
@@ -1171,8 +1172,161 @@ describe("goal mode create command", () => {
 
     expect(logs.some((l) => l.startsWith("Goal:"))).toBe(false);
   });
-});
 
+  describe("KDI-049 tail no-follow", () => {
+    async function runTail(args: string[]): Promise<{ logs: string[]; exited: boolean; stderr: string }> {
+      // Dynamic import to get a fresh Command instance and avoid option-state leaks.
+      const mod = await import("../../src/commands/tasks?ts=" + Date.now() + Math.random());
+      const cmd = (mod as any).tailTaskCommand as typeof tailTaskCommand;
+      const logs: string[] = [];
+      const originalLog = console.log;
+      console.log = (...a: unknown[]) => { logs.push(a.map(String).join(" ")); };
+      const originalError = console.error;
+      const stderrChunks: string[] = [];
+      console.error = (...a: unknown[]) => { stderrChunks.push(a.map(String).join(" ")); };
+      const originalExit = process.exit;
+      let exited = false;
+      process.exit = ((code?: number) => { exited = true; throw new Error(`exit:${code}`); }) as typeof process.exit;
+      try {
+        await cmd.parseAsync(args, { from: "user" });
+      } catch {
+        // expected when process.exit is invoked
+      } finally {
+        console.log = originalLog;
+        console.error = originalError;
+        process.exit = originalExit;
+      }
+      return { logs, exited, stderr: stderrChunks.join("\n") };
+    }
+
+    it("--lines N prints last N events in chronological order and exits", async () => {
+      setFlag(FF_TAIL_NO_FOLLOW, true);
+      createBoard("cmd-board", "/tmp/cmd-board");
+      const task = createTask({ board_id: 1, title: "Tail task" });
+      addEvent(task.id, "promoted");
+      addEvent(task.id, "blocked", { reason: "x" });
+
+      const { logs, exited, stderr } = await runTail([String(task.id), "--lines", "2"]);
+      expect(exited).toBe(false);
+      expect(stderr).toBe("");
+      expect(logs).toHaveLength(2);
+      expect(logs[0]).toContain("promoted");
+      expect(logs[1]).toContain("blocked");
+    });
+
+    it("--no-follow prints all events and exits", async () => {
+      setFlag(FF_TAIL_NO_FOLLOW, true);
+      createBoard("cmd-board", "/tmp/cmd-board");
+      const task = createTask({ board_id: 1, title: "Tail task" });
+      addEvent(task.id, "promoted");
+
+      const { logs, exited, stderr } = await runTail([String(task.id), "--no-follow"]);
+      expect(exited).toBe(false);
+      expect(stderr).toBe("");
+      expect(logs.length).toBeGreaterThanOrEqual(2);
+      expect(logs.some((l) => l.includes("created"))).toBe(true);
+      expect(logs.some((l) => l.includes("promoted"))).toBe(true);
+    });
+
+    it("--lines N on task with fewer than N events prints all events", async () => {
+      setFlag(FF_TAIL_NO_FOLLOW, true);
+      createBoard("cmd-board", "/tmp/cmd-board");
+      const task = createTask({ board_id: 1, title: "Tail task" });
+      addEvent(task.id, "promoted");
+
+      const { logs } = await runTail([String(task.id), "--lines", "10"]);
+      expect(logs.length).toBeGreaterThanOrEqual(2);
+    });
+
+    it("--lines 0 is rejected", async () => {
+      setFlag(FF_TAIL_NO_FOLLOW, true);
+      createBoard("cmd-board", "/tmp/cmd-board");
+      const task = createTask({ board_id: 1, title: "Tail task" });
+
+      const { exited, stderr } = await runTail([String(task.id), "--lines", "0"]);
+      expect(exited).toBe(true);
+      expect(stderr).toContain("--lines must be a positive integer");
+    });
+
+    it("--lines abc is rejected", async () => {
+      setFlag(FF_TAIL_NO_FOLLOW, true);
+      createBoard("cmd-board", "/tmp/cmd-board");
+      const task = createTask({ board_id: 1, title: "Tail task" });
+
+      const { exited, stderr } = await runTail([String(task.id), "--lines", "abc"]);
+      expect(exited).toBe(true);
+      expect(stderr).toContain("--lines must be a positive integer");
+    });
+
+    it("--lines -1 is rejected", async () => {
+      setFlag(FF_TAIL_NO_FOLLOW, true);
+      createBoard("cmd-board", "/tmp/cmd-board");
+      const task = createTask({ board_id: 1, title: "Tail task" });
+
+      const { exited, stderr } = await runTail([String(task.id), "--lines", "-1"]);
+      expect(exited).toBe(true);
+      expect(stderr).toContain("--lines must be a positive integer");
+    });
+
+    it("--no-follow is rejected when flag disabled", async () => {
+      setFlag(FF_TAIL_NO_FOLLOW, false);
+      createBoard("cmd-board", "/tmp/cmd-board");
+      const task = createTask({ board_id: 1, title: "Tail task" });
+
+      const { exited, stderr } = await runTail([String(task.id), "--no-follow"]);
+      expect(exited).toBe(true);
+      expect(stderr).toContain("Tail no-follow feature is not enabled");
+    });
+
+    it("--lines is rejected when flag disabled", async () => {
+      setFlag(FF_TAIL_NO_FOLLOW, false);
+      createBoard("cmd-board", "/tmp/cmd-board");
+      const task = createTask({ board_id: 1, title: "Tail task" });
+
+      const { exited, stderr } = await runTail([String(task.id), "--lines", "5"]);
+      expect(exited).toBe(true);
+      expect(stderr).toContain("Tail no-follow feature is not enabled");
+    });
+
+    it("missing task exits with clear error", async () => {
+      setFlag(FF_TAIL_NO_FOLLOW, true);
+      createBoard("cmd-board", "/tmp/cmd-board");
+
+      const { exited, stderr } = await runTail(["99999", "--lines", "5"]);
+      expect(exited).toBe(true);
+      expect(stderr).toContain("Task 99999 not found");
+    });
+
+    it("default tail enters follow loop and prints existing events", async () => {
+      setFlag(FF_TAIL_NO_FOLLOW, true);
+      createBoard("cmd-board", "/tmp/cmd-board");
+      const task = createTask({ board_id: 1, title: "Tail task" });
+      addEvent(task.id, "promoted");
+
+      // Race the follow loop against a short timeout; we just want to confirm
+      // it printed existing events and did not exit immediately.
+      const mod = await import("../../src/commands/tasks?ts=" + Date.now() + Math.random());
+      const cmd = (mod as any).tailTaskCommand as typeof tailTaskCommand;
+      const logs: string[] = [];
+      const originalLog = console.log;
+      console.log = (...a: unknown[]) => { logs.push(a.map(String).join(" ")); };
+      try {
+        await Promise.race([
+          cmd.parseAsync([String(task.id)], { from: "user" }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 150)),
+        ]);
+        // Should not reach here; if it does, the follow loop exited unexpectedly.
+        expect(true).toBe(false);
+      } catch (err: any) {
+        expect(err.message).toBe("timeout");
+      } finally {
+        console.log = originalLog;
+      }
+
+      expect(logs.some((l) => l.includes("promoted"))).toBe(true);
+    });
+  });
+});
 const KDI047_DB = "/tmp/kdi-commands-tasks-047-test.db";
 const KDI047_SLUG = "kdi047";
 
@@ -1336,5 +1490,153 @@ describe("KDI-047 bulk unblock command", () => {
     await runUnblock([String(t1.id), String(t2.id), "--reason", "api recovered"]);
     expect(showTask(t1.id)?.status).toBe("todo");
     expect(showTask(t2.id)?.status).toBe("todo");
+  });
+});
+describe("archive command", () => {
+  beforeEach(() => {
+    cleanupDb(TEST_DB);
+    cleanupAttachments();
+    process.env.KDI_DB = TEST_DB;
+    initDb(TEST_DB);
+  });
+
+  afterEach(() => {
+    clearOverrides();
+    closeDb();
+    cleanupDb(TEST_DB);
+    cleanupAttachments();
+    delete process.env.KDI_DB;
+  });
+
+  it("archives a single task without FF_BULK_OPERATIONS", async () => {
+    const board = createBoard("cmd-board", "/tmp/cmd-board");
+    const task = createTask({ board_id: board.id, title: "Archive me" });
+
+    const logs: string[] = [];
+    const originalLog = console.log;
+    console.log = (...args: unknown[]) => { logs.push(args.map(String).join(" ")); };
+
+    try {
+      await archiveTaskCommand.parseAsync([String(task.id)], { from: "user" });
+    } finally {
+      console.log = originalLog;
+    }
+
+    expect(logs).toContain(`Archived task ${task.id}.`);
+    const archived = listTasks({ board_id: board.id, includeArchived: true });
+    expect(archived).toHaveLength(1);
+    expect(archived[0].status).toBe("archived");
+  });
+
+  it("rejects multiple task IDs when FF_BULK_OPERATIONS is disabled", async () => {
+    const board = createBoard("cmd-board", "/tmp/cmd-board");
+    const t1 = createTask({ board_id: board.id, title: "One" });
+    const t2 = createTask({ board_id: board.id, title: "Two" });
+
+    let exitCode: number | undefined;
+    const originalExit = process.exit;
+    process.exit = ((code?: number | string | null | undefined) => {
+      exitCode = code as number;
+      throw new Error(`exit:${code}`);
+    }) as typeof process.exit;
+
+    try {
+      await archiveTaskCommand.parseAsync([String(t1.id), String(t2.id)], { from: "user" });
+      expect(true).toBe(false);
+    } catch (err: any) {
+      if (!err.message.startsWith("exit:")) throw err;
+    } finally {
+      process.exit = originalExit;
+    }
+
+    expect(exitCode).toBe(1);
+  });
+
+  it("archives multiple tasks when FF_BULK_OPERATIONS is enabled", async () => {
+    setFlag(FF_BULK_OPERATIONS, true);
+    const board = createBoard("cmd-board", "/tmp/cmd-board");
+    const t1 = createTask({ board_id: board.id, title: "One" });
+    const t2 = createTask({ board_id: board.id, title: "Two" });
+
+    const logs: string[] = [];
+    const originalLog = console.log;
+    console.log = (...args: unknown[]) => { logs.push(args.map(String).join(" ")); };
+
+    try {
+      await archiveTaskCommand.parseAsync([String(t1.id), String(t2.id)], { from: "user" });
+    } finally {
+      console.log = originalLog;
+    }
+
+    expect(logs).toContain(`Archived task ${t1.id}.`);
+    expect(logs).toContain(`Archived task ${t2.id}.`);
+    expect(logs).toContain(`Archived 2/2 tasks.`);
+    const archived = listTasks({ board_id: board.id, includeArchived: true });
+    expect(archived.every((t) => t.status === "archived")).toBe(true);
+  });
+
+  it("bulk archive skips already-archived tasks and reports partial success", async () => {
+    setFlag(FF_BULK_OPERATIONS, true);
+    const board = createBoard("cmd-board", "/tmp/cmd-board");
+    const t1 = createTask({ board_id: board.id, title: "One" });
+    const t2 = createTask({ board_id: board.id, title: "Two" });
+    archiveTask(t2.id);
+
+    const logs: string[] = [];
+    const errors: string[] = [];
+    const originalLog = console.log;
+    const originalError = console.error;
+    console.log = (...args: unknown[]) => { logs.push(args.map(String).join(" ")); };
+    console.error = (...args: unknown[]) => { errors.push(args.map(String).join(" ")); };
+
+    let exitCode: number | undefined;
+    const originalExit = process.exit;
+    process.exit = ((code?: number | string | null | undefined) => {
+      exitCode = code as number;
+      throw new Error(`exit:${code}`);
+    }) as typeof process.exit;
+
+    try {
+      await archiveTaskCommand.parseAsync([String(t1.id), String(t2.id)], { from: "user" });
+      expect(true).toBe(false);
+    } catch (err: any) {
+      if (!err.message.startsWith("exit:")) throw err;
+    } finally {
+      console.log = originalLog;
+      console.error = originalError;
+      process.exit = originalExit;
+    }
+
+    expect(logs).toContain(`Archived task ${t1.id}.`);
+    expect(logs).toContain(`Archived 1/2 tasks.`);
+    expect(errors.some((e) => e.includes(`Skipped task ${t2.id}`))).toBe(true);
+    expect(exitCode).toBe(1);
+    const archived = listTasks({ board_id: board.id, includeArchived: true });
+    expect(archived.find((t) => t.id === t1.id)?.status).toBe("archived");
+  });
+
+  it("bulk --rm still permanently deletes archived tasks", async () => {
+    setFlag(FF_BULK_OPERATIONS, true);
+    const board = createBoard("cmd-board", "/tmp/cmd-board");
+    const t1 = createTask({ board_id: board.id, title: "One" });
+    const t2 = createTask({ board_id: board.id, title: "Two" });
+    archiveTask(t1.id);
+    archiveTask(t2.id);
+
+    const logs: string[] = [];
+    const originalLog = console.log;
+    console.log = (...args: unknown[]) => { logs.push(args.map(String).join(" ")); };
+
+    try {
+      await archiveTaskCommand.parseAsync(["--rm", String(t1.id), String(t2.id)], { from: "user" });
+    } finally {
+      console.log = originalLog;
+    }
+
+    expect(logs).toContain(`Permanently deleted task ${t1.id}.`);
+    expect(logs).toContain(`Permanently deleted task ${t2.id}.`);
+    expect(logs).toContain(`Deleted 2/2 tasks.`);
+    expect(showTask(t1.id)).toBeNull();
+    expect(showTask(t2.id)).toBeNull();
   });
 });

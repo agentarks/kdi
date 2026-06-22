@@ -43,6 +43,7 @@ export const FF_DISPATCH_ONCE = "FF_DISPATCH_ONCE";
 export const FF_LINK_UNLINK = "FF_LINK_UNLINK";
 export const FF_GLOBAL_BOARD = "FF_GLOBAL_BOARD";
 export const FF_CREATE_PARENT = "FF_CREATE_PARENT";
+export const FF_TAIL_NO_FOLLOW = "FF_TAIL_NO_FOLLOW";
 
 const flagRegistry = new Map<string, boolean>();
 const flagOverrides = new Map<string, boolean>();
@@ -129,3 +130,4 @@ registerFlag(FF_DISPATCH_ONCE, false);
 registerFlag(FF_LINK_UNLINK, false);
 registerFlag(FF_GLOBAL_BOARD, false);
 registerFlag(FF_CREATE_PARENT, false);
+registerFlag(FF_TAIL_NO_FOLLOW, false);
