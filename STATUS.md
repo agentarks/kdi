@@ -1,13 +1,13 @@
 # kdi — Status
 
-## Hermes Kanban Parity — KDI-046 (Planned)
+## Hermes Kanban Parity — KDI-046 (Done)
 - [x] BRD drafted at `specs/brd-kdi-046-boards-rename-semantics.md`
-- [x] Feature flag `ff_board_rename_hermes` / `FF_BOARD_RENAME_HERMES` registered in `specs/feature-flags.md`, defaults to `false`
-- [ ] Implement `kdi boards rename <slug> <name>` (Hermes parity: display-name only)
-- [ ] Implement `kdi boards rename-slug <old-slug> <new-slug>` (existing slug-rename behavior)
-- [ ] Register flag constant in `src/flags.ts` and wire commands in `src/commands/boards.ts`
-- [ ] Unit/e2e tests and user-loop smoke
-- [ ] `bun run lint`, `bun test`, `bun run build` pass
+- [x] Feature flag `ff_board_rename_hermes` / `FF_BOARD_RENAME_HERMES` registered in `specs/feature-flags.md` and `src/flags.ts`, defaults to `false`
+- [x] `kdi boards rename <slug> <name>` implemented: updates `boards.name` only; slug, data directory, and current-board file untouched
+- [x] `kdi boards rename-slug <old-slug> <new-slug>` implemented: preserves existing slug-rename behavior
+- [x] Model function `renameBoard` renamed to `renameBoardSlug`
+- [x] Unit/e2e tests and user-loop smoke pass
+- [x] `bun run lint`, `bun test` (863 pass), `bun run build` pass
 
 ## Hermes Kanban Parity Verification — 2026-06-20/21 (in progress)
 - [x] Live CLI verification run via `kdi-new-feature-loop` with temp `HOME`/`KDI_DB` and all feature flags enabled.

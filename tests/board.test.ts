@@ -4,10 +4,10 @@ import { existsSync, mkdirSync, writeFileSync, readFileSync, rmSync, mkdtempSync
 import { dirname, join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { initDb, closeDb, getDb, getBoardDataDir } from "../src/db";
-import { createBoard, listBoards, showBoard, archiveBoard, updateBoardMetadata, removeBoard, renameBoard, setDefaultWorkdir } from "../src/models/board";
+import { createBoard, listBoards, showBoard, archiveBoard, updateBoardMetadata, removeBoard, renameBoardSlug, setDefaultWorkdir } from "../src/models/board";
 import { readCurrentBoard, writeCurrentBoard } from "../src/resolveBoard";
 import { cleanupDb } from "./cleanupDb";
-import { clearOverrides, setFlag, FF_BOARD_RM_DELETE, FF_BOARD_RENAME } from "../src/flags";
+import { clearOverrides, setFlag, FF_BOARD_RM_DELETE, FF_BOARD_RENAME, FF_BOARD_RENAME_HERMES } from "../src/flags";
 
 const PROJECT_ROOT = resolve(import.meta.dir, "../..");
 
@@ -410,7 +410,7 @@ describe("FF_BOARD_CREATE_SWITCH (boards create --switch)", () => {
   });
 });
 
-describe("renameBoard", () => {
+describe("renameBoardSlug", () => {
   const RENAME_DB = "/tmp/kdi-rename-test.db";
   const TMP_DIR = "/tmp/kdi-rename-data";
   const ORIG_KDI_DB = process.env.KDI_DB;
@@ -444,51 +444,51 @@ describe("renameBoard", () => {
     expect(FF_BOARD_RENAME).toBe("FF_BOARD_RENAME");
     // Model function works regardless of flag
     createBoard("old-name", "/tmp/work");
-    const result = renameBoard("old-name", "new-name");
+    const result = renameBoardSlug("old-name", "new-name");
     expect(result.board.slug).toBe("new-name");
   });
 
   it("AC-02: rejects invalid old slug", () => {
     createBoard("valid-board", "/tmp/work");
-    expect(() => renameBoard("../../bad", "new-name")).toThrow(/Invalid old board slug/);
+    expect(() => renameBoardSlug("../../bad", "new-name")).toThrow(/Invalid old board slug/);
   });
 
   it("AC-03: rejects invalid new slug", () => {
     createBoard("valid-board", "/tmp/work");
-    expect(() => renameBoard("valid-board", "../../bad")).toThrow(/Invalid new board slug/);
+    expect(() => renameBoardSlug("valid-board", "../../bad")).toThrow(/Invalid new board slug/);
   });
 
   it("AC-04: rejects rename to same slug", () => {
     createBoard("my-board", "/tmp/work");
-    expect(() => renameBoard("my-board", "my-board")).toThrow(/New slug must differ/);
+    expect(() => renameBoardSlug("my-board", "my-board")).toThrow(/New slug must differ/);
   });
 
   it("AC-05: rejects rename of non-existent board", () => {
-    expect(() => renameBoard("nonexistent", "new-name")).toThrow(/not found or is archived/);
+    expect(() => renameBoardSlug("nonexistent", "new-name")).toThrow(/not found or is archived/);
   });
 
   it("AC-06: rejects rename of archived board", () => {
     createBoard("old-name", "/tmp/work");
     archiveBoard("old-name");
-    expect(() => renameBoard("old-name", "new-name")).toThrow(/not found or is archived/);
+    expect(() => renameBoardSlug("old-name", "new-name")).toThrow(/not found or is archived/);
   });
 
   it("AC-07: rejects rename when new slug is taken by active board", () => {
     createBoard("old-name", "/tmp/work");
     createBoard("taken-name", "/tmp/work2");
-    expect(() => renameBoard("old-name", "taken-name")).toThrow(/already exists/);
+    expect(() => renameBoardSlug("old-name", "taken-name")).toThrow(/already exists/);
   });
 
   it("AC-07b: rejects rename when new slug is taken by archived board", () => {
     createBoard("old-name", "/tmp/work");
     createBoard("taken-name", "/tmp/work2");
     archiveBoard("taken-name");
-    expect(() => renameBoard("old-name", "taken-name")).toThrow(/already exists/);
+    expect(() => renameBoardSlug("old-name", "taken-name")).toThrow(/already exists/);
   });
 
   it("AC-08: successfully renames a board", () => {
     createBoard("old-name", "/tmp/work");
-    const result = renameBoard("old-name", "new-name");
+    const result = renameBoardSlug("old-name", "new-name");
     expect(result.board.slug).toBe("new-name");
     expect(result.board.workdir).toBe("/tmp/work");
     expect(result.dirRenamed).toBe(false);
@@ -511,7 +511,7 @@ describe("renameBoard", () => {
     expect(existsSync(oldDir)).toBe(true);
     expect(existsSync(newDir)).toBe(false);
 
-    const result = renameBoard("old-name", "new-name");
+    const result = renameBoardSlug("old-name", "new-name");
     expect(result.dirRenamed).toBe(true);
 
     expect(existsSync(oldDir)).toBe(false);
@@ -528,7 +528,7 @@ describe("renameBoard", () => {
     expect(existsSync(oldDir)).toBe(false);
 
     // Rename should succeed
-    const result = renameBoard("old-name", "new-name");
+    const result = renameBoardSlug("old-name", "new-name");
     expect(result.board.slug).toBe("new-name");
     expect(result.dirRenamed).toBe(false);
   });
@@ -544,7 +544,7 @@ describe("renameBoard", () => {
     console.error = (...args: any[]) => { errorMessages.push(args.join(" ")); };
 
     try {
-      renameBoard("old-name", "new-name");
+      renameBoardSlug("old-name", "new-name");
       const all = errorMessages.join("\n");
       expect(all).toContain("Warning: board data directory");
       expect(all).toContain("not found; skipped directory rename.");
@@ -563,7 +563,7 @@ describe("renameBoard", () => {
       expect(readCurrentBoard()).toBe("old-name");
 
       // Simulate CLI handler logic: rename then update current-board
-      const { board } = renameBoard("old-name", "new-name");
+      const { board } = renameBoardSlug("old-name", "new-name");
       expect(board.slug).toBe("new-name");
 
       const current = readCurrentBoard();
@@ -585,7 +585,7 @@ describe("renameBoard", () => {
     db.run("INSERT INTO tasks (board_id, title, status) VALUES (?, ?, ?)", [board.id, "Task 1", "todo"]);
     db.run("INSERT INTO tasks (board_id, title, status) VALUES (?, ?, ?)", [board.id, "Task 2", "ready"]);
 
-    renameBoard("old-name", "new-name");
+    renameBoardSlug("old-name", "new-name");
 
     const renamedBoard = showBoard("new-name", false);
     expect(renamedBoard).not.toBeNull();
@@ -602,12 +602,248 @@ describe("renameBoard", () => {
     mkdirSync(oldDir, { recursive: true });
     writeFileSync(join(oldDir, "data.txt"), "hello");
 
-    renameBoard("old-name", "new-name");
+    renameBoardSlug("old-name", "new-name");
 
     // Old dir should be gone
     expect(existsSync(oldDir)).toBe(false);
     // New dir should have the original data
     expect(existsSync(newDir)).toBe(true);
     expect(readFileSync(join(newDir, "data.txt"), "utf-8")).toBe("hello");
+  });
+});
+
+describe("updateBoardMetadata display name", () => {
+  const DISPLAY_RENAME_DB = "/tmp/kdi-display-rename-test.db";
+  const ORIG_KDI_DB = process.env.KDI_DB;
+
+  beforeEach(() => {
+    process.env.KDI_DB = DISPLAY_RENAME_DB;
+    cleanupDb(DISPLAY_RENAME_DB);
+    initDb(DISPLAY_RENAME_DB);
+  });
+
+  afterEach(() => {
+    cleanupDb(DISPLAY_RENAME_DB);
+    rmSync("/tmp/boards", { recursive: true, force: true });
+    if (ORIG_KDI_DB !== undefined) {
+      process.env.KDI_DB = ORIG_KDI_DB;
+    } else {
+      delete process.env.KDI_DB;
+    }
+    clearOverrides();
+  });
+
+  it("updates name without changing slug", () => {
+    createBoard("myproj", "/tmp/work");
+    const board = updateBoardMetadata("myproj", { name: "My Project" });
+    expect(board.slug).toBe("myproj");
+    expect(board.name).toBe("My Project");
+  });
+
+  it("trims whitespace from name", () => {
+    createBoard("myproj", "/tmp/work");
+    const board = updateBoardMetadata("myproj", { name: "  My Project  " });
+    expect(board.name).toBe("My Project");
+  });
+
+  it("rejects empty or whitespace-only name", () => {
+    createBoard("myproj", "/tmp/work");
+    expect(() => updateBoardMetadata("myproj", { name: "   " })).toThrow(/Name cannot be empty/);
+  });
+
+  it("rejects missing board", () => {
+    expect(() => updateBoardMetadata("missing", { name: "Name" })).toThrow(/not found or is archived/);
+  });
+
+  it("rejects archived board", () => {
+    createBoard("myproj", "/tmp/work");
+    archiveBoard("myproj");
+    expect(() => updateBoardMetadata("myproj", { name: "Name" })).toThrow(/not found or is archived/);
+  });
+});
+
+describe("boards rename CLI (Hermes semantics)", () => {
+  const DISPLAY_RENAME_CLI_DB = "/tmp/kdi-display-rename-cli-test.db";
+  const TMP_DIR = "/tmp/kdi-display-rename-cli-data";
+  const ORIG_KDI_DB = process.env.KDI_DB;
+
+  beforeEach(() => {
+    process.env.KDI_DB = DISPLAY_RENAME_CLI_DB;
+    cleanupDb(DISPLAY_RENAME_CLI_DB);
+    initDb(DISPLAY_RENAME_CLI_DB);
+    rmSync(TMP_DIR, { recursive: true, force: true });
+    mkdirSync(TMP_DIR, { recursive: true });
+    process.env.KDI_CURRENT_PATH = TMP_DIR;
+    setFlag(FF_BOARD_RENAME_HERMES, true);
+    setFlag(FF_BOARD_RENAME, true);
+  });
+
+  afterEach(() => {
+    delete process.env.KDI_CURRENT_PATH;
+    cleanupDb(DISPLAY_RENAME_CLI_DB);
+    rmSync("/tmp/boards", { recursive: true, force: true });
+    rmSync(TMP_DIR, { recursive: true, force: true });
+    if (ORIG_KDI_DB !== undefined) {
+      process.env.KDI_DB = ORIG_KDI_DB;
+    } else {
+      delete process.env.KDI_DB;
+    }
+    clearOverrides();
+  });
+
+  function run(args: string, env?: Record<string, string>): string {
+    const { execSync } = require("node:child_process");
+    return execSync(
+      `bun run src/index.ts ${args}`,
+      {
+        encoding: "utf-8",
+        cwd: resolve(import.meta.dir, ".."),
+        env: { ...process.env, KDI_DB: DISPLAY_RENAME_CLI_DB, KDI_CURRENT_PATH: TMP_DIR, FF_BOARD_RENAME_HERMES: "true", FF_BOARD_RENAME: "true", ...env },
+      }
+    );
+  }
+
+  function runError(args: string, env?: Record<string, string>): string {
+    const { execSync } = require("node:child_process");
+    try {
+      execSync(
+        `bun run src/index.ts ${args}`,
+        {
+          encoding: "utf-8",
+          cwd: resolve(import.meta.dir, ".."),
+          env: { ...process.env, KDI_DB: DISPLAY_RENAME_CLI_DB, KDI_CURRENT_PATH: TMP_DIR, FF_BOARD_RENAME_HERMES: "true", FF_BOARD_RENAME: "true", ...env },
+        }
+      );
+      return "";
+    } catch (err: any) {
+      return err.stderr ?? err.stdout ?? "";
+    }
+  }
+
+  it("changes display name and leaves slug intact", () => {
+    run("boards create myproj --workdir /tmp/myproj");
+    const out = run("boards rename myproj \"My Project\"");
+    expect(out).toContain('Renamed board "myproj" to "My Project".');
+
+    const show = run("boards show myproj");
+    expect(show).toContain("Name: My Project");
+  });
+
+  it("does not rename data directory", () => {
+    run("boards create myproj --workdir /tmp/myproj");
+    const oldDir = getBoardDataDir("myproj");
+    mkdirSync(oldDir, { recursive: true });
+    expect(existsSync(oldDir)).toBe(true);
+
+    run("boards rename myproj \"My Project\"");
+    expect(existsSync(oldDir)).toBe(true);
+  });
+
+  it("does not modify current-board file", () => {
+    writeCurrentBoard("myproj");
+    run("boards create myproj --workdir /tmp/myproj");
+    run("boards rename myproj \"My Project\"");
+    expect(readCurrentBoard()).toBe("myproj");
+  });
+
+  it("rejects empty name", () => {
+    run("boards create myproj --workdir /tmp/myproj");
+    const err = runError("boards rename myproj \"   \"");
+    expect(err).toContain("Name cannot be empty");
+  });
+
+  it("rejects missing board", () => {
+    const err = runError("boards rename missing \"Name\"");
+    expect(err).toContain('Board "missing" not found or is archived.');
+  });
+
+  it("rejects archived board", () => {
+    run("boards create myproj --workdir /tmp/myproj");
+    run("boards archive myproj");
+    const err = runError("boards rename myproj \"Name\"");
+    expect(err).toContain('Board "myproj" not found or is archived.');
+  });
+
+  it("is gated by FF_BOARD_RENAME_HERMES", () => {
+    run("boards create myproj --workdir /tmp/myproj");
+    const err = runError("boards rename myproj \"Name\"", { FF_BOARD_RENAME_HERMES: "false" });
+    expect(err).toContain("Board rename (Hermes semantics) feature is not enabled.");
+  });
+});
+
+describe("boards rename-slug CLI", () => {
+  const SLUG_RENAME_CLI_DB = "/tmp/kdi-slug-rename-cli-test.db";
+  const TMP_DIR = "/tmp/kdi-slug-rename-cli-data";
+  const ORIG_KDI_DB = process.env.KDI_DB;
+
+  beforeEach(() => {
+    process.env.KDI_DB = SLUG_RENAME_CLI_DB;
+    cleanupDb(SLUG_RENAME_CLI_DB);
+    initDb(SLUG_RENAME_CLI_DB);
+    rmSync(TMP_DIR, { recursive: true, force: true });
+    mkdirSync(TMP_DIR, { recursive: true });
+    process.env.KDI_CURRENT_PATH = TMP_DIR;
+    setFlag(FF_BOARD_RENAME, true);
+  });
+
+  afterEach(() => {
+    delete process.env.KDI_CURRENT_PATH;
+    cleanupDb(SLUG_RENAME_CLI_DB);
+    rmSync("/tmp/boards", { recursive: true, force: true });
+    rmSync(TMP_DIR, { recursive: true, force: true });
+    if (ORIG_KDI_DB !== undefined) {
+      process.env.KDI_DB = ORIG_KDI_DB;
+    } else {
+      delete process.env.KDI_DB;
+    }
+    clearOverrides();
+  });
+
+  function run(args: string, env?: Record<string, string>): string {
+    const { execSync } = require("node:child_process");
+    return execSync(
+      `bun run src/index.ts ${args}`,
+      {
+        encoding: "utf-8",
+        cwd: resolve(import.meta.dir, ".."),
+        env: { ...process.env, KDI_DB: SLUG_RENAME_CLI_DB, KDI_CURRENT_PATH: TMP_DIR, FF_BOARD_RENAME_HERMES: "true", FF_BOARD_RENAME: "true", ...env },
+      }
+    );
+  }
+
+  function runError(args: string, env?: Record<string, string>): string {
+    const { execSync } = require("node:child_process");
+    try {
+      execSync(
+        `bun run src/index.ts ${args}`,
+        {
+          encoding: "utf-8",
+          cwd: resolve(import.meta.dir, ".."),
+          env: { ...process.env, KDI_DB: SLUG_RENAME_CLI_DB, KDI_CURRENT_PATH: TMP_DIR, FF_BOARD_RENAME_HERMES: "true", FF_BOARD_RENAME: "true", ...env },
+        }
+      );
+      return "";
+    } catch (err: any) {
+      return err.stderr ?? err.stdout ?? "";
+    }
+  }
+
+  it("renames slug and updates current-board file", () => {
+    run("boards create oldslug --workdir /tmp/oldslug");
+    writeCurrentBoard("oldslug");
+    const oldDir = getBoardDataDir("oldslug");
+    mkdirSync(oldDir, { recursive: true });
+
+    const out = run("boards rename-slug oldslug newslug");
+    expect(out).toContain('Renamed board "oldslug" to "newslug".');
+    expect(readCurrentBoard()).toBe("newslug");
+    expect(existsSync(oldDir)).toBe(false);
+    expect(existsSync(getBoardDataDir("newslug"))).toBe(true);
+  });
+
+  it("is gated by FF_BOARD_RENAME", () => {
+    run("boards create oldslug --workdir /tmp/oldslug");
+    const err = runError("boards rename-slug oldslug newslug", { FF_BOARD_RENAME: "false" });
+    expect(err).toContain("Board rename feature is not enabled.");
   });
 });

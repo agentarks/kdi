@@ -247,7 +247,7 @@ export interface BoardStats {
   oldest_ready_age_seconds: number | null;
 }
 
-export function renameBoard(oldSlug: string, newSlug: string): RenameBoardResult {
+export function renameBoardSlug(oldSlug: string, newSlug: string): RenameBoardResult {
   assertValidBoardSlug(oldSlug, "old board slug");
   assertValidBoardSlug(newSlug, "new board slug");
 
