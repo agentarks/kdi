@@ -9,12 +9,21 @@
 - [x] Unit/e2e tests and user-loop smoke pass
 - [x] `bun run lint`, `bun test` (863 pass), `bun run build` pass
 
-## KDI-047..049 Consolidated — In Review
+## Non-Following `tail` Mode (KDI-049) — Done
+- [x] BRD drafted at `specs/brd-kdi-049-tail-no-follow.md`
+- [x] Feature flag `ff_tail_no_follow` / `FF_TAIL_NO_FOLLOW` registered in `src/flags.ts` and `specs/feature-flags.md`, defaults to `false`
+- [x] `kdi tail <task_id> --lines N` prints the last N events in chronological order and exits
+- [x] `kdi tail <task_id> --no-follow` prints all events in chronological order and exits
+- [x] Default `kdi tail <task_id>` follow behavior preserved
+- [x] Unit/CLI tests cover `--lines`, `--no-follow`, validation, flag gating, and default behavior preservation
+- [x] `bun run lint`, `bun run test` (905 pass), and `bun run build` pass
+
+## KDI-047..049 Consolidated — Done
 - [x] KDI-047: Bulk `kdi unblock <id>...` implemented with per-task reporting and tests
 - [x] KDI-048: Bulk `kdi archive <id>...` implemented behind `FF_BULK_OPERATIONS` with tests
 - [x] KDI-049: Non-following `kdi tail --lines N` / `--no-follow` implemented behind `FF_TAIL_NO_FOLLOW` with tests
-- [x] `bun run lint`, `bun run test` (873 pass), and `bun run build` pass on consolidated branch
-- [ ] Open consolidated PR to `main`
+- [x] `bun run lint`, `bun run test`, and `bun run build` pass on consolidated branch
+- [x] Consolidated PR #39 merged to `main`
 
 ## Hermes Kanban Parity Verification — 2026-06-20/21 (in progress)
 - [x] Live CLI verification run via `kdi-new-feature-loop` with temp `HOME`/`KDI_DB` and all feature flags enabled.
