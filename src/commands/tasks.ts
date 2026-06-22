@@ -28,10 +28,10 @@ import {
 import { addComment, getComments } from "../models/comment";
 import { createAttachment, listAttachments } from "../models/taskAttachment";
 import { getRuns, getRunsFiltered } from "../models/taskRun";
-import { getEvents, tailEvents, getRecentEvents, getEventsAfter, type WatchFilters } from "../models/taskEvent";
+import { getEvents, tailEvents, getRecentEvents, getEventsAfter, getRecentTaskEvents, type WatchFilters } from "../models/taskEvent";
 import { atomicClaim, reclaimTask, heartbeat } from "../models/claim";
 import { getTaskLogPath } from "../observability";
-import { isEnabled, FF_SCHEDULED_STATUS, FF_REVIEW_STATUS, FF_COMPLETE_METADATA, FF_PRIORITY_INTEGER, FF_SKILLS_ARRAY, FF_MAX_RUNTIME, FF_MAX_RETRIES, FF_TENANT_NAMESPACE, FF_CREATED_BY, FF_MODEL_OVERRIDE, FF_DEFAULT_WORKDIR, FF_WORKER_LOG_CAPTURE, FF_ASSIGN_REASSIGN, FF_CRASH_GRACE_PERIOD, FF_HEARTBEAT, FF_RATE_LIMIT_EXIT_CODE, FF_TASK_ATTACHMENTS, FF_LIST_FILTERS_SORT, FF_SHOW_RUN_FILTERING, FF_RUNS_FILTERING, FF_BULK_OPERATIONS, FF_COMMENT_ENHANCEMENTS, FF_WATCH_FILTERS, FF_WORKFLOW_TEMPLATES, FF_TRIAGE_AUTOMATION, FF_DISPATCHER_PRESENCE_WARNING, FF_GOAL_MODE } from "../flags";
+import { isEnabled, FF_SCHEDULED_STATUS, FF_REVIEW_STATUS, FF_COMPLETE_METADATA, FF_PRIORITY_INTEGER, FF_SKILLS_ARRAY, FF_MAX_RUNTIME, FF_MAX_RETRIES, FF_TENANT_NAMESPACE, FF_CREATED_BY, FF_MODEL_OVERRIDE, FF_DEFAULT_WORKDIR, FF_WORKER_LOG_CAPTURE, FF_ASSIGN_REASSIGN, FF_CRASH_GRACE_PERIOD, FF_HEARTBEAT, FF_RATE_LIMIT_EXIT_CODE, FF_TASK_ATTACHMENTS, FF_LIST_FILTERS_SORT, FF_SHOW_RUN_FILTERING, FF_RUNS_FILTERING, FF_BULK_OPERATIONS, FF_COMMENT_ENHANCEMENTS, FF_WATCH_FILTERS, FF_WORKFLOW_TEMPLATES, FF_TRIAGE_AUTOMATION, FF_DISPATCHER_PRESENCE_WARNING, FF_GOAL_MODE, FF_TAIL_NO_FOLLOW } from "../flags";
 import { getWorkflowTemplate, validateStepKey, advanceTaskStep, setTaskStep } from "../models/workflowTemplate";
 import { resolveBoard } from "../resolveBoard";
 import { isDispatcherPresent } from "../dispatcherPresence";
@@ -1242,8 +1242,28 @@ export const completeTaskCommand = new Command("complete")
 export const tailTaskCommand = new Command("tail")
   .description("Tail events for a task")
   .argument("<task_id>", "Task ID")
-  .action(async (taskId: string) => {
+  .option("--lines <n>", "Print the last n events and exit")
+  .option("--no-follow", "Print all events and exit")
+  .action(async (taskId: string, options: { lines?: string; follow?: boolean }) => {
     try {
+      const noFollow = options.follow === false;
+      const hasLines = options.lines !== undefined;
+
+      if (hasLines || noFollow) {
+        if (!isEnabled(FF_TAIL_NO_FOLLOW)) {
+          throw new Error("Tail no-follow feature is not enabled.");
+        }
+      }
+
+      let lines = 0;
+      if (hasLines) {
+        const parsed = Number(options.lines);
+        if (!Number.isInteger(parsed) || parsed <= 0) {
+          throw new Error("--lines must be a positive integer.");
+        }
+        lines = parsed;
+      }
+
       const id = parseTaskId(taskId);
       const task = showTask(id);
       if (!task) {
@@ -1251,13 +1271,17 @@ export const tailTaskCommand = new Command("tail")
         process.exit(1);
       }
 
-      const events = getEvents(id);
+      const events = lines > 0 ? getRecentTaskEvents(id, lines) : getEvents(id);
       let maxId = 0;
       for (const event of events.slice().reverse()) {
         const ts = new Date(event.created_at * 1000).toISOString();
         const payload = event.payload ? ` ${event.payload}` : "";
         console.log(`[${ts}] ${event.kind}${payload}`);
         if (event.id > maxId) maxId = event.id;
+      }
+
+      if (hasLines || noFollow) {
+        return;
       }
 
       while (true) {

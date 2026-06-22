@@ -66,6 +66,7 @@ stateDiagram-v2
 | `ff_dispatch_controls` | `FF_DISPATCH_CONTROLS` | CLI / dispatcher | InDev | `false` | KDI-034 | `kdi dispatch --failure-limit` per-pass failure threshold.
 | `ff_dispatch_once` | `FF_DISPATCH_ONCE` | CLI / dispatcher | InDev | `false` | KDI-034x | `kdi dispatch --once` runs a single tick and exits (hermes `dispatch` parity). Default `dispatch` is still a long-running daemon. |
 | `ff_link_unlink` | `FF_LINK_UNLINK` | CLI / task lifecycle | InDev | `false` | KDI-026 | `kdi link` / `kdi unlink` parent<->child dependency CLI; cycles and self-loops rejected. |
+| `ff_tail_no_follow` | `FF_TAIL_NO_FOLLOW` | CLI / task observability | InDev | `false` | KDI-049 | `kdi tail <task_id> --lines N` / `--no-follow` print recent events and exit. |
 | `ff_watch_filters` | `FF_WATCH_FILTERS` | CLI / observability | InDev | `false` | KDI-035 | `kdi watch --assignee`/`--tenant`/`--kinds`/`--interval` filters.
 | `ff_workflow_templates` | `FF_WORKFLOW_TEMPLATES` | CLI / task lifecycle | InDev | `false` | KDI-039 | Step-key driven workflow templates; `kdi create --workflow-template-id`, `kdi step`, `kdi workflows`.
 | `ff_triage_automation` | `FF_TRIAGE_AUTOMATION` | CLI / task lifecycle | InDev | `false` | KDI-040 | LLM-powered triage automation; `kdi specify` (LLM path) and `kdi decompose`. |
@@ -626,6 +627,22 @@ stateDiagram-v2
   - Unblocking a goal task whose `block_reason` is "Goal max turns exhausted" resets `goal_remaining_turns` to `goal_max_turns`.
   - `kdi show <id>` displays `Goal: <remaining>/<max> turns, judge=<profile>` when the flag is enabled and the task is goal-mode.
 - **Rollback / deactivation:** Set `FF_GOAL_MODE=false` to reject the goal-mode CLI options and skip the dispatcher goal loop; existing goal-mode rows are dispatched as normal single-turn tasks.
+- **Deprecation plan:** N/A
+
+### `ff_tail_no_follow` — InDev
+
+- **Owner:** kdi core team
+- **BRD:** [BRD-KDI-049](brd-kdi-049-tail-no-follow.md)
+- **Status transitions:**
+  - `Planned` → `InDev` when `--lines` / `--no-follow` options are implemented.
+  - `InDev` → `Active` when non-following tail output is stable and safe to enable by default.
+- **Schema note:** No schema changes; reads from the existing `task_events` table and `idx_events_task` index.
+- **Activation criteria:**
+  - `kdi tail <task_id> --lines N` prints the last N events in chronological order and exits.
+  - `kdi tail <task_id> --no-follow` prints all events in chronological order and exits.
+  - Default `kdi tail <task_id>` continues to print existing events and follow new ones.
+  - `--lines` rejects non-numeric, zero, and negative values.
+- **Rollback / deactivation:** Set `FF_TAIL_NO_FOLLOW=false` to reject `--lines` and `--no-follow`.
 - **Deprecation plan:** N/A
 
 ### `ff_kanban_dispatch` — Planned

@@ -49,6 +49,15 @@ export function getEvents(taskId: number): TaskEvent[] {
     .all(taskId) as TaskEvent[];
 }
 
+export function getRecentTaskEvents(taskId: number, limit: number): TaskEvent[] {
+  const db = getDb();
+  return db
+    .query(
+      `SELECT id, task_id, run_id, kind, payload, created_at FROM task_events WHERE task_id = ? ORDER BY created_at DESC LIMIT ?`
+    )
+    .all(taskId, limit) as TaskEvent[];
+}
+
 export function tailEvents(taskId: number, sinceId?: number): TaskEvent[] {
   const db = getDb();
   if (sinceId !== undefined) {

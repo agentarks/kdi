@@ -1,5 +1,16 @@
 # kdi — Status
 
+## Non-Following `tail` Mode (KDI-049) — Done
+- [x] BRD drafted at `specs/brd-kdi-049-tail-no-follow.md`
+- [x] Feature flag `ff_tail_no_follow` / `FF_TAIL_NO_FOLLOW` registered in `src/flags.ts` and `specs/feature-flags.md`, defaults to `false`
+- [x] `kdi tail <task_id> --lines N` prints the last N events in chronological order and exits
+- [x] `kdi tail <task_id> --no-follow` prints all events in chronological order and exits
+- [x] Default `kdi tail <task_id>` follow behavior preserved
+- [x] `--lines` rejects non-numeric, zero, and negative values
+- [x] Unit tests in `tests/taskEvent.test.ts` cover `getRecentTaskEvents`
+- [x] CLI tests in `tests/commands/tasks.test.ts` cover `--lines`, `--no-follow`, validation, flag gating, missing task, and default follow loop
+- [x] `bun run lint`, `bun run test`, `bun run build` pass
+
 ## Hermes Kanban Parity Verification — 2026-06-20/21 (in progress)
 - [x] Live CLI verification run via `kdi-new-feature-loop` with temp `HOME`/`KDI_DB` and all feature flags enabled.
 - [x] Critical bug: global/subcommand `--board` flag is ignored; only `KDI_BOARD` env and current-board file resolve correctly. This cascades into 100+ e2e test failures.
@@ -486,7 +497,7 @@
 
 ## Task Events (KDI-000b)
 - [x] `task_events` table with task_id, run_id, kind, payload, created_at
-- [x] `kdi tail <task_id>` — follow events live (poll 1s)
+- [x] `kdi tail <task_id>` — follow events live (poll 1s), with optional `--lines N` / `--no-follow` non-following mode (KDI-049)
 - [x] `kdi watch` — board-wide event stream (poll 0.5s) with optional `--assignee`, `--tenant`, `--kinds`, and `--interval` filters (KDI-035)
 - [x] Event emissions: created, promoted, blocked, unblocked, completed, archived, claimed, finished
 
