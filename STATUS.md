@@ -1,15 +1,5 @@
 # kdi — Status
 
-## Ensure `default` Board Exists After `kdi init` (KDI-050) — Done
-- [x] BRD drafted at `specs/brd-kdi-050-init-default-board.md`
-- [x] Feature flag: not required; `kdi init` / board creation are foundational and exempt from feature-flag gating
-- [x] `kdi init` creates an active `default` board when one does not exist
-- [x] `kdi init` is idempotent when the `default` board already exists
-- [x] Default board workdir set to `<kdi_data_dir>/boards/default`
-- [x] `kdi boards show` and `kdi create` work immediately after `kdi init`
-- [x] Unit/e2e tests and user-loop smoke pass
-- [x] `bun run lint`, `bun run test` (910 pass), `bun run build` pass
-
 ## Hermes Kanban Parity — KDI-046 (Done)
 - [x] BRD drafted at `specs/brd-kdi-046-boards-rename-semantics.md`
 - [x] Feature flag `ff_board_rename_hermes` / `FF_BOARD_RENAME_HERMES` registered in `specs/feature-flags.md` and `src/flags.ts`, defaults to `false`
@@ -19,12 +9,22 @@
 - [x] Unit/e2e tests and user-loop smoke pass
 - [x] `bun run lint`, `bun test` (863 pass), `bun run build` pass
 
-## KDI-047..049 Consolidated — In Review
+## KDI-047..049 Consolidated — Done
 - [x] KDI-047: Bulk `kdi unblock <id>...` implemented with per-task reporting and tests
 - [x] KDI-048: Bulk `kdi archive <id>...` implemented behind `FF_BULK_OPERATIONS` with tests
 - [x] KDI-049: Non-following `kdi tail --lines N` / `--no-follow` implemented behind `FF_TAIL_NO_FOLLOW` with tests
 - [x] `bun run lint`, `bun run test` (873 pass), and `bun run build` pass on consolidated branch
-- [ ] Open consolidated PR to `main`
+- [x] Verified KDI-046, KDI-048, KDI-049 are already implemented in `main` behind their respective flags; discarded redundant specs.
+
+## KDI-050: Ensure `default` Board Exists After `kdi init` — In Review
+- [x] BRD drafted at `specs/brd-kdi-050-init-default-board.md`
+- [ ] Review BRD against `src/commands/init.ts`, `src/models/board.ts`, `src/db.ts`, and `src/resolveBoard.ts`
+- [ ] Implement `kdi init` creating `default` board when missing
+- [ ] Idempotency: repeated `kdi init` does not error or duplicate
+- [ ] Default board workdir set to `<kdi_data_dir>/boards/default`
+- [ ] `kdi boards show` and `kdi create` work immediately after `kdi init`
+- [ ] Unit/e2e tests and user-loop smoke pass
+- [ ] `bun run lint`, `bun run test`, `bun run build` pass
 
 ## Hermes Kanban Parity Verification — 2026-06-20/21 (in progress)
 - [x] Live CLI verification run via `kdi-new-feature-loop` with temp `HOME`/`KDI_DB` and all feature flags enabled.

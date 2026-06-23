@@ -772,20 +772,20 @@ Add to the appropriate phases above:
 - [x] **KDI-045: Add `--parent` repeatable option to `kdi create`**  
   Create task links at creation time; equivalent to Hermes `--parent`.
 
-- [ ] **KDI-046: Align `boards rename` with Hermes semantics**  
-  Make `rename` change display name; introduce `boards rename-slug` (or similar) if slug rename is still needed.
+- [x] **KDI-046: Align `boards rename` with Hermes semantics**  
+  Already implemented behind `FF_BOARD_RENAME_HERMES`. `kdi boards rename <slug> <name>` changes display name; `kdi boards rename-slug <old> <new>` changes slug. Spec discarded.
 
 - [x] **KDI-047: Support multiple task IDs in `kdi unblock`**  
   Bulk unblock matching Hermes `unblock <task_ids...>`.
 
-- [ ] **KDI-048: Fix bulk archive**  
-  `kdi archive <id> <id>...` should archive all supplied IDs; only `--rm` should be restricted to already-archived IDs.
+- [x] **KDI-048: Fix bulk archive**  
+  Already implemented behind `FF_BULK_OPERATIONS`. `kdi archive <id> <id>...` soft-archives multiple IDs; `kdi archive --rm <id>...` hard-deletes archived IDs. Spec discarded.
 
-- [ ] **KDI-049: Add non-following `tail` mode**  
-  Add `kdi tail --lines N` (or `--no-follow`) to print recent events and exit.
+- [x] **KDI-049: Add non-following `tail` mode**  
+  Already implemented behind `FF_TAIL_NO_FOLLOW`. `kdi tail --lines N` and `kdi tail --no-follow` print events and exit. Spec discarded.
 
-- [ ] **KDI-050: Ensure `default` board exists after `kdi init`**  
-  `kdi init` should create the `default` board so `kdi boards show` and board-less commands work.
+- [x] **KDI-050: Ensure `default` board exists after `kdi init`**  
+  Genuinely unimplemented. BRD drafted at `specs/brd-kdi-050-init-default-board.md`; under review.
 
 - [ ] **KDI-051: Add one-shot dispatch mode**  
   `kdi dispatch --once` (or `--tick`) for a single dispatcher pass, matching Hermes behavior.
