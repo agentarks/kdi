@@ -1652,6 +1652,84 @@ describe("kdi e2e acceptance", () => {
 
       rmSync(tmp, { recursive: true, force: true });
     });
+
+    it("kdi init creates the default board", () => {
+      const tmp = makeTempDir("init-default-board");
+      const dbPath = join(tmp, "kdi.db");
+      const env = { KDI_DB: dbPath, HOME: tmp };
+
+      runKdi("init", env);
+
+      const output = runKdi("boards show default", env);
+      expect(output).toContain("Board: default");
+      expect(output).toContain("Workdir:");
+      expect(output).toContain(join(dirname(dbPath), "boards", "default"));
+
+      rmSync(tmp, { recursive: true, force: true });
+    });
+
+    it("kdi init is idempotent when the default board exists", () => {
+      const tmp = makeTempDir("init-idempotent-default");
+      const dbPath = join(tmp, "kdi.db");
+      const env = { KDI_DB: dbPath, HOME: tmp };
+
+      runKdi("init", env);
+      const output = runKdi("init", env);
+      expect(output).toContain("Database initialized at");
+
+      const boardsOutput = runKdi("boards list", env);
+      expect(boardsOutput).toContain("default");
+
+      rmSync(tmp, { recursive: true, force: true });
+    });
+
+    it("kdi init --path creates the default board in the custom database", () => {
+      const tmp = makeTempDir("init-path-default");
+      const customDbPath = join(tmp, "custom", "nested", "kdi.db");
+      const env = { KDI_DB: join(tmp, "other.db"), HOME: tmp };
+
+      runKdi(`init --path ${customDbPath}`, env);
+
+      const envWithCustomPath = { ...env, KDI_DB: customDbPath };
+      const output = runKdi("boards show default", envWithCustomPath);
+      expect(output).toContain("Board: default");
+      expect(output).toContain(join(dirname(customDbPath), "boards", "default"));
+
+      rmSync(tmp, { recursive: true, force: true });
+    });
+
+    it("kdi init --force does not delete or unarchive an existing default board", () => {
+      const tmp = makeTempDir("init-force-default");
+      const dbPath = join(tmp, "kdi.db");
+      const env = { KDI_DB: dbPath, HOME: tmp };
+
+      runKdi("init", env);
+      runKdi("boards archive default", env);
+
+      const output = runKdi("init --force", env);
+      expect(output).toContain("Database initialized at");
+
+      const boardsOutput = runKdi("boards list --all", env);
+      expect(boardsOutput).toContain("default");
+      expect(boardsOutput).toContain("(archived)");
+
+      rmSync(tmp, { recursive: true, force: true });
+    });
+
+    it("kdi init allows board-less create immediately", () => {
+      const tmp = makeTempDir("init-default-create");
+      const dbPath = join(tmp, "kdi.db");
+      const env = { KDI_DB: dbPath, HOME: tmp };
+
+      runKdi("init", env);
+      const taskId = runKdi('create "hello default"', env);
+      expect(taskId).toMatch(/^\d+$/);
+
+      const listOutput = runKdi("list", env);
+      expect(listOutput).toContain("hello default");
+
+      rmSync(tmp, { recursive: true, force: true });
+    });
   });
 
   it("create inherits defaultWorkdir when workspace is omitted and flag enabled", () => {
