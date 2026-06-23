@@ -793,7 +793,7 @@ Add to the appropriate phases above:
 - [ ] **KDI-052: Pass task title/body to harness**  
   Real harness test showed kdi does not expose task title/body to the spawned command. Hermes injects task context into the worker environment (e.g., `KDI_TASK_TITLE`, `KDI_TASK_BODY`) or supports `{{title}}`/`{{body}}` template substitution. Without this, agents cannot act on the task unless the user bakes it into the profile. Add `{{title}}` and `{{body}}` to `ALLOWED_TEMPLATES` and substitute them in `substituteCommand`; also export `KDI_TASK_TITLE`, `KDI_TASK_BODY`, `KDI_TASK_ID`, `KDI_BOARD` into harness env.
 
-- [ ] **KDI-053: Store clean result/summary from harness output**  
+- [x] **KDI-053: Store clean result/summary from harness output**  
   Currently the entire raw JSON stream from `opencode run --format json` is dumped into `tasks.result`. Hermes expects a human-readable result/summary. Provide a convention for harnesses to emit a result file (e.g., `{{workdir}}/.kdi-result.txt`) or parse the last text chunk from JSON-mode output; store that as `result`/`summary` instead of raw stdout.
 
 - [ ] **KDI-054: Real harness parity test**  

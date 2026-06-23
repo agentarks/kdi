@@ -33,7 +33,16 @@
 - [x] Additional verified gaps documented in `specs/hermes-kanban-backlog.md` (KDI-042 through KDI-052); **KDI-043 is done**.
 - [x] Test suite health: `bun run lint` passes; `bun test` reports **867 pass / 0 fail** (867 tests, 41 files) when run with isolated `KDI_DB`.
 - [x] **Real harness end-to-end test with opencode**: dispatcher creates worktree `wt/opencode/1`, spawns `opencode run`, agent edits `README.md`, task moves to `done`. Verified worktree isolation, log capture, and run recording.
-- [ ] Pass task context to harnesses, clean up result/summary capture, and continue parity work (tracked in KDI-052 / KDI-053).
+- [x] KDI-053: Clean result/summary capture from harness output is implemented.
+- [ ] KDI-052: Pass task title/body/context to harnesses remains in progress.
+
+## KDI-053: Store Clean Result/Summary from Harness Output — Done
+- [x] Feature flag `ff_result_summary` / `FF_RESULT_SUMMARY` registered in `src/flags.ts` and `specs/feature-flags.md`, defaults to `false`
+- [x] Pure helper `extractHarnessResult()` in `src/harnessResult.ts` reads `.kdi-result.txt` or parses the last JSON text chunk from stdout
+- [x] Dispatcher uses clean result/summary on successful harness runs when flag enabled; raw stdout fallback when disabled
+- [x] `finishTask()` accepts explicit summary parameter while preserving backward compatibility
+- [x] `KDI_RESULT_FILE` env var and `{{result_file}}` template substitution exposed to harnesses when flag enabled
+- [x] Unit tests cover result file, JSON text chunk, flag-disabled raw stdout, and malformed-JSON fallback
 
 ## KDI-045: `kdi create --parent` — Done
 - [x] BRD drafted at `specs/brd-kdi-045-create-parent.md`

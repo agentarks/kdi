@@ -6,7 +6,8 @@ import { initDb, closeDb, getDb } from "../src/db";
 import { createBoard } from "../src/models/board";
 import { createTask, promoteTask, showTask } from "../src/models/task";
 import { addDependency } from "../src/models/dependency";
-import { setFlag, clearOverrides, FF_RATE_LIMIT_EXIT_CODE, FF_NOTIFY_SUBS, FF_DISPATCH_CONTROLS, FF_GOAL_MODE, FF_ENABLE_KANBAN_DISPATCH } from "../src/flags";
+import { setFlag, clearOverrides, FF_RATE_LIMIT_EXIT_CODE, FF_NOTIFY_SUBS, FF_DISPATCH_CONTROLS, FF_GOAL_MODE, FF_ENABLE_KANBAN_DISPATCH, FF_RESULT_SUMMARY } from "../src/flags";
+import { extractHarnessResult } from "../src/harnessResult";
 import { subscribe } from "../src/models/notifySub";
 import { atomicClaim, heartbeat } from "../src/models/claim";
 import { tick, startDispatcher } from "../src/dispatcher";
@@ -1534,6 +1535,177 @@ describe("dispatcher", () => {
 
       expect(warnings.some((w) => w.includes("failure limit of 1 reached"))).toBe(true);
     });
+  });
+});
+
+describe("result summary extraction", () => {
+  beforeEach(() => {
+    testDbPath = join(tmpdir(), `kdi-dispatcher-test-${Date.now()}-${Math.random().toString(36).slice(2)}.db`);
+    cleanupDb(testDbPath);
+    initDb(testDbPath);
+    setFlag("FF_ENABLE_KANBAN_DISPATCH", true);
+  });
+
+  afterEach(() => {
+    clearOverrides();
+    closeDb();
+    cleanupDb(testDbPath);
+  });
+
+  it("uses .kdi-result.txt when present", () => {
+    const worktree = mkdtempSync(join(tmpdir(), "kdi-result-file-"));
+    writeFileSync(join(worktree, ".kdi-result.txt"), "  clean result from file  ", "utf-8");
+    const result = extractHarnessResult(worktree, { stdout: "raw stdout" });
+    expect(result.result).toBe("clean result from file");
+    expect(result.summary).toBe("clean result from file");
+    rmSync(worktree, { recursive: true, force: true });
+  });
+
+  it("uses last JSON text chunk from stdout when result file is absent", () => {
+    const worktree = mkdtempSync(join(tmpdir(), "kdi-result-json-"));
+    const stdout = `{"type":"status","message":"first"}\n{"type":"result","content":"final answer"}\n`;
+    const result = extractHarnessResult(worktree, { stdout });
+    expect(result.result).toBe("final answer");
+    expect(result.summary).toBe("final answer");
+    rmSync(worktree, { recursive: true, force: true });
+  });
+
+  it("falls back to raw stdout on malformed JSON / no result file", () => {
+    const worktree = mkdtempSync(join(tmpdir(), "kdi-result-fallback-"));
+    const stdout = "plain text output\nwith lines";
+    const result = extractHarnessResult(worktree, { stdout });
+    expect(result.result).toBe(stdout.trim());
+    expect(result.summary).toBe(stdout.trim().slice(0, 200));
+    rmSync(worktree, { recursive: true, force: true });
+  });
+
+  it("prefers result file over JSON stdout", () => {
+    const worktree = mkdtempSync(join(tmpdir(), "kdi-result-prefer-"));
+    writeFileSync(join(worktree, ".kdi-result.txt"), "file wins", "utf-8");
+    const stdout = `{"content":"json wins"}`;
+    const result = extractHarnessResult(worktree, { stdout });
+    expect(result.result).toBe("file wins");
+    rmSync(worktree, { recursive: true, force: true });
+  });
+
+  it("stores raw stdout when FF_RESULT_SUMMARY is disabled", async () => {
+    setFlag(FF_RESULT_SUMMARY, false);
+    const board = createBoard("rs-disabled-board", "/tmp/rs-disabled-board");
+    const task = createTask({ board_id: board.id, title: "Raw stdout task", assignee: "opencode" });
+    promoteTask(task.id);
+
+    const worktree = mkdtempSync(join(tmpdir(), "kdi-rs-disabled-"));
+    const stdout = `{"content":"should be ignored"}`;
+    const mockHarness = mock(() => Promise.resolve({ stdout, stderr: "", exitCode: 0 }));
+    const mockCreateWorktree = mock(() => worktree);
+    const mockRemoveWorktree = mock(() => ({ worktreeRemoved: true, branchDeleted: true, found: true }));
+
+    await tick({
+      spawnHarness: mockHarness,
+      createWorktree: mockCreateWorktree,
+      removeWorktree: mockRemoveWorktree,
+    });
+
+    const updated = showTask(task.id);
+    expect(updated!.status).toBe("done");
+    expect(updated!.result).toBe(stdout);
+    expect(updated!.summary).toBe(stdout.slice(0, 200));
+
+    const runs = getRuns(task.id);
+    expect(runs[0].summary).toBe(stdout.slice(0, 200));
+
+    rmSync(worktree, { recursive: true, force: true });
+  });
+
+  it("stores clean summary from JSON stdout when FF_RESULT_SUMMARY is enabled", async () => {
+    setFlag(FF_RESULT_SUMMARY, true);
+    const board = createBoard("rs-enabled-board", "/tmp/rs-enabled-board");
+    const task = createTask({ board_id: board.id, title: "Clean summary task", assignee: "opencode" });
+    promoteTask(task.id);
+
+    const worktree = mkdtempSync(join(tmpdir(), "kdi-rs-enabled-"));
+    const stdout = `{"type":"thinking","content":"step one"}\n{"type":"final","content":"  clean answer  "}`;
+    const mockHarness = mock(() => Promise.resolve({ stdout, stderr: "", exitCode: 0 }));
+    const mockCreateWorktree = mock(() => worktree);
+    const mockRemoveWorktree = mock(() => ({ worktreeRemoved: true, branchDeleted: true, found: true }));
+
+    await tick({
+      spawnHarness: mockHarness,
+      createWorktree: mockCreateWorktree,
+      removeWorktree: mockRemoveWorktree,
+    });
+
+    const updated = showTask(task.id);
+    expect(updated!.status).toBe("done");
+    expect(updated!.result).toBe("clean answer");
+    expect(updated!.summary).toBe("clean answer");
+
+    const runs = getRuns(task.id);
+    expect(runs[0].summary).toBe("clean answer");
+
+    rmSync(worktree, { recursive: true, force: true });
+  });
+
+  it("stores clean result from .kdi-result.txt when flag enabled", async () => {
+    setFlag(FF_RESULT_SUMMARY, true);
+    const board = createBoard("rs-file-board", "/tmp/rs-file-board");
+    const task = createTask({ board_id: board.id, title: "Result file task", assignee: "opencode" });
+    promoteTask(task.id);
+
+    const worktree = mkdtempSync(join(tmpdir(), "kdi-rs-file-"));
+    writeFileSync(join(worktree, ".kdi-result.txt"), "Result from file", "utf-8");
+    const mockHarness = mock(() => Promise.resolve({ stdout: "raw stdout", stderr: "", exitCode: 0 }));
+    const mockCreateWorktree = mock(() => worktree);
+    const mockRemoveWorktree = mock(() => ({ worktreeRemoved: true, branchDeleted: true, found: true }));
+
+    await tick({
+      spawnHarness: mockHarness,
+      createWorktree: mockCreateWorktree,
+      removeWorktree: mockRemoveWorktree,
+    });
+
+    const updated = showTask(task.id);
+    expect(updated!.status).toBe("done");
+    expect(updated!.result).toBe("Result from file");
+    expect(updated!.summary).toBe("Result from file");
+
+    rmSync(worktree, { recursive: true, force: true });
+  });
+
+  it("passes result_file to harness via {{result_file}} template and KDI_RESULT_FILE env when flag enabled", async () => {
+    setFlag(FF_RESULT_SUMMARY, true);
+    const home = setupTempHome([{ name: "resultagent", command: "echo {{result_file}}" }]);
+    const originalPath = process.env.KDI_PROFILES_PATH;
+    process.env.KDI_PROFILES_PATH = join(home, ".config/kdi/profiles.yaml");
+
+    const board = createBoard("result-file-board", "/tmp/result-file-board");
+    const task = createTask({ board_id: board.id, title: "Result file env task", assignee: "resultagent" });
+    promoteTask(task.id);
+
+    const worktree = mkdtempSync(join(tmpdir(), "kdi-rs-env-"));
+    const mockHarness = mock(() => Promise.resolve({ stdout: "ok", stderr: "", exitCode: 0 }));
+    const mockCreateWorktree = mock(() => worktree);
+    const mockRemoveWorktree = mock(() => ({ worktreeRemoved: true, branchDeleted: true, found: true }));
+
+    await tick({
+      spawnHarness: mockHarness,
+      createWorktree: mockCreateWorktree,
+      removeWorktree: mockRemoveWorktree,
+    });
+
+    if (originalPath !== undefined) {
+      process.env.KDI_PROFILES_PATH = originalPath;
+    } else {
+      delete process.env.KDI_PROFILES_PATH;
+    }
+    rmSync(home, { recursive: true, force: true });
+    rmSync(worktree, { recursive: true, force: true });
+
+    const calls = mockHarness.mock.calls as unknown as [string, string, string | undefined, number | undefined, Record<string, string> | undefined][];
+    expect(calls.length).toBeGreaterThan(0);
+    expect(calls[0][0]).toContain(`${worktree}/.kdi-result.txt`);
+    expect(calls[0][4]).toBeDefined();
+    expect(calls[0][4]!.KDI_RESULT_FILE).toBe(`${worktree}/.kdi-result.txt`);
   });
 });
 

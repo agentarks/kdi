@@ -14,7 +14,7 @@ function defaultProfilesPath(): string {
   return process.env.KDI_PROFILES_PATH || join(homedir(), ".config/kdi/profiles.yaml");
 }
 const ALLOWED_FIELDS = new Set(["name", "command", "agent", "env"]);
-const ALLOWED_TEMPLATES = new Set(["workdir", "branch", "task_id", "agent", "skills", "model", "step_key"]);
+const ALLOWED_TEMPLATES = new Set(["workdir", "branch", "task_id", "agent", "skills", "model", "step_key", "result_file"]);
 
 export const BUILTIN_PROFILES: Profile[] = [
   {
@@ -140,6 +140,7 @@ export function substituteCommand(
     skills?: string;
     model?: string;
     step_key?: string;
+    result_file?: string;
   }
 ): string {
   return template
@@ -149,5 +150,6 @@ export function substituteCommand(
     .replace(/\{\{agent\}\}/g, vars.agent)
     .replace(/\{\{skills\}\}/g, vars.skills ?? "")
     .replace(/\{\{model\}\}/g, vars.model ?? "")
-    .replace(/\{\{step_key\}\}/g, vars.step_key ?? "");
+    .replace(/\{\{step_key\}\}/g, vars.step_key ?? "")
+    .replace(/\{\{result_file\}\}/g, vars.result_file ?? "");
 }
