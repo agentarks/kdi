@@ -785,7 +785,7 @@ Add to the appropriate phases above:
   Already implemented behind `FF_TAIL_NO_FOLLOW`. `kdi tail --lines N` and `kdi tail --no-follow` print events and exit. Spec discarded.
 
 - [x] **KDI-050: Ensure `default` board exists after `kdi init`**  
-  Genuinely unimplemented. BRD drafted at `specs/brd-kdi-050-init-default-board.md`; under review.
+  Implemented. `kdi init` now creates an active `default` board when missing, is idempotent, and leaves archived defaults untouched. BRD at `specs/brd-kdi-050-init-default-board.md`.
 
 - [ ] **KDI-051: Add one-shot dispatch mode**  
   `kdi dispatch --once` (or `--tick`) for a single dispatcher pass, matching Hermes behavior.
