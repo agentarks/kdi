@@ -177,19 +177,16 @@ Acceptance Criteria
       statement, current vs desired behavior, Hermes behavior, CLI changes,
       schema/migration notes, feature flag registration notes, and acceptance
       criteria focused on spec completeness.
-- [ ] `kdi init` is specified to create an active `default` board when one
-      does not exist.
-- [ ] `kdi init` is specified to be idempotent when the `default` board
-      already exists.
-- [ ] The default board `workdir` is specified as
-      `<kdi_data_dir>/boards/default`.
-- [ ] `kdi init --path <db_path>` is specified to create the default board
-      relative to the custom database location.
-- [ ] `kdi init --force` is specified to preserve the main database file and
-      not unarchive an existing `default` board.
-- [ ] `kdi boards show` and `kdi create` are specified to work immediately
-      after `kdi init` without an explicit board.
-- [ ] Test plan covers unit model tests and CLI integration tests.
+- [x] `kdi init` creates an active `default` board when one does not exist.
+- [x] `kdi init` is idempotent when the `default` board already exists.
+- [x] The default board `workdir` is `<kdi_data_dir>/boards/default`.
+- [x] `kdi init --path <db_path>` creates the default board relative to the
+      custom database location.
+- [x] `kdi init --force` preserves the main database file and does not
+      unarchive an existing `default` board.
+- [x] `kdi boards show` and `kdi create` work immediately after `kdi init`
+      without an explicit board.
+- [x] Test plan covers unit model tests and CLI integration tests.
 
 -------------------------------------------------------------------------------
 Risks / Open Questions

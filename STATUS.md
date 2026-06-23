@@ -16,15 +16,15 @@
 - [x] `bun run lint`, `bun run test` (873 pass), and `bun run build` pass on consolidated branch
 - [x] Verified KDI-046, KDI-048, KDI-049 are already implemented in `main` behind their respective flags; discarded redundant specs.
 
-## KDI-050: Ensure `default` Board Exists After `kdi init` — In Review
+## KDI-050: Ensure `default` Board Exists After `kdi init` — Done
 - [x] BRD drafted at `specs/brd-kdi-050-init-default-board.md`
-- [ ] Review BRD against `src/commands/init.ts`, `src/models/board.ts`, `src/db.ts`, and `src/resolveBoard.ts`
-- [ ] Implement `kdi init` creating `default` board when missing
-- [ ] Idempotency: repeated `kdi init` does not error or duplicate
-- [ ] Default board workdir set to `<kdi_data_dir>/boards/default`
-- [ ] `kdi boards show` and `kdi create` work immediately after `kdi init`
-- [ ] Unit/e2e tests and user-loop smoke pass
-- [ ] `bun run lint`, `bun run test`, `bun run build` pass
+- [x] Reviewed BRD against `src/commands/init.ts`, `src/models/board.ts`, `src/db.ts`, and `src/resolveBoard.ts`
+- [x] `kdi init` creates active `default` board when missing
+- [x] Idempotency: repeated `kdi init` does not error or duplicate
+- [x] Default board workdir set to `<kdi_data_dir>/boards/default`
+- [x] `kdi boards show` and `kdi create` work immediately after `kdi init`
+- [x] Unit/e2e tests and user-loop smoke pass
+- [x] `bun run lint`, `bun run test` (910 pass), `bun run build` pass
 
 ## Hermes Kanban Parity Verification — 2026-06-20/21 (in progress)
 - [x] Live CLI verification run via `kdi-new-feature-loop` with temp `HOME`/`KDI_DB` and all feature flags enabled.
