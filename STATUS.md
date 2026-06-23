@@ -33,7 +33,25 @@
 - [x] Additional verified gaps documented in `specs/hermes-kanban-backlog.md` (KDI-042 through KDI-052); **KDI-043 is done**.
 - [x] Test suite health: `bun run lint` passes; `bun test` reports **867 pass / 0 fail** (867 tests, 41 files) when run with isolated `KDI_DB`.
 - [x] **Real harness end-to-end test with opencode**: dispatcher creates worktree `wt/opencode/1`, spawns `opencode run`, agent edits `README.md`, task moves to `done`. Verified worktree isolation, log capture, and run recording.
-- [ ] Pass task context to harnesses, clean up result/summary capture, and continue parity work (tracked in KDI-052 / KDI-053).
+- [x] Pass task context to harnesses (KDI-052) implemented behind `FF_HARNESS_CONTEXT`.
+- [ ] Clean up result/summary capture and continue parity work (tracked in KDI-053).
+
+## KDI-052: Pass task context to harness — Done
+- [x] Feature flag `ff_harness_context` / `FF_HARNESS_CONTEXT` registered in `src/flags.ts` and `specs/feature-flags.md`, defaults to `false`
+- [x] `ALLOWED_TEMPLATES` and `substituteCommand` in `src/profiles.ts` support `{{title}}` and `{{body}}`
+- [x] `src/dispatcher.ts` passes `KDI_TASK_TITLE`, `KDI_TASK_BODY`, `KDI_TASK_ID`, and `KDI_BOARD` to the harness when `FF_HARNESS_CONTEXT=true`
+- [x] Dispatcher substitutes `{{title}}` and `{{body}}` into profile commands (raw, unescaped, matching pre-KDI-052 behavior for all variables)
+- [x] Removed unintended `shellEscape` scope creep; existing `{{workdir}}`, `{{branch}}`, `{{task_id}}`, `{{agent}}`, `{{skills}}`, `{{model}}`, and `{{step_key}}` substitutions remain unchanged
+- [x] Unit tests added to `tests/profiles.test.ts` and `tests/dispatcher.test.ts`
+- [x] `bun run lint`, `bun run build`, and targeted tests pass
+
+## KDI-054: Real harness parity test — Done
+- [x] Opt-in smoke test added at `tests/real-harness-parity.test.ts`, gated by `KDI_REAL_HARNESS_TEST=true`
+- [x] Test creates a fake `opencode` harness, a real git repo, a KDI board, task, and dispatcher daemon
+- [x] Asserts the harness receives the expected task context env vars and writes a marker file in the active worktree
+- [x] Asserts the task transitions to `running`, then `done` after a sentinel file is written, and `kdi show` contains the clean result
+- [x] Hardened `findWorktreePath` helper to poll `git worktree list --porcelain` for up to 10s (150ms interval), eliminating the race where the worktree is not yet listed when the task reaches `running`
+- [x] `bun run lint`, `bun run build`, and `KDI_REAL_HARNESS_TEST=true bun test tests/real-harness-parity.test.ts tests/dispatcher.test.ts tests/profiles.test.ts` pass (3/3 consecutive runs)
 
 ## KDI-045: `kdi create --parent` — Done
 - [x] BRD drafted at `specs/brd-kdi-045-create-parent.md`

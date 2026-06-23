@@ -39,6 +39,7 @@ stateDiagram-v2
 | `ff_skills_array` | `FF_SKILLS_ARRAY` | CLI / create, dispatcher | InDev | `false` | KDI-009 | Skills array on tasks; `create --skill`; dispatcher passes skills to harness via `{{skills}}` and `KDI_SKILLS`. |
 | `ff_max_runtime` | `FF_MAX_RUNTIME` | CLI / create + dispatcher | InDev | `false` | KDI-008 | Per-task max runtime cap; dispatcher SIGTERMs/SIGKILLs worker when exceeded. |
 | `ff_model_override` | `FF_MODEL_OVERRIDE` | CLI / create + dispatcher | InDev | `false` | KDI-010 | Per-task model override; `create --model`; dispatcher passes `{{model}}` and `KDI_MODEL` to harness. |
+| `ff_harness_context` | `FF_HARNESS_CONTEXT` | CLI / dispatcher | InDev | `false` | KDI-052 | Pass task title/body/id and board slug to harness via env vars and `{{title}}`/`{{body}}` templates. |
 | `ff_max_retries` | `FF_MAX_RETRIES` | CLI / create + dispatcher | InDev | `false` | KDI-011 | Per-task max retries; auto-block after N consecutive spawn/execution failures. |
 | `ff_rate_limit_exit_code` | `FF_RATE_LIMIT_EXIT_CODE` | CLI / dispatcher | InDev | `false` | KDI-016c | Treat harness exit code 75 (EX_TEMPFAIL) as a transient rate limit and requeue with a cooldown instead of counting it as a failure. |
 | `ff_board_metadata` | `FF_BOARD_METADATA` | CLI / board metadata | InDev | `false` | KDI-012 | Board name, icon, color, and description; `boards create --name/--icon/--color/--description`, `boards edit`, and metadata display. |
@@ -655,6 +656,20 @@ stateDiagram-v2
   - Unblocking a goal task whose `block_reason` is "Goal max turns exhausted" resets `goal_remaining_turns` to `goal_max_turns`.
   - `kdi show <id>` displays `Goal: <remaining>/<max> turns, judge=<profile>` when the flag is enabled and the task is goal-mode.
 - **Rollback / deactivation:** Set `FF_GOAL_MODE=false` to reject the goal-mode CLI options and skip the dispatcher goal loop; existing goal-mode rows are dispatched as normal single-turn tasks.
+- **Deprecation plan:** N/A
+
+### `ff_harness_context` — InDev
+
+- **Owner:** kdi core team
+- **BRD:** KDI-052
+- **Status transitions:**
+  - `Planned` → `InDev` when `KDI_TASK_TITLE`, `KDI_TASK_BODY`, `KDI_TASK_ID`, and `KDI_BOARD` env vars are passed to the harness.
+  - `InDev` → `Active` when harness context propagation is stable and safe to enable by default.
+- **Schema note:** No schema changes; reuses existing `tasks.title`, `tasks.body`, and `boards.slug` columns.
+- **Activation criteria:**
+  - Dispatcher substitutes `{{title}}` and `{{body}}` in profile commands.
+  - Dispatcher sets `KDI_TASK_TITLE`, `KDI_TASK_BODY`, `KDI_TASK_ID`, and `KDI_BOARD` env vars for the harness process when the flag is enabled.
+- **Rollback / deactivation:** Set `FF_HARNESS_CONTEXT=false` to stop passing task context env vars and template substitution.
 - **Deprecation plan:** N/A
 
 ### `ff_tail_no_follow` — InDev

@@ -199,6 +199,29 @@ describe("profiles", () => {
     expect(p.command).toBe("echo {{step_key}}");
   });
 
+  it("validateProfile allows {{title}} and {{body}} template variables", () => {
+    const p = validateProfile(
+      { name: "test", command: "echo {{title}} {{body}}" },
+      0
+    );
+    expect(p.command).toBe("echo {{title}} {{body}}");
+  });
+
+  it("substitutes {{title}} and {{body}} when provided", () => {
+    const result = substituteCommand(
+      "agent {{title}} {{body}}",
+      {
+        workdir: "/tmp/wt",
+        branch: "main",
+        task_id: "7",
+        agent: "coder",
+        title: "Parity task",
+        body: "Verify harness context",
+      }
+    );
+    expect(result).toBe("agent Parity task Verify harness context");
+  });
+
   it("substitutes {{step_key}} when provided", () => {
     const result = substituteCommand(
       "agent --step {{step_key}} --task {{task_id}}",
