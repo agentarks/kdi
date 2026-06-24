@@ -802,7 +802,7 @@ Add to the appropriate phases above:
 - [ ] **KDI-055: Consider whether task changes should propagate to original repo**  
   Worktree isolation is correct, but downstream workflows may expect the original board workdir to reflect the completed edit. Document the intended handoff (worktree branch stays until merged/pushed) or add an option to copy/commit changes back.
 
-- [ ] **KDI-052: Stabilize test suite**  
+- [x] **KDI-052: Stabilize test suite**
   Repair the 125 failing tests; root-cause the non-cascading failures after KDI-042 is fixed.
 
 ---

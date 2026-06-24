@@ -17,7 +17,9 @@ import { initDb, closeDb } from "../src/db";
 import { createBoard } from "../src/models/board";
 import { createTask, promoteTask, completeTask } from "../src/models/task";
 import { subscribe, listSubscriptions, unsubscribe } from "../src/models/notifySub";
-import { cleanupDb } from "./cleanupDb";
+import { cleanupDb, restoreEnv } from "./cleanupDb";
+
+const ORIGINAL_KDI_DB = process.env.KDI_DB;
 
 function tmpDir(): string {
   return mkdtempSync(join(tmpdir(), "kdi-notifiers-"));
@@ -286,7 +288,7 @@ describe("notifier watcher", () => {
 
   afterEach(() => {
     process.stderr.write = originalStderrWrite;
-    delete process.env.KDI_DB;
+    restoreEnv("KDI_DB", ORIGINAL_KDI_DB);
     delete process.env.KDI_NOTIFIER_CURSORS_PATH;
     delete process.env.KDI_NOTIFIERS_PATH;
     closeDb();

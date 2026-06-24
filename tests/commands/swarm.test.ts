@@ -1,11 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { initDb, closeDb } from "../../src/db";
 import { createBoard } from "../../src/models/board";
-import { cleanupDb } from "../cleanupDb";
+import { cleanupDb, restoreEnv } from "../cleanupDb";
 import { clearOverrides, setFlag, FF_SWARM_MODE } from "../../src/flags";
 import { swarmCommand } from "../../src/commands/swarm";
 
 const SWARM_DB = "/tmp/kdi-commands-swarm-test.db";
+const ORIGINAL_KDI_DB = process.env.KDI_DB;
 
 let _origStderrWrite: typeof process.stderr.write | null = null;
 
@@ -62,7 +63,7 @@ describe("KDI-041 swarm command", () => {
     clearOverrides();
     closeDb();
     cleanupDb(SWARM_DB);
-    delete process.env.KDI_DB;
+    restoreEnv("KDI_DB", ORIGINAL_KDI_DB);
     delete process.env.KDI_BOARD;
     delete process.env.KDI_PROFILE;
     delete process.env.HERMES_PROFILE;

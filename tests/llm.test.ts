@@ -9,9 +9,10 @@ import {
 import { createBoard } from "../src/models/board";
 import { createTask, type Task } from "../src/models/task";
 import { initDb, closeDb } from "../src/db";
-import { cleanupDb } from "./cleanupDb";
+import { cleanupDb, restoreEnv } from "./cleanupDb";
 
 const TEST_DB = "/tmp/kdi-llm-test.db";
+const ORIGINAL_KDI_DB = process.env.KDI_DB;
 
 let originalFetch: typeof fetch;
 
@@ -44,7 +45,7 @@ describe("llm client", () => {
     delete process.env.KDI_TRIAGE_LLM_TIMEOUT_MS;
     closeDb();
     cleanupDb(TEST_DB);
-    delete process.env.KDI_DB;
+    restoreEnv("KDI_DB", ORIGINAL_KDI_DB);
   });
 
   it("buildSpecifyPrompt includes board slug and task context", () => {

@@ -1,11 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { initDb, closeDb } from "../../src/db";
-import { cleanupDb } from "../cleanupDb";
+import { cleanupDb, restoreEnv } from "../cleanupDb";
 import { createBoard } from "../../src/models/board";
 import { defineWorkflowCommand, listWorkflowsCommand } from "../../src/commands/workflows";
 import { setFlag, clearOverrides, FF_WORKFLOW_TEMPLATES } from "../../src/flags";
 
 const TEST_DB = "/tmp/kdi-commands-workflows-test.db";
+const ORIGINAL_KDI_DB = process.env.KDI_DB;
 
 const COMMANDS_TO_RESET = [defineWorkflowCommand, listWorkflowsCommand];
 
@@ -32,7 +33,7 @@ describe("workflows commands", () => {
     clearOverrides();
     closeDb();
     cleanupDb(TEST_DB);
-    delete process.env.KDI_DB;
+    restoreEnv("KDI_DB", ORIGINAL_KDI_DB);
   });
 
   it("define creates a template when flag enabled", async () => {

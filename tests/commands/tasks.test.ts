@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync, existsSync, rmSync, mkdirSync } from "node:
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { initDb, closeDb, getBoardDataDir } from "../../src/db";
-import { cleanupDb } from "../cleanupDb";
+import { cleanupDb, restoreEnv } from "../cleanupDb";
 import { createBoard } from "../../src/models/board";
 import { createTask, archiveTask, blockTask, showTask, listTasks, type Task } from "../../src/models/task";
 import { createRun } from "../../src/models/taskRun";
@@ -13,6 +13,8 @@ import { setFlag, clearOverrides, FF_TASK_ATTACHMENTS, FF_LIST_FILTERS_SORT, FF_
 import { getDispatcherPidPath } from "../../src/dispatcherPresence";
 
 const TEST_DB = "/tmp/kdi-commands-tasks-test.db";
+const ORIGINAL_KDI_DB = process.env.KDI_DB;
+const ORIGINAL_KDI_DB_PATH = process.env.KDI_DB_PATH;
 const TEST_SLUGS = ["cmd-board", "attach-board", "show-board"];
 
 function cleanupAttachments() {
@@ -47,7 +49,7 @@ describe("tasks commands", () => {
     try {
       rmSync(sourceDir, { recursive: true, force: true });
     } catch {}
-    delete process.env.KDI_DB;
+    restoreEnv("KDI_DB", ORIGINAL_KDI_DB);
   });
 
   it("runs command displays spawned_at when crash grace flag is enabled", async () => {
@@ -522,7 +524,7 @@ describe("KDI-030 list filters and sort", () => {
     clearOverrides();
     closeDb();
     cleanupDb(KDI030_DB);
-    delete process.env.KDI_DB;
+    restoreEnv("KDI_DB", ORIGINAL_KDI_DB);
     delete process.env.KDI_PROFILE;
     delete process.env.HERMES_PROFILE;
   });
@@ -858,8 +860,8 @@ describe("KDI-037 dispatcher presence warning on kdi create", () => {
     closeDb();
     cleanupDb(KDI037_DB);
     rmSync(getBoardDataDir(KDI037_SLUG), { recursive: true, force: true });
-    delete process.env.KDI_DB;
-    delete process.env.KDI_DB_PATH;
+    restoreEnv("KDI_DB", ORIGINAL_KDI_DB);
+    restoreEnv("KDI_DB_PATH", ORIGINAL_KDI_DB_PATH);
   });
 
   function captureWarn(): string[] {
@@ -1038,7 +1040,7 @@ describe("goal mode create command", () => {
     closeDb();
     cleanupDb(TEST_DB);
     cleanupAttachments();
-    delete process.env.KDI_DB;
+    restoreEnv("KDI_DB", ORIGINAL_KDI_DB);
   });
 
   // Capture stderr writes for the duration of the test.
@@ -1347,8 +1349,8 @@ describe("KDI-047 bulk unblock command", () => {
     clearOverrides();
     closeDb();
     cleanupDb(KDI047_DB);
-    delete process.env.KDI_DB;
-    delete process.env.KDI_DB_PATH;
+    restoreEnv("KDI_DB", ORIGINAL_KDI_DB);
+    restoreEnv("KDI_DB_PATH", ORIGINAL_KDI_DB_PATH);
   });
 
   async function runUnblock(args: string[]): Promise<{
@@ -1505,7 +1507,7 @@ describe("archive command", () => {
     closeDb();
     cleanupDb(TEST_DB);
     cleanupAttachments();
-    delete process.env.KDI_DB;
+    restoreEnv("KDI_DB", ORIGINAL_KDI_DB);
   });
 
   it("archives a single task without FF_BULK_OPERATIONS", async () => {

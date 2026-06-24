@@ -6,11 +6,12 @@ import { tmpdir } from "node:os";
 import { initDb, getDb, getBoardDataDir } from "../src/db";
 import { createBoard, archiveBoard } from "../src/models/board";
 import { createTask, archiveTask } from "../src/models/task";
-import { cleanupDb } from "./cleanupDb";
+import { cleanupDb, restoreEnv } from "./cleanupDb";
 import { clearOverrides, FF_GC } from "../src/flags";
 
 const PROJECT_ROOT = resolve(import.meta.dir, "..");
 const TEST_DB = "/tmp/kdi-gc-test.db";
+const ORIGINAL_KDI_DB = process.env.KDI_DB;
 
 function runKdi(args: string, env: Record<string, string> = {}): string {
   return execSync(`bun run src/index.ts ${args}`, {
@@ -40,6 +41,7 @@ describe("gc model", () => {
   afterEach(() => {
     cleanupDb(TEST_DB);
     clearOverrides();
+    restoreEnv("KDI_DB", ORIGINAL_KDI_DB);
   });
 
   it("deletes old events for a board", async () => {
@@ -127,6 +129,7 @@ describe("gc CLI", () => {
     }
     cleanupDb(TEST_DB);
     clearOverrides();
+    restoreEnv("KDI_DB", ORIGINAL_KDI_DB);
   });
 
   it("rejects gc when flag is disabled", () => {

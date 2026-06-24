@@ -12,9 +12,10 @@ import { setFlag, clearOverrides, FF_CONTEXT_BUILDER, FF_CREATED_BY } from "../s
 import { rmSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, isAbsolute, basename } from "node:path";
-import { cleanupDb } from "./cleanupDb";
+import { cleanupDb, restoreEnv } from "./cleanupDb";
 
 const TEST_DB = "/tmp/kdi-context-test.db";
+const ORIGINAL_KDI_DB = process.env.KDI_DB;
 
 function cleanupAttachments(slugs: string[]) {
   for (const slug of slugs) {
@@ -49,7 +50,7 @@ describe("context builder model", () => {
   });
 
   afterEach(() => {
-    delete process.env.KDI_DB;
+    restoreEnv("KDI_DB", ORIGINAL_KDI_DB);
     cleanupDb(TEST_DB);
     clearOverrides();
     closeDb();
@@ -436,7 +437,7 @@ describe("context CLI", () => {
   });
 
   afterEach(() => {
-    delete process.env.KDI_DB;
+    restoreEnv("KDI_DB", ORIGINAL_KDI_DB);
     cleanupDb(TEST_DB);
     clearOverrides();
     closeDb();

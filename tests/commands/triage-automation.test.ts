@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { initDb, closeDb, getBoardDataDir } from "../../src/db";
-import { cleanupDb } from "../cleanupDb";
+import { cleanupDb, restoreEnv } from "../cleanupDb";
 import { createBoard } from "../../src/models/board";
 import { createTask, showTask } from "../../src/models/task";
 import { getEvents } from "../../src/models/taskEvent";
@@ -11,6 +11,7 @@ import { specifyTaskCommand, decomposeTaskCommand } from "../../src/commands/tas
 import { setFlag, clearOverrides, FF_TRIAGE_AUTOMATION } from "../../src/flags";
 
 const TEST_DB = "/tmp/kdi-triage-automation-cmd-test.db";
+const ORIGINAL_KDI_DB = process.env.KDI_DB;
 
 function startMockLlm(response: unknown): { url: string; stop: () => void } {
   const server = Bun.serve({
@@ -87,7 +88,7 @@ describe("triage automation commands", () => {
   afterEach(() => {
     closeDb();
     cleanupDb(TEST_DB);
-    delete process.env.KDI_DB;
+    restoreEnv("KDI_DB", ORIGINAL_KDI_DB);
     delete process.env.KDI_TRIAGE_LLM_API_KEY;
     delete process.env.KDI_TRIAGE_LLM_BASE_URL;
     clearOverrides();

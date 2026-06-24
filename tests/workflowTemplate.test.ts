@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { initDb, closeDb } from "../src/db";
-import { cleanupDb } from "./cleanupDb";
+import { cleanupDb, restoreEnv } from "./cleanupDb";
 import { createBoard } from "../src/models/board";
 import { createTask } from "../src/models/task";
 import type { TaskEvent } from "../src/models/taskEvent";
@@ -15,6 +15,7 @@ import {
 } from "../src/models/workflowTemplate";
 
 const TEST_DB = "/tmp/kdi-workflow-template-test.db";
+const ORIGINAL_KDI_DB = process.env.KDI_DB;
 
 describe("workflow template model", () => {
   beforeEach(() => {
@@ -26,7 +27,7 @@ describe("workflow template model", () => {
   afterEach(() => {
     closeDb();
     cleanupDb(TEST_DB);
-    delete process.env.KDI_DB;
+    restoreEnv("KDI_DB", ORIGINAL_KDI_DB);
   });
 
   it("defines a template and returns it", () => {

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
 import { initDb, closeDb } from "../src/db";
-import { cleanupDb } from "./cleanupDb";
+import { cleanupDb, restoreEnv } from "./cleanupDb";
 import { createBoard } from "../src/models/board";
 import {
   createTask,
@@ -15,6 +15,7 @@ import { getEvents } from "../src/models/taskEvent";
 import { setFlag, clearOverrides, FF_TRIAGE_AUTOMATION } from "../src/flags";
 
 const TEST_DB = "/tmp/kdi-triage-automation-test.db";
+const ORIGINAL_KDI_DB = process.env.KDI_DB;
 
 let originalFetch: typeof fetch;
 
@@ -50,7 +51,7 @@ describe("triage automation model", () => {
     global.fetch = originalFetch;
     closeDb();
     cleanupDb(TEST_DB);
-    delete process.env.KDI_DB;
+    restoreEnv("KDI_DB", ORIGINAL_KDI_DB);
     delete process.env.KDI_TRIAGE_LLM_API_KEY;
     clearOverrides();
   });

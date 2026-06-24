@@ -3,7 +3,7 @@ import { mkdtempSync, writeFileSync, mkdirSync, existsSync, rmSync } from "node:
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { initDb, closeDb, getBoardDataDir } from "../src/db";
-import { cleanupDb } from "./cleanupDb";
+import { cleanupDb, restoreEnv } from "./cleanupDb";
 import { createBoard, removeBoard } from "../src/models/board";
 import { createTask } from "../src/models/task";
 import {
@@ -16,6 +16,7 @@ import { getEvents } from "../src/models/taskEvent";
 import { setFlag, clearOverrides, FF_BOARD_RM_DELETE } from "../src/flags";
 
 const TEST_DB = "/tmp/kdi-task-attachment-test.db";
+const ORIGINAL_KDI_DB = process.env.KDI_DB;
 
 describe("task attachment model", () => {
   let sourceDir: string;
@@ -51,7 +52,7 @@ describe("task attachment model", () => {
     try {
       rmSync(sourceDir, { recursive: true, force: true });
     } catch {}
-    delete process.env.KDI_DB;
+    restoreEnv("KDI_DB", ORIGINAL_KDI_DB);
   });
 
   it("createAttachment copies file and records metadata", () => {

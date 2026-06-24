@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { initDb, closeDb } from "../../src/db";
-import { cleanupDb } from "../cleanupDb";
+import { cleanupDb, restoreEnv } from "../cleanupDb";
 import { createBoard } from "../../src/models/board";
 import { defineWorkflowTemplate } from "../../src/models/workflowTemplate";
 import { createTaskCommand, showTaskCommand, stepTaskCommand, listTasksCommand } from "../../src/commands/tasks";
@@ -8,6 +8,7 @@ import { workflowsCommand } from "../../src/commands/workflows";
 import { setFlag, clearOverrides, FF_WORKFLOW_TEMPLATES } from "../../src/flags";
 
 const TEST_DB = "/tmp/kdi-commands-workflow-tasks-test.db";
+const ORIGINAL_KDI_DB = process.env.KDI_DB;
 
 const COMMANDS_TO_RESET = [createTaskCommand, showTaskCommand, stepTaskCommand, listTasksCommand, workflowsCommand];
 
@@ -42,7 +43,7 @@ describe("KDI-039 workflow task commands", () => {
     clearOverrides();
     closeDb();
     cleanupDb(TEST_DB);
-    delete process.env.KDI_DB;
+    restoreEnv("KDI_DB", ORIGINAL_KDI_DB);
   });
 
   it("create --workflow-template-id starts at first step when flag enabled", async () => {

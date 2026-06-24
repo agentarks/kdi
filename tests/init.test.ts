@@ -1,20 +1,26 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { initDb, getDb, closeDb, defaultDbPath } from "../src/db";
-import { cleanupDb } from "./cleanupDb";
+import { cleanupDb, restoreEnv } from "./cleanupDb";
 import { existsSync } from "node:fs";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const TEST_DB = "/tmp/kdi-test-init.db";
+const ORIGINAL_KDI_DB = process.env.KDI_DB;
+const ORIGINAL_KDI_DB_PATH = process.env.KDI_DB_PATH;
 
 describe("init command unit tests", () => {
   beforeEach(() => {
+    restoreEnv("KDI_DB", ORIGINAL_KDI_DB);
+    restoreEnv("KDI_DB_PATH", ORIGINAL_KDI_DB_PATH);
     cleanupDb(TEST_DB);
   });
 
   afterEach(() => {
     cleanupDb(TEST_DB);
+    restoreEnv("KDI_DB", ORIGINAL_KDI_DB);
+    restoreEnv("KDI_DB_PATH", ORIGINAL_KDI_DB_PATH);
   });
 
   it("initDb creates a valid database at the default path", () => {
@@ -59,11 +65,23 @@ describe("init command unit tests", () => {
     expect(() => getDb()).toThrow(/Run 'kdi init' first/);
   });
 
-  it("defaultDbPath returns a non-empty string", () => {
-    const path = defaultDbPath();
-    expect(path).toBeTruthy();
-    expect(typeof path).toBe("string");
-    expect(path.endsWith(".db")).toBe(true);
+  it("defaultDbPath honors KDI_DB even when it does not end in .db", () => {
+    const path = join(tmpdir(), "kdi.sqlite");
+    process.env.KDI_DB = path;
+    expect(defaultDbPath()).toBe(path);
+  });
+
+  it("defaultDbPath honors KDI_DB_PATH when KDI_DB is unset", () => {
+    const path = join(tmpdir(), "kdi-path.sqlite");
+    delete process.env.KDI_DB;
+    process.env.KDI_DB_PATH = path;
+    expect(defaultDbPath()).toBe(path);
+  });
+
+  it("defaultDbPath falls back to the built-in .db path without env overrides", () => {
+    delete process.env.KDI_DB;
+    delete process.env.KDI_DB_PATH;
+    expect(defaultDbPath().endsWith("kdi.db")).toBe(true);
   });
 
   it("initDb at a custom path works", () => {
