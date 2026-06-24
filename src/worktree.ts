@@ -108,7 +108,7 @@ export function removeWorktree(
   if (resolvedPath) {
     found = true;
     try {
-      execFileSync("git", ["worktree", "remove", resolvedPath], { cwd: repoDir, stdio: "pipe" });
+      execFileSync("git", ["worktree", "remove", "--force", resolvedPath], { cwd: repoDir, stdio: "pipe" });
       worktreeRemoved = true;
     } catch {
       // Worktree removal failed — branch deletion below may still succeed

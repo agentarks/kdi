@@ -72,6 +72,25 @@ describe("worktree", () => {
     expect(branches).not.toContain("wt/default/task-003");
   });
 
+  it("removeWorktree cleans up worktree with untracked files", () => {
+    const worktreePath = createWorktree(repoDir, "default", "task-003b");
+
+    // Simulate a harness leaving an untracked result file behind.
+    writeFileSync(join(worktreePath, ".kdi-result.txt"), "task result");
+
+    expect(existsSync(worktreePath)).toBe(true);
+
+    const result = removeWorktree(repoDir, "default", "task-003b");
+    expect(result.worktreeRemoved).toBe(true);
+    expect(result.branchDeleted).toBe(true);
+    expect(result.found).toBe(true);
+
+    expect(existsSync(worktreePath)).toBe(false);
+
+    const branches = execFileSync("git", ["branch", "-a"], { cwd: repoDir, encoding: "utf-8", stdio: "pipe" });
+    expect(branches).not.toContain("wt/default/task-003b");
+  });
+
   it("falls back to HEAD when base ref does not exist", () => {
     const worktreePath = createWorktree(repoDir, "default", "task-004", "nonexistent-branch");
 

@@ -1,5 +1,13 @@
 # kdi — Status
 
+## Hermes Kanban Autonomous Completion Smoke Test — Worktree Cleanup Fix
+- [x] End-to-end user-loop smoke test with temp `HOME`/`KDI_DB`: create board → create task → promote → `kdi dispatch --once` → task reaches `done`
+- [x] Verified task result/summary capture via `FF_RESULT_SUMMARY` and `.kdi-result.txt`
+- [x] Discovered bug: `removeWorktree` failed when harnesses left untracked files (e.g. `.kdi-result.txt`), leaving orphaned `wt/<profile>/<id>` worktrees and branches
+- [x] Fixed `src/worktree.ts` to use `git worktree remove --force` for kdi-owned ephemeral worktrees
+- [x] Added regression test in `tests/worktree.test.ts` for cleanup with untracked files
+- [x] Full verification: `bun run lint`, `bun test` (**929 pass / 0 fail**), `bun run build` pass
+
 ## Hermes Kanban Parity — KDI-046 (Done)
 - [x] BRD drafted at `specs/brd-kdi-046-boards-rename-semantics.md`
 - [x] Feature flag `ff_board_rename_hermes` / `FF_BOARD_RENAME_HERMES` registered in `specs/feature-flags.md` and `src/flags.ts`, defaults to `false`
