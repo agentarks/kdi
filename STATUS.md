@@ -44,8 +44,17 @@
 - [x] Additional verified gaps documented in `specs/hermes-kanban-backlog.md` (KDI-042 through KDI-052); **KDI-043 is done**.
 - [x] Test suite health: `bun run lint` passes; `bun test` reports **867 pass / 0 fail** (867 tests, 41 files) when run with isolated `KDI_DB`.
 - [x] **Real harness end-to-end test with opencode**: dispatcher creates worktree `wt/opencode/1`, spawns `opencode run`, agent edits `README.md`, task moves to `done`. Verified worktree isolation, log capture, and run recording.
-- [x] Pass task title/body context to harnesses (KDI-052).
-- [ ] Clean up result/summary capture and continue parity work (tracked in KDI-053).
+- [x] KDI-052: Pass task title/body/context to harnesses implemented.
+- [x] KDI-053: Clean result/summary capture from harness output implemented.
+- [x] KDI-054: Real harness parity test added (opt-in via `KDI_REAL_HARNESS_TEST=true`).
+
+## KDI-052 / KDI-053 / KDI-054: Hermes Parity Bundle — Done
+- [x] Feature flags `ff_harness_context` / `FF_HARNESS_CONTEXT` and `ff_result_summary` / `FF_RESULT_SUMMARY` registered in `src/flags.ts` and `specs/feature-flags.md`, defaults to `false`
+- [x] `ALLOWED_TEMPLATES` and `substituteCommand` support `{{title}}`, `{{body}}`, and `{{result_file}}`
+- [x] Dispatcher exports `KDI_TASK_TITLE`, `KDI_TASK_BODY`, `KDI_TASK_ID`, `KDI_BOARD`, and `KDI_RESULT_FILE` to harnesses when flags are enabled
+- [x] Pure helper `extractHarnessResult()` in `src/harnessResult.ts` reads `.kdi-result.txt` or parses the last JSON text chunk from stdout
+- [x] Dispatcher stores clean result/summary on successful harness runs when `FF_RESULT_SUMMARY` is enabled
+- [x] Opt-in real harness parity test at `tests/real-harness-parity.test.ts`
 
 ## KDI-045: `kdi create --parent` — Done
 - [x] BRD drafted at `specs/brd-kdi-045-create-parent.md`

@@ -10,7 +10,8 @@ import { decrementGoalTurns } from "./models/task";
 import { isBlockedByDependencies } from "./models/dependency";
 import { getProfile, substituteCommand } from "./profiles";
 import { createWorktree, removeWorktree, type RemoveWorktreeResult } from "./worktree";
-import { isEnabled, FF_ENABLE_KANBAN_DISPATCH, FF_WORKER_LOG_CAPTURE, FF_CRASH_GRACE_PERIOD, FF_HEARTBEAT, FF_RATE_LIMIT_EXIT_CODE, FF_NOTIFY_SUBS, FF_SWARM_MODE, FF_GOAL_MODE, FF_TASK_CONTEXT } from "./flags";
+import { isEnabled, FF_ENABLE_KANBAN_DISPATCH, FF_WORKER_LOG_CAPTURE, FF_CRASH_GRACE_PERIOD, FF_HEARTBEAT, FF_RATE_LIMIT_EXIT_CODE, FF_NOTIFY_SUBS, FF_SWARM_MODE, FF_GOAL_MODE, FF_TASK_CONTEXT, FF_RESULT_SUMMARY } from "./flags";
+import { extractHarnessResult } from "./harnessResult";
 import { runNotifierWatcher, getLastSeenEventId, setLastSeenEventId } from "./notifiers";
 import {
   recordTick,
@@ -164,20 +165,29 @@ function getBoardSlug(boardId: number): string | null {
   return board?.slug ?? null;
 }
 
-function finishTask(task: Task, result: string, runId: number | null): void {
+function finishTask(task: Task, result: string, runId: number | null, summary?: string): void {
   const db = getDb();
+  const storedSummary = summary ?? result.slice(0, 200);
   db.run(
     `UPDATE tasks SET status = 'done', result = ?, summary = ?, consecutive_failures = 0, claim_lock = NULL, claim_expires = NULL, updated_at = unixepoch() WHERE id = ?`,
-    [result, result.slice(0, 200), task.id]
+    [result, storedSummary, task.id]
   );
   if (runId !== null) {
-    finishRun(runId, "completed", result.slice(0, 200), null, null);
+    finishRun(runId, "completed", storedSummary, null, null);
   }
   addEvent(task.id, "finished", { outcome: "completed" }, runId ?? undefined);
 
   if (isEnabled(FF_SWARM_MODE) && task.swarm_parent_id !== null && task.title.startsWith("synthesize:")) {
     completeSwarmOrchestrator(task.swarm_parent_id, task.id, result);
   }
+}
+
+function resolveSuccessResult(worktreePath: string, harnessResult: HarnessResult): { result: string; summary: string } {
+  if (isEnabled(FF_RESULT_SUMMARY)) {
+    return extractHarnessResult(worktreePath, harnessResult);
+  }
+  const result = harnessResult.stdout;
+  return { result, summary: result.slice(0, 200) };
 }
 
 function completeSwarmOrchestrator(orchestratorId: number, synthesizerId: number, result: string): void {
@@ -561,6 +571,7 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
       const modelValue = task.model_override ?? "";
       const stepKey = task.current_step_key ?? "";
       const taskContextEnabled = isEnabled(FF_TASK_CONTEXT);
+      const resultFile = `${worktreePath}/.kdi-result.txt`;
       const command = substituteCommand(profile.command, {
         workdir: worktreePath,
         branch: worktreeBranch,
@@ -571,6 +582,7 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
         step_key: stepKey,
         title: taskContextEnabled ? task.title : "",
         body: taskContextEnabled ? (task.body ?? "") : "",
+        ...(isEnabled(FF_RESULT_SUMMARY) ? { result_file: resultFile } : {}),
       });
 
       const harnessEnv: Record<string, string> | undefined = {};
@@ -583,6 +595,10 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
       if (skillsValue) harnessEnv.KDI_SKILLS = skillsValue;
       if (modelValue) harnessEnv.KDI_MODEL = modelValue;
       if (stepKey) harnessEnv.KDI_CURRENT_STEP_KEY = stepKey;
+      if (isEnabled(FF_RESULT_SUMMARY)) {
+        harnessEnv.KDI_RESULT_FILE = resultFile;
+      }
+
       // KDI-038: pass goal-mode context to the harness so it knows which turn this is,
       // how many turns remain, and where the judge can write its verdict.
       if (isEnabled(FF_GOAL_MODE) && task.goal_mode) {
@@ -618,7 +634,8 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
           const goalRemaining = task.goal_remaining_turns ?? 0;
           const goalTurn = goalMax - goalRemaining + 1;
           addEvent(task.id, "goal_turn", { turn: goalTurn, max_turns: goalMax, remaining_after: goalRemaining, verdict: "done" }, runId ?? undefined);
-          finishTask(task, stdout, runId);
+          const { result, summary } = resolveSuccessResult(worktreePath, harnessResult);
+          finishTask(task, result, runId, summary);
           processed++;
         } else {
           recordAgentError(profile.agent ?? profile.name);
@@ -630,7 +647,8 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
       }
 
       if (exitCode === 0) {
-        finishTask(task, stdout, runId);
+        const { result, summary } = resolveSuccessResult(worktreePath, harnessResult);
+        finishTask(task, result, runId, summary);
         processed++;
       } else if (exitCode === 75 && isEnabled(FF_RATE_LIMIT_EXIT_CODE)) {
         handleRateLimit(task, runId, rateLimitCooldownSeconds, stderr || stdout);

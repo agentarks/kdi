@@ -793,7 +793,7 @@ Add to the appropriate phases above:
 - [x] **KDI-052: Pass task title/body to harness**  
   Implemented behind `FF_TASK_CONTEXT` (default `false`). `{{title}}` and `{{body}}` are in `ALLOWED_TEMPLATES` and substituted by `substituteCommand`; the dispatcher exports `KDI_TASK_TITLE`, `KDI_TASK_BODY`, `KDI_TASK_ID`, and `KDI_BOARD` to the harness env only when `FF_TASK_CONTEXT` is enabled. Tests cover template substitution, env vars, null-body handling, and disabled-flag behavior.
 
-- [ ] **KDI-053: Store clean result/summary from harness output**  
+- [x] **KDI-053: Store clean result/summary from harness output**  
   Currently the entire raw JSON stream from `opencode run --format json` is dumped into `tasks.result`. Hermes expects a human-readable result/summary. Provide a convention for harnesses to emit a result file (e.g., `{{workdir}}/.kdi-result.txt`) or parse the last text chunk from JSON-mode output; store that as `result`/`summary` instead of raw stdout.
 
 - [ ] **KDI-054: Real harness parity test**  
