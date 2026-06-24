@@ -674,7 +674,6 @@ stateDiagram-v2
 - **Rollback / deactivation:** Set `FF_HARNESS_CONTEXT=false` to stop passing task context env vars and template substitution.
 - **Deprecation plan:** N/A
 
-<<<<<<< HEAD
 ### `ff_result_summary` — InDev
 
 - **Owner:** kdi core team

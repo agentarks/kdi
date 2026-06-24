@@ -580,7 +580,6 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
         skills: skillsValue,
         model: modelValue,
         step_key: stepKey,
-<<<<<<< HEAD
         title: taskContextEnabled ? task.title : "",
         body: taskContextEnabled ? (task.body ?? "") : "",
         ...(isEnabled(FF_RESULT_SUMMARY) ? { result_file: resultFile } : {}),
