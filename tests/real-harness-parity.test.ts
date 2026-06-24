@@ -12,9 +12,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const ENABLED =
-  process.env.KDI_REAL_HARNESS_TEST === "true" ||
-  Bun.env.KDI_REAL_HARNESS_TEST === "true";
+const ENABLED = process.env.KDI_REAL_HARNESS_TEST === "true";
 
 if (!ENABLED) {
   describe("real harness parity", () => {
@@ -35,21 +33,10 @@ if (!ENABLED) {
   }
 
   function parseWorktreePath(output: string, branch: string): string | undefined {
-    const lines = output.split("\n");
-    for (let i = 0; i < lines.length; i++) {
-      if (lines[i].startsWith("worktree ")) {
-        const path = lines[i].slice(9);
-        let j = i + 1;
-        while (
-          j < lines.length &&
-          lines[j].trim() !== "" &&
-          !lines[j].startsWith("worktree ")
-        ) {
-          if (lines[j].includes(`refs/heads/${branch}`)) {
-            return path;
-          }
-          j++;
-        }
+    for (const block of output.trim().split(/\n\s*\n/)) {
+      const [, path] = block.match(/^worktree (.+)$/m) ?? [];
+      if (path && block.includes(`refs/heads/${branch}`)) {
+        return path;
       }
     }
     return undefined;

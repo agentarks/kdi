@@ -12,6 +12,7 @@ import { getProfile, substituteCommand } from "./profiles";
 import { createWorktree, removeWorktree, type RemoveWorktreeResult } from "./worktree";
 import { isEnabled, FF_ENABLE_KANBAN_DISPATCH, FF_WORKER_LOG_CAPTURE, FF_CRASH_GRACE_PERIOD, FF_HEARTBEAT, FF_RATE_LIMIT_EXIT_CODE, FF_NOTIFY_SUBS, FF_SWARM_MODE, FF_GOAL_MODE, FF_HARNESS_CONTEXT, FF_RESULT_SUMMARY } from "./flags";
 import { extractHarnessResult } from "./harnessResult";
+
 import { runNotifierWatcher, getLastSeenEventId, setLastSeenEventId } from "./notifiers";
 import {
   recordTick,
@@ -180,14 +181,6 @@ function finishTask(task: Task, result: string, runId: number | null, summary?: 
   if (isEnabled(FF_SWARM_MODE) && task.swarm_parent_id !== null && task.title.startsWith("synthesize:")) {
     completeSwarmOrchestrator(task.swarm_parent_id, task.id, result);
   }
-}
-
-function resolveSuccessResult(worktreePath: string, harnessResult: HarnessResult): { result: string; summary: string } {
-  if (isEnabled(FF_RESULT_SUMMARY)) {
-    return extractHarnessResult(worktreePath, harnessResult);
-  }
-  const result = harnessResult.stdout;
-  return { result, summary: result.slice(0, 200) };
 }
 
 function completeSwarmOrchestrator(orchestratorId: number, synthesizerId: number, result: string): void {
@@ -635,7 +628,9 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
           const goalRemaining = task.goal_remaining_turns ?? 0;
           const goalTurn = goalMax - goalRemaining + 1;
           addEvent(task.id, "goal_turn", { turn: goalTurn, max_turns: goalMax, remaining_after: goalRemaining, verdict: "done" }, runId ?? undefined);
-          const { result, summary } = resolveSuccessResult(worktreePath, harnessResult);
+          const { result, summary } = isEnabled(FF_RESULT_SUMMARY)
+            ? extractHarnessResult(worktreePath, harnessResult.stdout)
+            : { result: harnessResult.stdout, summary: harnessResult.stdout.slice(0, 200) };
           finishTask(task, result, runId, summary);
           processed++;
         } else {
@@ -648,7 +643,9 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
       }
 
       if (exitCode === 0) {
-        const { result, summary } = resolveSuccessResult(worktreePath, harnessResult);
+        const { result, summary } = isEnabled(FF_RESULT_SUMMARY)
+          ? extractHarnessResult(worktreePath, harnessResult.stdout)
+          : { result: harnessResult.stdout, summary: harnessResult.stdout.slice(0, 200) };
         finishTask(task, result, runId, summary);
         processed++;
       } else if (exitCode === 75 && isEnabled(FF_RATE_LIMIT_EXIT_CODE)) {

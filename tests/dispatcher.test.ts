@@ -1726,7 +1726,7 @@ describe("result summary extraction", () => {
   it("uses .kdi-result.txt when present", () => {
     const worktree = mkdtempSync(join(tmpdir(), "kdi-result-file-"));
     writeFileSync(join(worktree, ".kdi-result.txt"), "  clean result from file  ", "utf-8");
-    const result = extractHarnessResult(worktree, { stdout: "raw stdout" });
+    const result = extractHarnessResult(worktree, "raw stdout");
     expect(result.result).toBe("clean result from file");
     expect(result.summary).toBe("clean result from file");
     rmSync(worktree, { recursive: true, force: true });
@@ -1735,7 +1735,7 @@ describe("result summary extraction", () => {
   it("uses last JSON text chunk from stdout when result file is absent", () => {
     const worktree = mkdtempSync(join(tmpdir(), "kdi-result-json-"));
     const stdout = `{"type":"status","message":"first"}\n{"type":"result","content":"final answer"}\n`;
-    const result = extractHarnessResult(worktree, { stdout });
+    const result = extractHarnessResult(worktree, stdout);
     expect(result.result).toBe("final answer");
     expect(result.summary).toBe("final answer");
     rmSync(worktree, { recursive: true, force: true });
@@ -1744,7 +1744,7 @@ describe("result summary extraction", () => {
   it("falls back to raw stdout on malformed JSON / no result file", () => {
     const worktree = mkdtempSync(join(tmpdir(), "kdi-result-fallback-"));
     const stdout = "plain text output\nwith lines";
-    const result = extractHarnessResult(worktree, { stdout });
+    const result = extractHarnessResult(worktree, stdout);
     expect(result.result).toBe(stdout.trim());
     expect(result.summary).toBe(stdout.trim().slice(0, 200));
     rmSync(worktree, { recursive: true, force: true });
@@ -1754,7 +1754,7 @@ describe("result summary extraction", () => {
     const worktree = mkdtempSync(join(tmpdir(), "kdi-result-prefer-"));
     writeFileSync(join(worktree, ".kdi-result.txt"), "file wins", "utf-8");
     const stdout = `{"content":"json wins"}`;
-    const result = extractHarnessResult(worktree, { stdout });
+    const result = extractHarnessResult(worktree, stdout);
     expect(result.result).toBe("file wins");
     rmSync(worktree, { recursive: true, force: true });
   });

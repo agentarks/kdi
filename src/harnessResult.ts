@@ -1,10 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-export interface HarnessResult {
-  stdout: string;
-}
-
 const RESULT_FILE_NAME = ".kdi-result.txt";
 const SUMMARY_MAX_LEN = 200;
 const TEXT_FIELDS = ["content", "text", "output", "message", "result"] as const;
@@ -21,7 +17,7 @@ const TEXT_FIELDS = ["content", "text", "output", "message", "result"] as const;
  */
 export function extractHarnessResult(
   worktreePath: string,
-  harnessResult: HarnessResult
+  stdout: string
 ): { result: string; summary: string } {
   try {
     const resultFile = join(worktreePath, RESULT_FILE_NAME);
@@ -34,7 +30,7 @@ export function extractHarnessResult(
   }
 
   try {
-    const lines = harnessResult.stdout.split(/\r?\n/);
+    const lines = stdout.split(/\r?\n/);
     for (let i = lines.length - 1; i >= 0; i--) {
       const line = lines[i].trim();
       if (line === "") {
@@ -65,6 +61,6 @@ export function extractHarnessResult(
     // Fall through to raw stdout.
   }
 
-  const result = harnessResult.stdout.trim();
+  const result = stdout.trim();
   return { result, summary: result.slice(0, SUMMARY_MAX_LEN) };
 }
