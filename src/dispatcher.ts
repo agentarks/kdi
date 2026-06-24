@@ -10,7 +10,7 @@ import { decrementGoalTurns } from "./models/task";
 import { isBlockedByDependencies } from "./models/dependency";
 import { getProfile, substituteCommand } from "./profiles";
 import { createWorktree, removeWorktree, type RemoveWorktreeResult } from "./worktree";
-import { isEnabled, FF_ENABLE_KANBAN_DISPATCH, FF_WORKER_LOG_CAPTURE, FF_CRASH_GRACE_PERIOD, FF_HEARTBEAT, FF_RATE_LIMIT_EXIT_CODE, FF_NOTIFY_SUBS, FF_SWARM_MODE, FF_GOAL_MODE, FF_TASK_CONTEXT, FF_RESULT_SUMMARY } from "./flags";
+import { isEnabled, FF_ENABLE_KANBAN_DISPATCH, FF_WORKER_LOG_CAPTURE, FF_CRASH_GRACE_PERIOD, FF_HEARTBEAT, FF_RATE_LIMIT_EXIT_CODE, FF_NOTIFY_SUBS, FF_SWARM_MODE, FF_GOAL_MODE, FF_HARNESS_CONTEXT, FF_RESULT_SUMMARY } from "./flags";
 import { extractHarnessResult } from "./harnessResult";
 import { runNotifierWatcher, getLastSeenEventId, setLastSeenEventId } from "./notifiers";
 import {
@@ -570,7 +570,7 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
       const skillsValue = task.skills && task.skills.length > 0 ? task.skills.join(",") : "";
       const modelValue = task.model_override ?? "";
       const stepKey = task.current_step_key ?? "";
-      const taskContextEnabled = isEnabled(FF_TASK_CONTEXT);
+      const taskContextEnabled = isEnabled(FF_HARNESS_CONTEXT);
       const resultFile = `${worktreePath}/.kdi-result.txt`;
       const command = substituteCommand(profile.command, {
         workdir: worktreePath,
@@ -580,12 +580,14 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
         skills: skillsValue,
         model: modelValue,
         step_key: stepKey,
+<<<<<<< HEAD
         title: taskContextEnabled ? task.title : "",
         body: taskContextEnabled ? (task.body ?? "") : "",
         ...(isEnabled(FF_RESULT_SUMMARY) ? { result_file: resultFile } : {}),
       });
 
       const harnessEnv: Record<string, string> | undefined = {};
+      // KDI-052: pass task context to the harness when enabled.
       if (taskContextEnabled) {
         harnessEnv.KDI_TASK_TITLE = task.title;
         harnessEnv.KDI_TASK_BODY = task.body ?? "";

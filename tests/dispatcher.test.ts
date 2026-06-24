@@ -6,7 +6,7 @@ import { initDb, closeDb, getDb } from "../src/db";
 import { createBoard } from "../src/models/board";
 import { createTask, promoteTask, showTask } from "../src/models/task";
 import { addDependency } from "../src/models/dependency";
-import { setFlag, clearOverrides, FF_RATE_LIMIT_EXIT_CODE, FF_NOTIFY_SUBS, FF_DISPATCH_CONTROLS, FF_GOAL_MODE, FF_ENABLE_KANBAN_DISPATCH, FF_TASK_CONTEXT, FF_RESULT_SUMMARY } from "../src/flags";
+import { setFlag, clearOverrides, FF_RATE_LIMIT_EXIT_CODE, FF_NOTIFY_SUBS, FF_DISPATCH_CONTROLS, FF_GOAL_MODE, FF_HARNESS_CONTEXT, FF_ENABLE_KANBAN_DISPATCH, FF_RESULT_SUMMARY } from "../src/flags";
 import { extractHarnessResult } from "../src/harnessResult";
 import { subscribe } from "../src/models/notifySub";
 import { atomicClaim, heartbeat } from "../src/models/claim";
@@ -423,7 +423,7 @@ describe("dispatcher", () => {
   });
 
   it("does not set KDI_MODEL env when model_override is absent", async () => {
-    setFlag(FF_TASK_CONTEXT, true);
+    setFlag(FF_HARNESS_CONTEXT, true);
     const home = setupTempHome([
       { name: "nomodelagent", command: "echo done" },
     ]);
@@ -503,7 +503,7 @@ describe("dispatcher", () => {
   });
 
   it("does not set KDI_CURRENT_STEP_KEY env when current_step_key is absent", async () => {
-    setFlag(FF_TASK_CONTEXT, true);
+    setFlag(FF_HARNESS_CONTEXT, true);
     const home = setupTempHome([
       { name: "nostepagent", command: "echo done" },
     ]);
@@ -542,8 +542,8 @@ describe("dispatcher", () => {
     expect(calls[0][4]!.KDI_TASK_TITLE).toBe("No step key test");
   });
 
-  it("passes task title and body to harness via {{title}} and {{body}} templates when FF_TASK_CONTEXT is enabled", async () => {
-    setFlag(FF_TASK_CONTEXT, true);
+  it("passes task title and body to harness via {{title}} and {{body}} templates when FF_HARNESS_CONTEXT is enabled", async () => {
+    setFlag(FF_HARNESS_CONTEXT, true);
     const home = setupTempHome([
       { name: "contextagent", command: "echo '{{title}}' '{{body}}'" },
     ]);
@@ -582,8 +582,8 @@ describe("dispatcher", () => {
     expect(calls[0][0]).toContain("'Task body\nline two'");
   });
 
-  it("passes KDI_TASK_TITLE, KDI_TASK_BODY, KDI_TASK_ID, and KDI_BOARD env vars to harness when FF_TASK_CONTEXT is enabled", async () => {
-    setFlag(FF_TASK_CONTEXT, true);
+  it("passes KDI_TASK_TITLE, KDI_TASK_BODY, KDI_TASK_ID, and KDI_BOARD env vars to harness when FF_HARNESS_CONTEXT is enabled", async () => {
+    setFlag(FF_HARNESS_CONTEXT, true);
     const home = setupTempHome([
       { name: "envagent", command: "echo done" },
     ]);
@@ -625,8 +625,8 @@ describe("dispatcher", () => {
     expect(calls[0][4]!.KDI_BOARD).toBe("env-board");
   });
 
-  it("passes empty KDI_TASK_BODY when task body is null and FF_TASK_CONTEXT is enabled", async () => {
-    setFlag(FF_TASK_CONTEXT, true);
+  it("passes empty KDI_TASK_BODY when task body is null and FF_HARNESS_CONTEXT is enabled", async () => {
+    setFlag(FF_HARNESS_CONTEXT, true);
     const home = setupTempHome([
       { name: "nobodyagent", command: "echo done" },
     ]);
@@ -667,8 +667,8 @@ describe("dispatcher", () => {
     expect(calls[0][4]!.KDI_BOARD).toBe("nobody-board");
   });
 
-  it("does not pass task context when FF_TASK_CONTEXT is disabled", async () => {
-    setFlag(FF_TASK_CONTEXT, false);
+  it("does not pass task context when FF_HARNESS_CONTEXT is disabled", async () => {
+    setFlag(FF_HARNESS_CONTEXT, false);
     const home = setupTempHome([
       { name: "disabledcontextagent", command: "echo '{{title}}' '{{body}}'" },
     ]);
@@ -2067,5 +2067,55 @@ describe("dispatcher goal mode", () => {
     expect(capturedEnv!.KDI_GOAL_REMAINING_TURNS).toBe("4");
     expect(capturedEnv!.KDI_GOAL_TURN).toBe("1");
     expect(capturedEnv!.KDI_GOAL_VERDICT_FILE).toContain(".kdi-goal-verdict.json");
+  });
+
+  it("passes task context env vars and substitutes {{title}}/{{body}} when FF_HARNESS_CONTEXT is enabled", async () => {
+    setFlag(FF_HARNESS_CONTEXT, true);
+
+    const home = setupTempHome([
+      { name: "contextagent", command: "echo '{{title}}' '{{body}}'" },
+    ]);
+    const originalPath = process.env.KDI_PROFILES_PATH;
+    process.env.KDI_PROFILES_PATH = join(home, ".config/kdi/profiles.yaml");
+
+    const board = createBoard("context-board", "/tmp/context-board");
+    const task = createTask({
+      board_id: board.id,
+      title: "Parity task",
+      body: "Verify harness context",
+      assignee: "contextagent",
+    });
+    promoteTask(task.id);
+
+    let capturedEnv: Record<string, string> | undefined;
+    const mockHarness = mock((cmd: string, cwd: string, logPath: string | undefined, timeoutMs: number | undefined, env?: Record<string, string>) => {
+      capturedEnv = env;
+      return Promise.resolve({ stdout: "ok", stderr: "", exitCode: 0 });
+    });
+    const mockCreateWorktree = mock(() => "/tmp/mock-worktree");
+    const mockRemoveWorktree = mock(() => ({ worktreeRemoved: true, branchDeleted: true, found: true }));
+
+    await tick({
+      spawnHarness: mockHarness as any,
+      createWorktree: mockCreateWorktree,
+      removeWorktree: mockRemoveWorktree,
+    });
+
+    if (originalPath !== undefined) {
+      process.env.KDI_PROFILES_PATH = originalPath;
+    } else {
+      delete process.env.KDI_PROFILES_PATH;
+    }
+    rmSync(home, { recursive: true, force: true });
+
+    const calls = mockHarness.mock.calls as unknown as [string, string, string | undefined, number | undefined, Record<string, string> | undefined][];
+    expect(calls.length).toBeGreaterThan(0);
+    expect(calls[0][0]).toContain("Parity task");
+    expect(calls[0][0]).toContain("Verify harness context");
+    expect(capturedEnv).toBeDefined();
+    expect(capturedEnv!.KDI_TASK_TITLE).toBe("Parity task");
+    expect(capturedEnv!.KDI_TASK_BODY).toBe("Verify harness context");
+    expect(capturedEnv!.KDI_TASK_ID).toBe(String(task.id));
+    expect(capturedEnv!.KDI_BOARD).toBe("context-board");
   });
 });

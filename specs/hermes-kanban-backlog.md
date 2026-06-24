@@ -791,13 +791,13 @@ Add to the appropriate phases above:
   `kdi dispatch --once` (or `--tick`) for a single dispatcher pass, matching Hermes behavior.
 
 - [x] **KDI-052: Pass task title/body to harness**  
-  Implemented behind `FF_TASK_CONTEXT` (default `false`). `{{title}}` and `{{body}}` are in `ALLOWED_TEMPLATES` and substituted by `substituteCommand`; the dispatcher exports `KDI_TASK_TITLE`, `KDI_TASK_BODY`, `KDI_TASK_ID`, and `KDI_BOARD` to the harness env only when `FF_TASK_CONTEXT` is enabled. Tests cover template substitution, env vars, null-body handling, and disabled-flag behavior.
+  Implemented behind `FF_HARNESS_CONTEXT` (default `false`). `{{title}}` and `{{body}}` are in `ALLOWED_TEMPLATES` and substituted by `substituteCommand`; the dispatcher exports `KDI_TASK_TITLE`, `KDI_TASK_BODY`, `KDI_TASK_ID`, and `KDI_BOARD` to the harness env only when `FF_HARNESS_CONTEXT` is enabled. Tests cover template substitution, env vars, null-body handling, and disabled-flag behavior.
 
 - [x] **KDI-053: Store clean result/summary from harness output**  
   Currently the entire raw JSON stream from `opencode run --format json` is dumped into `tasks.result`. Hermes expects a human-readable result/summary. Provide a convention for harnesses to emit a result file (e.g., `{{workdir}}/.kdi-result.txt`) or parse the last text chunk from JSON-mode output; store that as `result`/`summary` instead of raw stdout.
 
-- [ ] **KDI-054: Real harness parity test**  
-  Add a real-harness smoke test to the suite (gated by an env var or opt-in) that proves `kdi create --assignee opencode` → `promote` → `dispatch` results in an actual file edit in the worktree and a clean result in `kdi show`.
+- [x] **KDI-054: Real harness parity test**  
+  Added opt-in smoke test at `tests/real-harness-parity.test.ts` (gated by `KDI_REAL_HARNESS_TEST=true`). Proves `kdi create --assignee opencode` → `promote` → `dispatch` passes task context to a real harness, writes a marker file in the active worktree, and stores a clean result visible via `kdi show`.
 
 - [ ] **KDI-055: Consider whether task changes should propagate to original repo**  
   Worktree isolation is correct, but downstream workflows may expect the original board workdir to reflect the completed edit. Document the intended handoff (worktree branch stays until merged/pushed) or add an option to copy/commit changes back.

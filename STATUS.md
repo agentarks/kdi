@@ -27,11 +27,11 @@
 - [x] `bun run lint`, `bun run test` (910 pass), `bun run build` pass
 
 ## KDI-052: Pass Task Title/Body to Harness — Done
-- [x] Feature flag `ff_task_context` / `FF_TASK_CONTEXT` registered in `specs/feature-flags.md` and `src/flags.ts`, defaults to `false`
+- [x] Feature flag `ff_harness_context` / `FF_HARNESS_CONTEXT` registered in `specs/feature-flags.md` and `src/flags.ts`, defaults to `false`
 - [x] Added `title` and `body` to `ALLOWED_TEMPLATES` in `src/profiles.ts`
 - [x] Updated `substituteCommand` in `src/profiles.ts` to accept and substitute `{{title}}` and `{{body}}`
-- [x] Updated `src/dispatcher.ts` `tick` to pass `title` and `body` into `substituteCommand` only when `FF_TASK_CONTEXT` is enabled
-- [x] Updated `src/dispatcher.ts` `harnessEnv` to set `KDI_TASK_TITLE`, `KDI_TASK_BODY`, `KDI_TASK_ID`, and `KDI_BOARD` only when `FF_TASK_CONTEXT` is enabled
+- [x] Updated `src/dispatcher.ts` `tick` to pass `title` and `body` into `substituteCommand` only when `FF_HARNESS_CONTEXT` is enabled
+- [x] Updated `src/dispatcher.ts` `harnessEnv` to set `KDI_TASK_TITLE`, `KDI_TASK_BODY`, `KDI_TASK_ID`, and `KDI_BOARD` only when `FF_HARNESS_CONTEXT` is enabled
 - [x] Added tests in `tests/profiles.test.ts` for `{{title}}`/`{{body}}` validation and substitution
 - [x] Added tests in `tests/dispatcher.test.ts` for `{{title}}`/`{{body}}` command substitution and `KDI_TASK_*` env vars, including null-body handling and disabled-flag behavior
 - [x] Updated existing dispatcher tests that previously expected an undefined env object when no optional env vars were set
@@ -44,6 +44,7 @@
 - [x] Additional verified gaps documented in `specs/hermes-kanban-backlog.md` (KDI-042 through KDI-052); **KDI-043 is done**.
 - [x] Test suite health: `bun run lint` passes; `bun test` reports **867 pass / 0 fail** (867 tests, 41 files) when run with isolated `KDI_DB`.
 - [x] **Real harness end-to-end test with opencode**: dispatcher creates worktree `wt/opencode/1`, spawns `opencode run`, agent edits `README.md`, task moves to `done`. Verified worktree isolation, log capture, and run recording.
+<<<<<<< HEAD
 - [x] KDI-052: Pass task title/body/context to harnesses implemented.
 - [x] KDI-053: Clean result/summary capture from harness output implemented.
 - [x] KDI-054: Real harness parity test added (opt-in via `KDI_REAL_HARNESS_TEST=true`).
@@ -55,6 +56,15 @@
 - [x] Pure helper `extractHarnessResult()` in `src/harnessResult.ts` reads `.kdi-result.txt` or parses the last JSON text chunk from stdout
 - [x] Dispatcher stores clean result/summary on successful harness runs when `FF_RESULT_SUMMARY` is enabled
 - [x] Opt-in real harness parity test at `tests/real-harness-parity.test.ts`
+
+## KDI-054: Real harness parity test — Done
+- [x] Opt-in smoke test added at `tests/real-harness-parity.test.ts`, gated by `KDI_REAL_HARNESS_TEST=true`
+- [x] Test creates a fake `opencode` harness, a real git repo, a KDI board, task, and dispatcher daemon
+- [x] Asserts the harness receives the expected task context env vars and writes a marker file in the active worktree
+- [x] Asserts the task transitions to `running`, then `done` after a sentinel file is written, and `kdi show` contains the clean result
+- [x] Hardened `findWorktreePath` helper to poll `git worktree list --porcelain` for up to 10s (150ms interval), eliminating the race where the worktree is not yet listed when the task reaches `running`
+- [x] `bun run lint`, `bun run build`, and `KDI_REAL_HARNESS_TEST=true bun test tests/real-harness-parity.test.ts tests/dispatcher.test.ts tests/profiles.test.ts` pass (3/3 consecutive runs)
+>>>>>>> feat/item-04-kdi-054-real-harness-parity-test
 
 ## KDI-045: `kdi create --parent` — Done
 - [x] BRD drafted at `specs/brd-kdi-045-create-parent.md`
