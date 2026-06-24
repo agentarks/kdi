@@ -1529,6 +1529,7 @@ describe("archive command", () => {
   });
 
   it("rejects multiple task IDs when FF_BULK_OPERATIONS is disabled", async () => {
+    setFlag(FF_BULK_OPERATIONS, false);
     const board = createBoard("cmd-board", "/tmp/cmd-board");
     const t1 = createTask({ board_id: board.id, title: "One" });
     const t2 = createTask({ board_id: board.id, title: "Two" });

@@ -336,6 +336,8 @@ describe("dispatcher", () => {
       delete process.env.KDI_PROFILES_PATH;
     }
     rmSync(home, { recursive: true, force: true });
+    delete process.env.FF_HARNESS_CONTEXT;
+    delete process.env.FF_RESULT_SUMMARY;
 
     const calls = mockHarness.mock.calls as unknown as [string, string][];
     expect(calls.length).toBeGreaterThan(0);
@@ -374,6 +376,8 @@ describe("dispatcher", () => {
       delete process.env.KDI_PROFILES_PATH;
     }
     rmSync(home, { recursive: true, force: true });
+    delete process.env.FF_HARNESS_CONTEXT;
+    delete process.env.FF_RESULT_SUMMARY;
 
     const calls = mockHarness.mock.calls as unknown as [string, string, string | undefined, number | undefined, Record<string, string> | undefined][];
     expect(calls.length).toBeGreaterThan(0);
@@ -414,6 +418,8 @@ describe("dispatcher", () => {
       delete process.env.KDI_PROFILES_PATH;
     }
     rmSync(home, { recursive: true, force: true });
+    delete process.env.FF_HARNESS_CONTEXT;
+    delete process.env.FF_RESULT_SUMMARY;
 
     const calls = mockHarness.mock.calls as unknown as [string, string, string | undefined, number | undefined, Record<string, string> | undefined][];
     expect(calls.length).toBeGreaterThan(0);
@@ -454,6 +460,8 @@ describe("dispatcher", () => {
       delete process.env.KDI_PROFILES_PATH;
     }
     rmSync(home, { recursive: true, force: true });
+    delete process.env.FF_HARNESS_CONTEXT;
+    delete process.env.FF_RESULT_SUMMARY;
 
     const calls = mockHarness.mock.calls as unknown as [string, string, string | undefined, number | undefined, Record<string, string> | undefined][];
     expect(calls.length).toBeGreaterThan(0);
@@ -494,6 +502,8 @@ describe("dispatcher", () => {
       delete process.env.KDI_PROFILES_PATH;
     }
     rmSync(home, { recursive: true, force: true });
+    delete process.env.FF_HARNESS_CONTEXT;
+    delete process.env.FF_RESULT_SUMMARY;
 
     const calls = mockHarness.mock.calls as unknown as [string, string, string | undefined, number | undefined, Record<string, string> | undefined][];
     expect(calls.length).toBeGreaterThan(0);
@@ -534,6 +544,8 @@ describe("dispatcher", () => {
       delete process.env.KDI_PROFILES_PATH;
     }
     rmSync(home, { recursive: true, force: true });
+    delete process.env.FF_HARNESS_CONTEXT;
+    delete process.env.FF_RESULT_SUMMARY;
 
     const calls = mockHarness.mock.calls as unknown as [string, string, string | undefined, number | undefined, Record<string, string> | undefined][];
     expect(calls.length).toBeGreaterThan(0);
@@ -575,6 +587,8 @@ describe("dispatcher", () => {
       delete process.env.KDI_PROFILES_PATH;
     }
     rmSync(home, { recursive: true, force: true });
+    delete process.env.FF_HARNESS_CONTEXT;
+    delete process.env.FF_RESULT_SUMMARY;
 
     const calls = mockHarness.mock.calls as unknown as [string, string, string | undefined, number | undefined, Record<string, string> | undefined][];
     expect(calls.length).toBeGreaterThan(0);
@@ -615,6 +629,8 @@ describe("dispatcher", () => {
       delete process.env.KDI_PROFILES_PATH;
     }
     rmSync(home, { recursive: true, force: true });
+    delete process.env.FF_HARNESS_CONTEXT;
+    delete process.env.FF_RESULT_SUMMARY;
 
     const calls = mockHarness.mock.calls as unknown as [string, string, string | undefined, number | undefined, Record<string, string> | undefined][];
     expect(calls.length).toBeGreaterThan(0);
@@ -657,6 +673,8 @@ describe("dispatcher", () => {
       delete process.env.KDI_PROFILES_PATH;
     }
     rmSync(home, { recursive: true, force: true });
+    delete process.env.FF_HARNESS_CONTEXT;
+    delete process.env.FF_RESULT_SUMMARY;
 
     const calls = mockHarness.mock.calls as unknown as [string, string, string | undefined, number | undefined, Record<string, string> | undefined][];
     expect(calls.length).toBeGreaterThan(0);
@@ -669,6 +687,7 @@ describe("dispatcher", () => {
 
   it("does not pass task context when FF_HARNESS_CONTEXT is disabled", async () => {
     setFlag(FF_HARNESS_CONTEXT, false);
+    setFlag(FF_RESULT_SUMMARY, false);
     const home = setupTempHome([
       { name: "disabledcontextagent", command: "echo '{{title}}' '{{body}}'" },
     ]);
@@ -700,6 +719,7 @@ describe("dispatcher", () => {
       delete process.env.KDI_PROFILES_PATH;
     }
     rmSync(home, { recursive: true, force: true });
+    clearOverrides();
 
     const calls = mockHarness.mock.calls as unknown as [string, string, string | undefined, number | undefined, Record<string, string> | undefined][];
     expect(calls.length).toBeGreaterThan(0);
@@ -865,6 +885,7 @@ describe("dispatcher", () => {
   });
 
   it("EX_TEMPFAIL treats exit 75 as normal failure when flag is disabled", async () => {
+    setFlag(FF_RATE_LIMIT_EXIT_CODE, false);
     const board = createBoard("tempfail-disabled-board", "/tmp/tempfail-disabled-board");
     const task = createTask({
       board_id: board.id,
@@ -884,6 +905,7 @@ describe("dispatcher", () => {
     expect(updated!.status).toBe("ready");
     expect(updated!.consecutive_failures).toBe(1);
     expect(updated!.rate_limited_until).toBeNull();
+    clearOverrides();
   });
 
   it("EX_TEMPFAIL does not increment consecutive_failures when flag is enabled", async () => {
@@ -1114,6 +1136,7 @@ describe("dispatcher", () => {
     const updated = showTask(task.id);
     expect(updated!.status).toBe("blocked");
     expect(updated!.consecutive_failures).toBe(1);
+    delete process.env.FF_RATE_LIMIT_EXIT_CODE;
   });
 
   it("successful run after retry resets consecutive_failures", async () => {
@@ -2107,6 +2130,8 @@ describe("dispatcher goal mode", () => {
       delete process.env.KDI_PROFILES_PATH;
     }
     rmSync(home, { recursive: true, force: true });
+    delete process.env.FF_HARNESS_CONTEXT;
+    delete process.env.FF_RESULT_SUMMARY;
 
     const calls = mockHarness.mock.calls as unknown as [string, string, string | undefined, number | undefined, Record<string, string> | undefined][];
     expect(calls.length).toBeGreaterThan(0);

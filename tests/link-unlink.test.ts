@@ -82,10 +82,10 @@ describe("FF_LINK_UNLINK (kdi link / kdi unlink)", () => {
   });
 
   it("kdi link / unlink without FF_LINK_UNLINK errors", () => {
-    const r1 = runKdi(["link", "1", "2"]);
+    const r1 = runKdi(["link", "1", "2"], { FF_LINK_UNLINK: "false" });
     expect(r1.ok).toBe(false);
     expect(r1.stdout + r1.stderr).toContain("Link/unlink feature is not enabled");
-    const r2 = runKdi(["unlink", "1", "2"]);
+    const r2 = runKdi(["unlink", "1", "2"], { FF_LINK_UNLINK: "false" });
     expect(r2.ok).toBe(false);
     expect(r2.stdout + r2.stderr).toContain("Link/unlink feature is not enabled");
   });

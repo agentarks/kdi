@@ -66,7 +66,7 @@ describe("context builder model", () => {
     expect(ctx.priority).toBe(0);
     expect(ctx.assignee).toBeUndefined();
     expect(ctx.tenant).toBeUndefined();
-    expect(ctx.created_by).toBeUndefined();
+    expect(ctx.created_by).toBe("unknown");
   });
 
   it("includes assignee and tenant when set", () => {
