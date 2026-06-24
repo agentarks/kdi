@@ -14,7 +14,7 @@ function defaultProfilesPath(): string {
   return process.env.KDI_PROFILES_PATH || join(homedir(), ".config/kdi/profiles.yaml");
 }
 const ALLOWED_FIELDS = new Set(["name", "command", "agent", "env"]);
-const ALLOWED_TEMPLATES = new Set(["workdir", "branch", "task_id", "agent", "skills", "model", "step_key"]);
+const ALLOWED_TEMPLATES = new Set(["workdir", "branch", "task_id", "agent", "skills", "model", "step_key", "title", "body", "result_file"]);
 
 export const BUILTIN_PROFILES: Profile[] = [
   {
@@ -130,6 +130,16 @@ export function getProfile(name: string): Profile {
   return profile;
 }
 
+function shellEscape(value: string): string {
+  if (value === "") {
+    return "''";
+  }
+  // Escape single quotes by exiting the single-quoted string, inserting an
+  // escaped single quote, and re-entering the quoted string. This makes the
+  // value safe for POSIX shells when used inside single quotes.
+  return `'${value.replace(/'/g, "'\"'\"'")}'`;
+}
+
 export function substituteCommand(
   template: string,
   vars: {
@@ -140,6 +150,9 @@ export function substituteCommand(
     skills?: string;
     model?: string;
     step_key?: string;
+    title?: string;
+    body?: string;
+    result_file?: string;
   }
 ): string {
   return template
@@ -149,5 +162,8 @@ export function substituteCommand(
     .replace(/\{\{agent\}\}/g, vars.agent)
     .replace(/\{\{skills\}\}/g, vars.skills ?? "")
     .replace(/\{\{model\}\}/g, vars.model ?? "")
-    .replace(/\{\{step_key\}\}/g, vars.step_key ?? "");
+    .replace(/\{\{step_key\}\}/g, vars.step_key ?? "")
+    .replace(/\{\{title\}\}/g, shellEscape(vars.title ?? ""))
+    .replace(/\{\{body\}\}/g, shellEscape(vars.body ?? ""))
+    .replace(/\{\{result_file\}\}/g, vars.result_file ?? "");
 }

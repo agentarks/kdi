@@ -199,6 +199,57 @@ describe("profiles", () => {
     expect(p.command).toBe("echo {{step_key}}");
   });
 
+  it("validateProfile allows {{title}} and {{body}} template variables", () => {
+    const p = validateProfile(
+      { name: "test", command: "echo {{title}} {{body}}" },
+      0
+    );
+    expect(p.command).toBe("echo {{title}} {{body}}");
+  });
+
+  it("substitutes {{title}} and {{body}} when provided", () => {
+    const result = substituteCommand(
+      "agent --title {{title}} --body {{body}}",
+      {
+        workdir: "/tmp/wt",
+        branch: "main",
+        task_id: "7",
+        agent: "coder",
+        title: "Fix the thing",
+        body: "Detailed description\nwith newline",
+      }
+    );
+    expect(result).toBe("agent --title 'Fix the thing' --body 'Detailed description\nwith newline'");
+  });
+
+  it("substitutes {{title}} and {{body}} with empty string when absent", () => {
+    const result = substituteCommand(
+      "agent --title {{title}} --body {{body}}",
+      {
+        workdir: "/tmp/wt",
+        branch: "main",
+        task_id: "7",
+        agent: "coder",
+      }
+    );
+    expect(result).toBe("agent --title '' --body ''");
+  });
+
+  it("shell-escapes {{title}} and {{body}}", () => {
+    const result = substituteCommand(
+      "agent --title {{title}} --body {{body}}",
+      {
+        workdir: "/tmp/wt",
+        branch: "main",
+        task_id: "7",
+        agent: "coder",
+        title: "it's done",
+        body: "$(rm -rf /)",
+      }
+    );
+    expect(result).toBe("agent --title 'it'\"'\"'s done' --body '$(rm -rf /)'");
+  });
+
   it("substitutes {{step_key}} when provided", () => {
     const result = substituteCommand(
       "agent --step {{step_key}} --task {{task_id}}",

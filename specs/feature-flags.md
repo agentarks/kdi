@@ -74,6 +74,8 @@ stateDiagram-v2
 | `ff_swarm_mode` | `FF_SWARM_MODE` | CLI / dispatcher | InDev | `false` | KDI-041 | Multi-agent task graph: `kdi swarm` creates parallel workers, a verifier, and a synthesizer bound by dependencies. |
 | `ff_dispatcher_presence_warning` | `FF_DISPATCHER_PRESENCE_WARNING` | CLI / dispatcher + create | InDev | `false` | KDI-037 | `kdi create` warns on stderr when no live dispatcher is detected for the target board; `--no-dispatcher-warning` per-invocation escape. |
 | `ff_goal_mode` | `FF_GOAL_MODE` | CLI / create + dispatcher | InDev | `false` | KDI-038 | Ralph-style multi-turn goal loop; `kdi create --goal`/`--goal-max-turns`/`--goal-judge`; dispatcher decrements a turn budget and requeues until the (v1 approximated) judge says done.
+| `ff_harness_context` | `FF_HARNESS_CONTEXT` | CLI / dispatcher | InDev | `false` | KDI-052 | Pass task title/body/id and board slug to harness via `{{title}}`/`{{body}}` templates and `KDI_TASK_TITLE`/`KDI_TASK_BODY`/`KDI_TASK_ID`/`KDI_BOARD` env vars.
+| `ff_result_summary` | `FF_RESULT_SUMMARY` | CLI / dispatcher | InDev | `false` | KDI-053 | Store clean result/summary from harness output; reads `.kdi-result.txt` or the last JSON text chunk instead of raw stdout.
 
 ## Lifecycle Notes
 
@@ -655,6 +657,36 @@ stateDiagram-v2
   - Unblocking a goal task whose `block_reason` is "Goal max turns exhausted" resets `goal_remaining_turns` to `goal_max_turns`.
   - `kdi show <id>` displays `Goal: <remaining>/<max> turns, judge=<profile>` when the flag is enabled and the task is goal-mode.
 - **Rollback / deactivation:** Set `FF_GOAL_MODE=false` to reject the goal-mode CLI options and skip the dispatcher goal loop; existing goal-mode rows are dispatched as normal single-turn tasks.
+- **Deprecation plan:** N/A
+
+### `ff_harness_context` — InDev
+
+- **Owner:** kdi core team
+- **BRD:** KDI-052
+- **Status transitions:**
+  - `Planned` → `InDev` when `KDI_TASK_TITLE`, `KDI_TASK_BODY`, `KDI_TASK_ID`, and `KDI_BOARD` env vars are passed to the harness.
+  - `InDev` → `Active` when harness context propagation is stable and safe to enable by default.
+- **Schema note:** No schema changes; reuses existing `tasks.title`, `tasks.body`, and `boards.slug` columns.
+- **Activation criteria:**
+  - Dispatcher substitutes `{{title}}` and `{{body}}` in profile commands.
+  - Dispatcher sets `KDI_TASK_TITLE`, `KDI_TASK_BODY`, `KDI_TASK_ID`, and `KDI_BOARD` env vars for the harness process when the flag is enabled.
+- **Rollback / deactivation:** Set `FF_HARNESS_CONTEXT=false` to stop passing task context env vars and template substitution.
+- **Deprecation plan:** N/A
+
+### `ff_result_summary` — InDev
+
+- **Owner:** kdi core team
+- **BRD:** KDI-053
+- **Status transitions:**
+  - `Planned` → `InDev` when dispatcher result/summary extraction is implemented.
+- **Schema note:** No schema changes; reads from the harness worktree or stdout at runtime.
+- **Activation criteria:**
+  - When `FF_RESULT_SUMMARY=true`, a successful harness run stores the contents of `<worktree>/.kdi-result.txt` as `tasks.result` if the file exists.
+  - If no result file exists, the dispatcher parses stdout as JSON Lines and uses the string value of the last top-level `content`, `text`, `output`, `message`, or `result` field.
+  - When no parseable text chunk is found, raw stdout is stored (preserving old behavior).
+  - The run's `summary` is set to the same clean summary (first 200 characters).
+  - The dispatcher exports `KDI_RESULT_FILE` and substitutes `{{result_file}}` in profile commands when the flag is enabled, so harnesses know where to write.
+- **Rollback / deactivation:** Set `FF_RESULT_SUMMARY=false` to store raw stdout as `tasks.result`/`tasks.summary` and to skip `KDI_RESULT_FILE`/`{{result_file}}` exposure.
 - **Deprecation plan:** N/A
 
 ### `ff_tail_no_follow` — InDev
