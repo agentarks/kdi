@@ -26,6 +26,17 @@
 - [x] Unit/e2e tests and user-loop smoke pass
 - [x] `bun run lint`, `bun run test` (910 pass), `bun run build` pass
 
+## KDI-052: Pass Task Title/Body to Harness — Done
+- [x] Feature flag `ff_task_context` / `FF_TASK_CONTEXT` registered in `specs/feature-flags.md` and `src/flags.ts`, defaults to `false`
+- [x] Added `title` and `body` to `ALLOWED_TEMPLATES` in `src/profiles.ts`
+- [x] Updated `substituteCommand` in `src/profiles.ts` to accept and substitute `{{title}}` and `{{body}}`
+- [x] Updated `src/dispatcher.ts` `tick` to pass `title` and `body` into `substituteCommand` only when `FF_TASK_CONTEXT` is enabled
+- [x] Updated `src/dispatcher.ts` `harnessEnv` to set `KDI_TASK_TITLE`, `KDI_TASK_BODY`, `KDI_TASK_ID`, and `KDI_BOARD` only when `FF_TASK_CONTEXT` is enabled
+- [x] Added tests in `tests/profiles.test.ts` for `{{title}}`/`{{body}}` validation and substitution
+- [x] Added tests in `tests/dispatcher.test.ts` for `{{title}}`/`{{body}}` command substitution and `KDI_TASK_*` env vars, including null-body handling and disabled-flag behavior
+- [x] Updated existing dispatcher tests that previously expected an undefined env object when no optional env vars were set
+- [x] `bun run lint`, `bun run test`, and `bun run build` pass
+
 ## Hermes Kanban Parity Verification — 2026-06-20/21 (in progress)
 - [x] Live CLI verification run via `kdi-new-feature-loop` with temp `HOME`/`KDI_DB` and all feature flags enabled.
 - [x] ~~Critical bug: global/subcommand `--board` flag is ignored; only `KDI_BOARD` env and current-board file resolve correctly.~~ **Fixed by KDI-042.**
@@ -33,7 +44,8 @@
 - [x] Additional verified gaps documented in `specs/hermes-kanban-backlog.md` (KDI-042 through KDI-052); **KDI-043 is done**.
 - [x] Test suite health: `bun run lint` passes; `bun test` reports **867 pass / 0 fail** (867 tests, 41 files) when run with isolated `KDI_DB`.
 - [x] **Real harness end-to-end test with opencode**: dispatcher creates worktree `wt/opencode/1`, spawns `opencode run`, agent edits `README.md`, task moves to `done`. Verified worktree isolation, log capture, and run recording.
-- [ ] Pass task context to harnesses, clean up result/summary capture, and continue parity work (tracked in KDI-052 / KDI-053).
+- [x] Pass task title/body context to harnesses (KDI-052).
+- [ ] Clean up result/summary capture and continue parity work (tracked in KDI-053).
 
 ## KDI-045: `kdi create --parent` — Done
 - [x] BRD drafted at `specs/brd-kdi-045-create-parent.md`

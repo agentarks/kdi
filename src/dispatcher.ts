@@ -10,7 +10,7 @@ import { decrementGoalTurns } from "./models/task";
 import { isBlockedByDependencies } from "./models/dependency";
 import { getProfile, substituteCommand } from "./profiles";
 import { createWorktree, removeWorktree, type RemoveWorktreeResult } from "./worktree";
-import { isEnabled, FF_ENABLE_KANBAN_DISPATCH, FF_WORKER_LOG_CAPTURE, FF_CRASH_GRACE_PERIOD, FF_HEARTBEAT, FF_RATE_LIMIT_EXIT_CODE, FF_NOTIFY_SUBS, FF_SWARM_MODE, FF_GOAL_MODE } from "./flags";
+import { isEnabled, FF_ENABLE_KANBAN_DISPATCH, FF_WORKER_LOG_CAPTURE, FF_CRASH_GRACE_PERIOD, FF_HEARTBEAT, FF_RATE_LIMIT_EXIT_CODE, FF_NOTIFY_SUBS, FF_SWARM_MODE, FF_GOAL_MODE, FF_TASK_CONTEXT } from "./flags";
 import { runNotifierWatcher, getLastSeenEventId, setLastSeenEventId } from "./notifiers";
 import {
   recordTick,
@@ -560,6 +560,7 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
       const skillsValue = task.skills && task.skills.length > 0 ? task.skills.join(",") : "";
       const modelValue = task.model_override ?? "";
       const stepKey = task.current_step_key ?? "";
+      const taskContextEnabled = isEnabled(FF_TASK_CONTEXT);
       const command = substituteCommand(profile.command, {
         workdir: worktreePath,
         branch: worktreeBranch,
@@ -568,9 +569,17 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
         skills: skillsValue,
         model: modelValue,
         step_key: stepKey,
+        title: taskContextEnabled ? task.title : "",
+        body: taskContextEnabled ? (task.body ?? "") : "",
       });
 
       const harnessEnv: Record<string, string> | undefined = {};
+      if (taskContextEnabled) {
+        harnessEnv.KDI_TASK_TITLE = task.title;
+        harnessEnv.KDI_TASK_BODY = task.body ?? "";
+        harnessEnv.KDI_TASK_ID = String(task.id);
+        harnessEnv.KDI_BOARD = boardSlug ?? "";
+      }
       if (skillsValue) harnessEnv.KDI_SKILLS = skillsValue;
       if (modelValue) harnessEnv.KDI_MODEL = modelValue;
       if (stepKey) harnessEnv.KDI_CURRENT_STEP_KEY = stepKey;
