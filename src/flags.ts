@@ -88,52 +88,60 @@ export function clearOverrides(): void {
 }
 
 // Register built-in flags
-registerFlag(FF_ENABLE_KANBAN_DISPATCH, false);
-registerFlag(FF_WORKER_LOG_CAPTURE, false);
-registerFlag(FF_SCHEDULED_STATUS, false);
-registerFlag(FF_REVIEW_STATUS, false);
-registerFlag(FF_COMPLETE_METADATA, false);
-registerFlag(FF_PRIORITY_INTEGER, false);
-registerFlag(FF_MAX_RUNTIME, false);
-registerFlag(FF_SKILLS_ARRAY, false);
-registerFlag(FF_TENANT_NAMESPACE, false);
-registerFlag(FF_CREATED_BY, false);
-registerFlag(FF_MODEL_OVERRIDE, false);
-registerFlag(FF_MAX_RETRIES, false);
-registerFlag(FF_BOARD_METADATA, false);
+//
+// Rollout policy (post KDI-054 Hermes parity smoke test):
+// - Core task lifecycle, board management, dispatch, and observability flags
+//   are promoted to Active (default true). Users can still disable them via
+//   FF_<FLAG>=false.
+// - Advanced/experimental features remain InDev (default false): LLM triage,
+//   swarm mode, goal mode, notification subscriptions, triage automation, and
+//   permanent board deletion.
+registerFlag(FF_ENABLE_KANBAN_DISPATCH, true);
+registerFlag(FF_WORKER_LOG_CAPTURE, true);
+registerFlag(FF_SCHEDULED_STATUS, true);
+registerFlag(FF_REVIEW_STATUS, true);
+registerFlag(FF_COMPLETE_METADATA, true);
+registerFlag(FF_PRIORITY_INTEGER, true);
+registerFlag(FF_MAX_RUNTIME, true);
+registerFlag(FF_SKILLS_ARRAY, true);
+registerFlag(FF_TENANT_NAMESPACE, true);
+registerFlag(FF_CREATED_BY, true);
+registerFlag(FF_MODEL_OVERRIDE, true);
+registerFlag(FF_MAX_RETRIES, true);
+registerFlag(FF_BOARD_METADATA, true);
 registerFlag(FF_BOARD_RM_DELETE, false);
-registerFlag(FF_BOARD_RENAME, false);
-registerFlag(FF_BOARD_RENAME_HERMES, false);
-registerFlag(FF_BOARD_SWITCH, false);
-registerFlag(FF_BOARD_CREATE_SWITCH, false);
-registerFlag(FF_DEFAULT_WORKDIR, false);
-registerFlag(FF_ASSIGN_REASSIGN, false);
-registerFlag(FF_CRASH_GRACE_PERIOD, false);
-registerFlag(FF_HEARTBEAT, false);
-registerFlag(FF_RATE_LIMIT_EXIT_CODE, false);
-registerFlag(FF_STATS, false);
-registerFlag(FF_GC, false);
-registerFlag(FF_ASSIGNEES_LISTING, false);
-registerFlag(FF_TASK_ATTACHMENTS, false);
-registerFlag(FF_DIAGNOSTICS, false);
-registerFlag(FF_CONTEXT_BUILDER, false);
+registerFlag(FF_BOARD_RENAME, true);
+registerFlag(FF_BOARD_RENAME_HERMES, true);
+registerFlag(FF_BOARD_SWITCH, true);
+registerFlag(FF_BOARD_CREATE_SWITCH, true);
+registerFlag(FF_DEFAULT_WORKDIR, true);
+registerFlag(FF_ASSIGN_REASSIGN, true);
+registerFlag(FF_CRASH_GRACE_PERIOD, true);
+registerFlag(FF_HEARTBEAT, true);
+registerFlag(FF_RATE_LIMIT_EXIT_CODE, true);
+registerFlag(FF_STATS, true);
+registerFlag(FF_GC, true);
+registerFlag(FF_ASSIGNEES_LISTING, true);
+registerFlag(FF_TASK_ATTACHMENTS, true);
+registerFlag(FF_DIAGNOSTICS, true);
+registerFlag(FF_CONTEXT_BUILDER, true);
 registerFlag(FF_NOTIFY_SUBS, false);
-registerFlag(FF_LIST_FILTERS_SORT, false);
-registerFlag(FF_SHOW_RUN_FILTERING, false);
-registerFlag(FF_RUNS_FILTERING, false);
-registerFlag(FF_BULK_OPERATIONS, false);
-registerFlag(FF_COMMENT_ENHANCEMENTS, false);
-registerFlag(FF_DISPATCH_CONTROLS, false);
-registerFlag(FF_WATCH_FILTERS, false);
-registerFlag(FF_WORKFLOW_TEMPLATES, false);
+registerFlag(FF_LIST_FILTERS_SORT, true);
+registerFlag(FF_SHOW_RUN_FILTERING, true);
+registerFlag(FF_RUNS_FILTERING, true);
+registerFlag(FF_BULK_OPERATIONS, true);
+registerFlag(FF_COMMENT_ENHANCEMENTS, true);
+registerFlag(FF_DISPATCH_CONTROLS, true);
+registerFlag(FF_WATCH_FILTERS, true);
+registerFlag(FF_WORKFLOW_TEMPLATES, true);
 registerFlag(FF_TRIAGE_AUTOMATION, false);
 registerFlag(FF_SWARM_MODE, false);
-registerFlag(FF_DISPATCHER_PRESENCE_WARNING, false);
+registerFlag(FF_DISPATCHER_PRESENCE_WARNING, true);
 registerFlag(FF_GOAL_MODE, false);
-registerFlag(FF_DISPATCH_ONCE, false);
-registerFlag(FF_LINK_UNLINK, false);
-registerFlag(FF_GLOBAL_BOARD, false);
-registerFlag(FF_CREATE_PARENT, false);
-registerFlag(FF_TAIL_NO_FOLLOW, false);
-registerFlag(FF_HARNESS_CONTEXT, false);
-registerFlag(FF_RESULT_SUMMARY, false);
+registerFlag(FF_DISPATCH_ONCE, true);
+registerFlag(FF_LINK_UNLINK, true);
+registerFlag(FF_GLOBAL_BOARD, true);
+registerFlag(FF_CREATE_PARENT, true);
+registerFlag(FF_TAIL_NO_FOLLOW, true);
+registerFlag(FF_HARNESS_CONTEXT, true);
+registerFlag(FF_RESULT_SUMMARY, true);

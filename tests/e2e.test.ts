@@ -218,7 +218,7 @@ describe("kdi e2e acceptance", () => {
       mkdirSync(repoDir, { recursive: true });
       setupGitRepo(repoDir);
       setupProfiles(tmp, [{ name: "depagent", command: "echo parent-done" }]);
-      const env = { KDI_DB: dbPath, HOME: tmp, FF_ENABLE_KANBAN_DISPATCH: "true" };
+      const env = { KDI_DB: dbPath, HOME: tmp, FF_ENABLE_KANBAN_DISPATCH: "true", FF_BULK_OPERATIONS: "false" };
 
       runKdi(`boards create myproj --workdir ${repoDir}`, env);
       const parentId = runKdi(`create "parent" --board myproj --assignee depagent`, env);
@@ -710,7 +710,7 @@ describe("kdi e2e acceptance", () => {
     const repoDir = join(tmp, "repo");
     mkdirSync(repoDir, { recursive: true });
     setupGitRepo(repoDir);
-    const env = { KDI_DB: dbPath, HOME: tmp };
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_TENANT_NAMESPACE: "false" };
 
     runKdi(`boards create myproj --workdir ${repoDir}`, env);
     expect(() => runKdi(`create "backend task" --board myproj --tenant backend`, env)).toThrow();
@@ -724,7 +724,7 @@ describe("kdi e2e acceptance", () => {
     const repoDir = join(tmp, "repo");
     mkdirSync(repoDir, { recursive: true });
     setupGitRepo(repoDir);
-    const env = { KDI_DB: dbPath, HOME: tmp };
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_TENANT_NAMESPACE: "false" };
 
     runKdi(`boards create myproj --workdir ${repoDir}`, env);
     expect(() => runKdi(`list --board myproj --tenant backend`, env)).toThrow();
@@ -769,7 +769,7 @@ describe("kdi e2e acceptance", () => {
     const repoDir = join(tmp, "repo");
     mkdirSync(repoDir, { recursive: true });
     setupGitRepo(repoDir);
-    const env = { KDI_DB: dbPath, HOME: tmp };
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_SKILLS_ARRAY: "false" };
 
     runKdi(`boards create myproj --workdir ${repoDir}`, env);
     expect(() => runKdi(`create "bad" --board myproj --skill github`, env)).toThrow();
@@ -814,7 +814,7 @@ describe("kdi e2e acceptance", () => {
     const repoDir = join(tmp, "repo");
     mkdirSync(repoDir, { recursive: true });
     setupGitRepo(repoDir);
-    const env = { KDI_DB: dbPath, HOME: tmp };
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_MAX_RUNTIME: "false" };
 
     runKdi(`boards create myproj --workdir ${repoDir}`, env);
     expect(() => runKdi(`create "capped task" --board myproj --max-runtime 30s`, env)).toThrow();
@@ -993,7 +993,7 @@ describe("kdi e2e acceptance", () => {
     const repoDir = join(tmp, "repo");
     mkdirSync(repoDir, { recursive: true });
     setupGitRepo(repoDir);
-    const env = { KDI_DB: dbPath, HOME: tmp };
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_MODEL_OVERRIDE: "false" };
 
     runKdi(`boards create myproj --workdir ${repoDir}`, env);
     expect(() => runKdi(`create "bad" --board myproj --model gpt-5.5`, env)).toThrow();
@@ -1041,7 +1041,7 @@ describe("kdi e2e acceptance", () => {
     const repoDir = join(tmp, "repo");
     mkdirSync(repoDir, { recursive: true });
     setupGitRepo(repoDir);
-    const env = { KDI_DB: dbPath, HOME: tmp };
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_MAX_RETRIES: "false" };
 
     runKdi(`boards create myproj --workdir ${repoDir}`, env);
     expect(() => runKdi(`create "retry task" --board myproj --max-retries 3`, env)).toThrow();
@@ -1101,7 +1101,7 @@ describe("kdi e2e acceptance", () => {
     const repoDir = join(tmp, "repo");
     mkdirSync(repoDir, { recursive: true });
     setupGitRepo(repoDir);
-    const env = { KDI_DB: dbPath, HOME: tmp };
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_RATE_LIMIT_EXIT_CODE: "false" };
 
     runKdi(`boards create myproj --workdir ${repoDir}`, env);
     expect(() => runKdi(`dispatch --rate-limit-cooldown 30s`, env)).toThrow(/Rate-limit exit code handling is not enabled/);
@@ -1228,6 +1228,7 @@ describe("kdi e2e acceptance", () => {
   });
 
   it("boards create --name is rejected when flag disabled", () => {
+    const disabledEnv = { ...process.env, FF_BOARD_METADATA: "false" };
     const tmp = makeTempDir("board-metadata-disabled");
     const dbPath = join(tmp, "kdi.db");
     const repoDir = join(tmp, "repo");
@@ -1235,7 +1236,7 @@ describe("kdi e2e acceptance", () => {
     setupGitRepo(repoDir);
     const env = { KDI_DB: dbPath, HOME: tmp };
 
-    expect(() => runKdi(`boards create myproj --workdir ${repoDir} --name "My Project"`, env)).toThrow();
+    expect(() => runKdi(`boards create myproj --workdir ${repoDir} --name "My Project"`, disabledEnv)).toThrow();
 
     rmSync(tmp, { recursive: true, force: true });
   });
@@ -1264,7 +1265,7 @@ describe("kdi e2e acceptance", () => {
     const repoDir = join(tmp, "repo");
     mkdirSync(repoDir, { recursive: true });
     setupGitRepo(repoDir);
-    const env = { KDI_DB: dbPath, HOME: tmp };
+    const env = { KDI_DB: dbPath, HOME: tmp, FF_BOARD_METADATA: "false" };
 
     runKdi(`boards create myproj --workdir ${repoDir}`, env);
     expect(() => runKdi(`boards edit myproj --name "Updated"`, env)).toThrow();
@@ -1273,6 +1274,7 @@ describe("kdi e2e acceptance", () => {
   });
 
   it("boards create --description is rejected when flag disabled", () => {
+    const disabledEnv = { ...process.env, FF_BOARD_METADATA: "false" };
     const tmp = makeTempDir("board-description-disabled");
     const dbPath = join(tmp, "kdi.db");
     const repoDir = join(tmp, "repo");
@@ -1280,7 +1282,7 @@ describe("kdi e2e acceptance", () => {
     setupGitRepo(repoDir);
     const env = { KDI_DB: dbPath, HOME: tmp };
 
-    expect(() => runKdi(`boards create myproj --workdir ${repoDir} --description "Project board"`, env)).toThrow();
+    expect(() => runKdi(`boards create myproj --workdir ${repoDir} --description "Project board"`, disabledEnv)).toThrow();
 
     rmSync(tmp, { recursive: true, force: true });
   });

@@ -45,7 +45,7 @@ describe("FF_DISPATCH_ONCE (kdi dispatch --once)", () => {
   it("--once without FF_DISPATCH_ONCE errors with a clear message", () => {
     const r = runKdi(
       ["dispatch", "--once"],
-      { FF_ENABLE_KANBAN_DISPATCH: "true" }
+      { FF_ENABLE_KANBAN_DISPATCH: "true", FF_DISPATCH_ONCE: "false" }
     );
     expect(r.ok).toBe(false);
     expect(r.stdout + r.stderr).toContain("--once is not enabled");

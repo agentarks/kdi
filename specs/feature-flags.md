@@ -28,54 +28,67 @@ stateDiagram-v2
 
 | Flag | Env Var | Scope | Status | Default | Since | Description |
 |---|---|---|---|---|---|---|
-| `ff_created_by` | `FF_CREATED_BY` | CLI / task metadata | InDev | `false` | KDI-007 | Tracks and displays the actor that created a task. |
+| `ff_created_by` | `FF_CREATED_BY` | CLI / task metadata | Active | `true` | KDI-007 | Tracks and displays the actor that created a task. |
 | `ff_board_rm_delete` | `FF_BOARD_RM_DELETE` | CLI / board management | InDev | `false` | KDI-012c | Gates `boards rm --delete` permanent board deletion. |
-| `ff_complete_metadata` | `FF_COMPLETE_METADATA` | CLI / complete | InDev | `false` | KDI-005 | Gates --metadata option only. Base --result / --summary always available. |
-| `ff_kanban_dispatch` | `FF_ENABLE_KANBAN_DISPATCH` | CLI / dispatcher | Planned | `false` | — | Background dispatcher loop that polls ready tasks and spawns harness profiles. |
-| `ff_scheduled_status` | `FF_SCHEDULED_STATUS` | CLI / task lifecycle | InDev | `false` | KDI-002 | Scheduled status, schedule/unblock commands, and scheduled_at field. |
-| `ff_review_status` | `FF_REVIEW_STATUS` | CLI / task lifecycle | InDev | `false` | KDI-003 | Review status and review command. |
-| `ff_priority_integer` | `FF_PRIORITY_INTEGER` | CLI / create | InDev | `false` | KDI-005 | Integer priority validation for create --priority (advisory — schema migration always runs). |
-| `ff_tenant_namespace` | `FF_TENANT_NAMESPACE` | CLI / task lifecycle | InDev | `false` | KDI-006 | Tenant namespace on tasks; `create --tenant`; `list --tenant` filters by tenant. |
-| `ff_skills_array` | `FF_SKILLS_ARRAY` | CLI / create, dispatcher | InDev | `false` | KDI-009 | Skills array on tasks; `create --skill`; dispatcher passes skills to harness via `{{skills}}` and `KDI_SKILLS`. |
-| `ff_max_runtime` | `FF_MAX_RUNTIME` | CLI / create + dispatcher | InDev | `false` | KDI-008 | Per-task max runtime cap; dispatcher SIGTERMs/SIGKILLs worker when exceeded. |
-| `ff_model_override` | `FF_MODEL_OVERRIDE` | CLI / create + dispatcher | InDev | `false` | KDI-010 | Per-task model override; `create --model`; dispatcher passes `{{model}}` and `KDI_MODEL` to harness. |
-| `ff_max_retries` | `FF_MAX_RETRIES` | CLI / create + dispatcher | InDev | `false` | KDI-011 | Per-task max retries; auto-block after N consecutive spawn/execution failures. |
-| `ff_rate_limit_exit_code` | `FF_RATE_LIMIT_EXIT_CODE` | CLI / dispatcher | InDev | `false` | KDI-016c | Treat harness exit code 75 (EX_TEMPFAIL) as a transient rate limit and requeue with a cooldown instead of counting it as a failure. |
-| `ff_board_metadata` | `FF_BOARD_METADATA` | CLI / board metadata | InDev | `false` | KDI-012 | Board name, icon, color, and description; `boards create --name/--icon/--color/--description`, `boards edit`, and metadata display. |
-| `ff_board_switch` | `FF_BOARD_SWITCH` | CLI / board management | InDev | `false` | KDI-013 | Board switch command and resolution chain; `boards switch`, `boards show` without slug. |
-| `ff_board_create_switch` | `FF_BOARD_CREATE_SWITCH` | CLI / board management | InDev | `false` | KDI-013x | `boards create --switch` auto-switches to the new board after creation (hermes parity). |
-| `ff_global_board` | `FF_GLOBAL_BOARD` | CLI / board resolution | InDev | `false` | KDI-013 | Program-level `kdi --board <slug>` sets `KDI_BOARD` for the subcommand; lower priority than the subcommand's own `--board`. |
-| `ff_board_rename` | `FF_BOARD_RENAME` | CLI / board management | InDev | `false` | KDI-014 | Board slug rename command; `boards rename-slug <old-slug> <new-slug>` renames slug and data directory. |
-| `ff_board_rename_hermes` | `FF_BOARD_RENAME_HERMES` | CLI / board management | InDev | `false` | KDI-046 | Hermes-parity display-name rename; `boards rename <slug> <name>` changes only the display name. Slug rename moves to `boards rename-slug`. |
-| `ff_default_workdir` | `FF_DEFAULT_WORKDIR` | CLI / board management + create | InDev | `false` | KDI-015 | Board default task workspace; `boards set-default-workdir`; create inheritance and `--workspace`. |
-| `ff_assignees_listing` | `FF_ASSIGNEES_LISTING` | CLI / observability | InDev | `false` | KDI-024 | `kdi assignees` lists known profiles plus per-profile task counts for the current board. |
-| `ff_heartbeat` | `FF_HEARTBEAT` | CLI / task lifecycle + dispatcher | InDev | `false` | KDI-016 | Worker heartbeat command and dispatcher stale-heartbeat reclaim. |
-| `ff_crash_grace_period` | `FF_CRASH_GRACE_PERIOD` | CLI / dispatcher | InDev | `false` | KDI-016b | Crash grace period for slow-starting harnesses; delay PID liveness checks for 30s after spawn. |
-| `ff_assign_reassign` | `FF_ASSIGN_REASSIGN` | CLI / task lifecycle | InDev | `false` | KDI-017 | Assign/reassign task assignee; `assign`, `reassign`, and `reassign --reclaim`. |
-| `ff_worker_log_capture` | `FF_WORKER_LOG_CAPTURE` | CLI / dispatcher | InDev | `false` | KDI-018 | Worker stdout/stderr capture; `kdi log <task_id>` and `--tail`. |
-| `ff_stats` | `FF_STATS` | CLI / observability | InDev | `false` | KDI-019 | Board stats command; per-status counts, per-assignee counts, oldest-ready age, and `--json` output. |
-| `ff_gc` | `FF_GC` | CLI / maintenance | InDev | `false` | KDI-021 | Garbage collection command; prunes old events, old logs, and KDI-owned archived-task workspaces. |
-| `ff_task_attachments` | `FF_TASK_ATTACHMENTS` | CLI / task metadata | InDev | `false` | KDI-022 | Task file attachments; `kdi attach <task_id> <file>` and attachment display in `kdi show`. |
-| `ff_diagnostics` | `FF_DIAGNOSTICS` | CLI / observability | InDev | `false` | KDI-020 | Board diagnostics command; health-check rules, severity filtering, per-task mode, and `--json` output. |
-| `ff_context_builder` | `FF_CONTEXT_BUILDER` | CLI / task context | InDev | `false` | KDI-023 | `kdi context` bounded worker context builder. |
+| `ff_complete_metadata` | `FF_COMPLETE_METADATA` | CLI / complete | Active | `true` | KDI-005 | Gates --metadata option only. Base --result / --summary always available. |
+| `ff_kanban_dispatch` | `FF_ENABLE_KANBAN_DISPATCH` | CLI / dispatcher | Active | `true` | — | Background dispatcher loop that polls ready tasks and spawns harness profiles. |
+| `ff_scheduled_status` | `FF_SCHEDULED_STATUS` | CLI / task lifecycle | Active | `true` | KDI-002 | Scheduled status, schedule/unblock commands, and scheduled_at field. |
+| `ff_review_status` | `FF_REVIEW_STATUS` | CLI / task lifecycle | Active | `true` | KDI-003 | Review status and review command. |
+| `ff_priority_integer` | `FF_PRIORITY_INTEGER` | CLI / create | Active | `true` | KDI-005 | Integer priority validation for create --priority (advisory — schema migration always runs). |
+| `ff_tenant_namespace` | `FF_TENANT_NAMESPACE` | CLI / task lifecycle | Active | `true` | KDI-006 | Tenant namespace on tasks; `create --tenant`; `list --tenant` filters by tenant. |
+| `ff_skills_array` | `FF_SKILLS_ARRAY` | CLI / create, dispatcher | Active | `true` | KDI-009 | Skills array on tasks; `create --skill`; dispatcher passes skills to harness via `{{skills}}` and `KDI_SKILLS`. |
+| `ff_max_runtime` | `FF_MAX_RUNTIME` | CLI / create + dispatcher | Active | `true` | KDI-008 | Per-task max runtime cap; dispatcher SIGTERMs/SIGKILLs worker when exceeded. |
+| `ff_model_override` | `FF_MODEL_OVERRIDE` | CLI / create + dispatcher | Active | `true` | KDI-010 | Per-task model override; `create --model`; dispatcher passes `{{model}}` and `KDI_MODEL` to harness. |
+| `ff_max_retries` | `FF_MAX_RETRIES` | CLI / create + dispatcher | Active | `true` | KDI-011 | Per-task max retries; auto-block after N consecutive spawn/execution failures. |
+| `ff_rate_limit_exit_code` | `FF_RATE_LIMIT_EXIT_CODE` | CLI / dispatcher | Active | `true` | KDI-016c | Treat harness exit code 75 (EX_TEMPFAIL) as a transient rate limit and requeue with a cooldown instead of counting it as a failure. |
+| `ff_board_metadata` | `FF_BOARD_METADATA` | CLI / board metadata | Active | `true` | KDI-012 | Board name, icon, color, and description; `boards create --name/--icon/--color/--description`, `boards edit`, and metadata display. |
+| `ff_board_switch` | `FF_BOARD_SWITCH` | CLI / board management | Active | `true` | KDI-013 | Board switch command and resolution chain; `boards switch`, `boards show` without slug. |
+| `ff_board_create_switch` | `FF_BOARD_CREATE_SWITCH` | CLI / board management | Active | `true` | KDI-013x | `boards create --switch` auto-switches to the new board after creation (hermes parity). |
+| `ff_global_board` | `FF_GLOBAL_BOARD` | CLI / board resolution | Active | `true` | KDI-013 | Program-level `kdi --board <slug>` sets `KDI_BOARD` for the subcommand; lower priority than the subcommand's own `--board`. |
+| `ff_board_rename` | `FF_BOARD_RENAME` | CLI / board management | Active | `true` | KDI-014 | Board slug rename command; `boards rename-slug <old-slug> <new-slug>` renames slug and data directory. |
+| `ff_board_rename_hermes` | `FF_BOARD_RENAME_HERMES` | CLI / board management | Active | `true` | KDI-046 | Hermes-parity display-name rename; `boards rename <slug> <name>` changes only the display name. Slug rename moves to `boards rename-slug`. |
+| `ff_default_workdir` | `FF_DEFAULT_WORKDIR` | CLI / board management + create | Active | `true` | KDI-015 | Board default task workspace; `boards set-default-workdir`; create inheritance and `--workspace`. |
+| `ff_assignees_listing` | `FF_ASSIGNEES_LISTING` | CLI / observability | Active | `true` | KDI-024 | `kdi assignees` lists known profiles plus per-profile task counts for the current board. |
+| `ff_heartbeat` | `FF_HEARTBEAT` | CLI / task lifecycle + dispatcher | Active | `true` | KDI-016 | Worker heartbeat command and dispatcher stale-heartbeat reclaim. |
+| `ff_crash_grace_period` | `FF_CRASH_GRACE_PERIOD` | CLI / dispatcher | Active | `true` | KDI-016b | Crash grace period for slow-starting harnesses; delay PID liveness checks for 30s after spawn. |
+| `ff_assign_reassign` | `FF_ASSIGN_REASSIGN` | CLI / task lifecycle | Active | `true` | KDI-017 | Assign/reassign task assignee; `assign`, `reassign`, and `reassign --reclaim`. |
+| `ff_worker_log_capture` | `FF_WORKER_LOG_CAPTURE` | CLI / dispatcher | Active | `true` | KDI-018 | Worker stdout/stderr capture; `kdi log <task_id>` and `--tail`. |
+| `ff_stats` | `FF_STATS` | CLI / observability | Active | `true` | KDI-019 | Board stats command; per-status counts, per-assignee counts, oldest-ready age, and `--json` output. |
+| `ff_gc` | `FF_GC` | CLI / maintenance | Active | `true` | KDI-021 | Garbage collection command; prunes old events, old logs, and KDI-owned archived-task workspaces. |
+| `ff_task_attachments` | `FF_TASK_ATTACHMENTS` | CLI / task metadata | Active | `true` | KDI-022 | Task file attachments; `kdi attach <task_id> <file>` and attachment display in `kdi show`. |
+| `ff_diagnostics` | `FF_DIAGNOSTICS` | CLI / observability | Active | `true` | KDI-020 | Board diagnostics command; health-check rules, severity filtering, per-task mode, and `--json` output. |
+| `ff_context_builder` | `FF_CONTEXT_BUILDER` | CLI / task context | Active | `true` | KDI-023 | `kdi context` bounded worker context builder. |
 | `ff_notify_subs` | `FF_NOTIFY_SUBS` | CLI / notifier watcher | InDev | `false` | KDI-025 | Notification subscriptions; `notify-subscribe/list/unsubscribe` commands; notifier watcher in dispatcher tick.
-| `ff_list_filters_sort` | `FF_LIST_FILTERS_SORT` | CLI / task listing | InDev | `false` | KDI-030 | `kdi list` filters (`--mine`, `--session`, `--archived`, workflow/step-key) and sort options; `create --session`.
-| `ff_show_run_filtering` | `FF_SHOW_RUN_FILTERING` | CLI / task inspection | InDev | `false` | KDI-031 | `kdi show` run section and `--state-type`/`--state-name` run filtering.
-| `ff_runs_filtering` | `FF_RUNS_FILTERING` | CLI / task inspection | InDev | `false` | KDI-036 | `kdi runs` `--state-type`/`--state-name` run filtering.
-| `ff_bulk_operations` | `FF_BULK_OPERATIONS` | CLI / task lifecycle | InDev | `false` | KDI-032 | Bulk `block`/`promote`/`archive --rm`; `promote --force` and `--dry-run`.
-| `ff_comment_enhancements` | `FF_COMMENT_ENHANCEMENTS` | CLI / task metadata | InDev | `false` | KDI-033 | `kdi comment --author`/`--max-len` and author display in `kdi show`.
-| `ff_dispatch_controls` | `FF_DISPATCH_CONTROLS` | CLI / dispatcher | InDev | `false` | KDI-034 | `kdi dispatch --failure-limit` per-pass failure threshold.
-| `ff_dispatch_once` | `FF_DISPATCH_ONCE` | CLI / dispatcher | InDev | `false` | KDI-034x | `kdi dispatch --once` runs a single tick and exits (hermes `dispatch` parity). Default `dispatch` is still a long-running daemon. |
-| `ff_link_unlink` | `FF_LINK_UNLINK` | CLI / task lifecycle | InDev | `false` | KDI-026 | `kdi link` / `kdi unlink` parent<->child dependency CLI; cycles and self-loops rejected. |
-| `ff_create_parent` | `FF_CREATE_PARENT` | CLI / task lifecycle | InDev | `false` | KDI-045 | `kdi create --parent <task_id>` repeatable; create parent->child dependencies at task creation time. |
-| `ff_watch_filters` | `FF_WATCH_FILTERS` | CLI / observability | InDev | `false` | KDI-035 | `kdi watch --assignee`/`--tenant`/`--kinds`/`--interval` filters.
-| `ff_workflow_templates` | `FF_WORKFLOW_TEMPLATES` | CLI / task lifecycle | InDev | `false` | KDI-039 | Step-key driven workflow templates; `kdi create --workflow-template-id`, `kdi step`, `kdi workflows`.
+| `ff_list_filters_sort` | `FF_LIST_FILTERS_SORT` | CLI / task listing | Active | `true` | KDI-030 | `kdi list` filters (`--mine`, `--session`, `--archived`, workflow/step-key) and sort options; `create --session`.
+| `ff_show_run_filtering` | `FF_SHOW_RUN_FILTERING` | CLI / task inspection | Active | `true` | KDI-031 | `kdi show` run section and `--state-type`/`--state-name` run filtering.
+| `ff_runs_filtering` | `FF_RUNS_FILTERING` | CLI / task inspection | Active | `true` | KDI-036 | `kdi runs` `--state-type`/`--state-name` run filtering.
+| `ff_bulk_operations` | `FF_BULK_OPERATIONS` | CLI / task lifecycle | Active | `true` | KDI-032 | Bulk `block`/`promote`/`archive --rm`; `promote --force` and `--dry-run`.
+| `ff_comment_enhancements` | `FF_COMMENT_ENHANCEMENTS` | CLI / task metadata | Active | `true` | KDI-033 | `kdi comment --author`/`--max-len` and author display in `kdi show`.
+| `ff_dispatch_controls` | `FF_DISPATCH_CONTROLS` | CLI / dispatcher | Active | `true` | KDI-034 | `kdi dispatch --failure-limit` per-pass failure threshold.
+| `ff_dispatch_once` | `FF_DISPATCH_ONCE` | CLI / dispatcher | Active | `true` | KDI-034x | `kdi dispatch --once` runs a single tick and exits (hermes `dispatch` parity). Default `dispatch` is still a long-running daemon. |
+| `ff_link_unlink` | `FF_LINK_UNLINK` | CLI / task lifecycle | Active | `true` | KDI-026 | `kdi link` / `kdi unlink` parent<->child dependency CLI; cycles and self-loops rejected. |
+| `ff_create_parent` | `FF_CREATE_PARENT` | CLI / task lifecycle | Active | `true` | KDI-045 | `kdi create --parent <task_id>` repeatable; create parent->child dependencies at task creation time. |
+| `ff_watch_filters` | `FF_WATCH_FILTERS` | CLI / observability | Active | `true` | KDI-035 | `kdi watch --assignee`/`--tenant`/`--kinds`/`--interval` filters.
+| `ff_workflow_templates` | `FF_WORKFLOW_TEMPLATES` | CLI / task lifecycle | Active | `true` | KDI-039 | Step-key driven workflow templates; `kdi create --workflow-template-id`, `kdi step`, `kdi workflows`.
 | `ff_triage_automation` | `FF_TRIAGE_AUTOMATION` | CLI / task lifecycle | InDev | `false` | KDI-040 | LLM-powered triage automation; `kdi specify` (LLM path) and `kdi decompose`. |
 | `ff_swarm_mode` | `FF_SWARM_MODE` | CLI / dispatcher | InDev | `false` | KDI-041 | Multi-agent task graph: `kdi swarm` creates parallel workers, a verifier, and a synthesizer bound by dependencies. |
-| `ff_dispatcher_presence_warning` | `FF_DISPATCHER_PRESENCE_WARNING` | CLI / dispatcher + create | InDev | `false` | KDI-037 | `kdi create` warns on stderr when no live dispatcher is detected for the target board; `--no-dispatcher-warning` per-invocation escape. |
+| `ff_dispatcher_presence_warning` | `FF_DISPATCHER_PRESENCE_WARNING` | CLI / dispatcher + create | Active | `true` | KDI-037 | `kdi create` warns on stderr when no live dispatcher is detected for the target board; `--no-dispatcher-warning` per-invocation escape. |
 | `ff_goal_mode` | `FF_GOAL_MODE` | CLI / create + dispatcher | InDev | `false` | KDI-038 | Ralph-style multi-turn goal loop; `kdi create --goal`/`--goal-max-turns`/`--goal-judge`; dispatcher decrements a turn budget and requeues until the (v1 approximated) judge says done.
-| `ff_harness_context` | `FF_HARNESS_CONTEXT` | CLI / dispatcher | InDev | `false` | KDI-052 | Pass task title/body/id and board slug to harness via `{{title}}`/`{{body}}` templates and `KDI_TASK_TITLE`/`KDI_TASK_BODY`/`KDI_TASK_ID`/`KDI_BOARD` env vars.
-| `ff_result_summary` | `FF_RESULT_SUMMARY` | CLI / dispatcher | InDev | `false` | KDI-053 | Store clean result/summary from harness output; reads `.kdi-result.txt` or the last JSON text chunk instead of raw stdout.
+| `ff_harness_context` | `FF_HARNESS_CONTEXT` | CLI / dispatcher | Active | `true` | KDI-052 | Pass task title/body/id and board slug to harness via `{{title}}`/`{{body}}` templates and `KDI_TASK_TITLE`/`KDI_TASK_BODY`/`KDI_TASK_ID`/`KDI_BOARD` env vars.
+| `ff_result_summary` | `FF_RESULT_SUMMARY` | CLI / dispatcher | Active | `true` | KDI-053 | Store clean result/summary from harness output; reads `.kdi-result.txt` or the last JSON text chunk instead of raw stdout.
+
+## Rollout Notes
+
+### End-user rollout (post KDI-054 Hermes parity smoke test)
+
+- Core task lifecycle, board management, dispatch, and observability flags are promoted to **Active** with default `true`.
+- Users can still disable any Active flag via `FF_<FLAG>=false`.
+- Advanced/experimental features remain **InDev** (default `false`):
+  - `FF_BOARD_RM_DELETE` — permanent board deletion is destructive.
+  - `FF_NOTIFY_SUBS` — notifier integrations need more bake time.
+  - `FF_TRIAGE_AUTOMATION` — LLM path requires API keys and validation.
+  - `FF_SWARM_MODE` — multi-agent graph is experimental.
+  - `FF_GOAL_MODE` — v1 judge approximation; waiting for real judge profile integration.
 
 ## Lifecycle Notes
 

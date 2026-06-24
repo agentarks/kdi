@@ -1,5 +1,19 @@
 # kdi — Status
 
+## End-User Rollout — Feature Flags Promoted to Active
+- [x] Hermes Kanban parity smoke test completed (create → promote → dispatch --once → done, result captured, worktree cleaned)
+- [x] Promoted stable feature flags to **Active** (default `true`) in `src/flags.ts`:
+  - Core dispatch: `FF_ENABLE_KANBAN_DISPATCH`, `FF_DISPATCH_ONCE`, `FF_DISPATCH_CONTROLS`, `FF_DISPATCHER_PRESENCE_WARNING`
+  - Harness context/results: `FF_HARNESS_CONTEXT`, `FF_RESULT_SUMMARY`, `FF_WORKER_LOG_CAPTURE`
+  - Task lifecycle: `FF_SCHEDULED_STATUS`, `FF_REVIEW_STATUS`, `FF_HEARTBEAT`, `FF_CRASH_GRACE_PERIOD`, `FF_RATE_LIMIT_EXIT_CODE`, `FF_MAX_RUNTIME`, `FF_MAX_RETRIES`, `FF_ASSIGN_REASSIGN`, `FF_LINK_UNLINK`, `FF_CREATE_PARENT`, `FF_BULK_OPERATIONS`, `FF_COMPLETE_METADATA`, `FF_PRIORITY_INTEGER`, `FF_TAIL_NO_FOLLOW`
+  - Task metadata: `FF_CREATED_BY`, `FF_TENANT_NAMESPACE`, `FF_SKILLS_ARRAY`, `FF_MODEL_OVERRIDE`, `FF_TASK_ATTACHMENTS`, `FF_COMMENT_ENHANCEMENTS`, `FF_LIST_FILTERS_SORT`
+  - Board management: `FF_BOARD_METADATA`, `FF_BOARD_SWITCH`, `FF_BOARD_CREATE_SWITCH`, `FF_GLOBAL_BOARD`, `FF_BOARD_RENAME`, `FF_BOARD_RENAME_HERMES`, `FF_DEFAULT_WORKDIR`
+  - Observability/context: `FF_STATS`, `FF_GC`, `FF_ASSIGNEES_LISTING`, `FF_DIAGNOSTICS`, `FF_CONTEXT_BUILDER`, `FF_SHOW_RUN_FILTERING`, `FF_RUNS_FILTERING`, `FF_WATCH_FILTERS`
+  - Workflows: `FF_WORKFLOW_TEMPLATES`
+- [x] Flags left **InDev** (default `false`) for safety/bake time: `FF_BOARD_RM_DELETE`, `FF_NOTIFY_SUBS`, `FF_TRIAGE_AUTOMATION`, `FF_SWARM_MODE`, `FF_GOAL_MODE`
+- [x] Updated `specs/feature-flags.md` registry statuses and added rollout notes
+- [x] Full verification: `bun run lint`, `bun test`, `bun run build` pass
+
 ## Hermes Kanban Autonomous Completion Smoke Test — Worktree Cleanup Fix
 - [x] End-to-end user-loop smoke test with temp `HOME`/`KDI_DB`: create board → create task → promote → `kdi dispatch --once` → task reaches `done`
 - [x] Verified task result/summary capture via `FF_RESULT_SUMMARY` and `.kdi-result.txt`

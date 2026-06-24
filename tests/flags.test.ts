@@ -1,21 +1,22 @@
 import { describe, it, expect, beforeEach } from "bun:test";
-import { isEnabled, setFlag, registerFlag, clearOverrides, FF_ENABLE_KANBAN_DISPATCH } from "../src/flags";
+import { isEnabled, setFlag, registerFlag, clearOverrides, FF_ENABLE_KANBAN_DISPATCH, FF_BOARD_RM_DELETE } from "../src/flags";
 
 describe("flags", () => {
   beforeEach(() => {
     clearOverrides();
     delete Bun.env[FF_ENABLE_KANBAN_DISPATCH];
+    delete Bun.env[FF_BOARD_RM_DELETE];
   });
 
-  it("FF_ENABLE_KANBAN_DISPATCH defaults to false", () => {
-    expect(isEnabled(FF_ENABLE_KANBAN_DISPATCH)).toBe(false);
+  it("FF_ENABLE_KANBAN_DISPATCH defaults to true after rollout", () => {
+    expect(isEnabled(FF_ENABLE_KANBAN_DISPATCH)).toBe(true);
   });
 
   it("setFlag overrides the default value", () => {
-    setFlag(FF_ENABLE_KANBAN_DISPATCH, true);
-    expect(isEnabled(FF_ENABLE_KANBAN_DISPATCH)).toBe(true);
     setFlag(FF_ENABLE_KANBAN_DISPATCH, false);
     expect(isEnabled(FF_ENABLE_KANBAN_DISPATCH)).toBe(false);
+    setFlag(FF_ENABLE_KANBAN_DISPATCH, true);
+    expect(isEnabled(FF_ENABLE_KANBAN_DISPATCH)).toBe(true);
   });
 
   it("unknown flags return false", () => {
@@ -57,5 +58,9 @@ describe("flags", () => {
     Bun.env["FF_UNKNOWN_FLAG"] = "1";
     expect(isEnabled("FF_UNKNOWN_FLAG")).toBe(false);
     delete Bun.env["FF_UNKNOWN_FLAG"];
+  });
+
+  it("FF_BOARD_RM_DELETE defaults to false (still InDev)", () => {
+    expect(isEnabled(FF_BOARD_RM_DELETE)).toBe(false);
   });
 });
