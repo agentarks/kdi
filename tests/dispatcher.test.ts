@@ -2110,8 +2110,8 @@ describe("dispatcher goal mode", () => {
 
     const calls = mockHarness.mock.calls as unknown as [string, string, string | undefined, number | undefined, Record<string, string> | undefined][];
     expect(calls.length).toBeGreaterThan(0);
-    expect(calls[0][0]).toContain("Parity task");
-    expect(calls[0][0]).toContain("Verify harness context");
+    expect(calls[0][0]).toContain("'Parity task'");
+    expect(calls[0][0]).toContain("'Verify harness context'");
     expect(capturedEnv).toBeDefined();
     expect(capturedEnv!.KDI_TASK_TITLE).toBe("Parity task");
     expect(capturedEnv!.KDI_TASK_BODY).toBe("Verify harness context");

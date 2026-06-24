@@ -130,6 +130,16 @@ export function getProfile(name: string): Profile {
   return profile;
 }
 
+function shellEscape(value: string): string {
+  if (value === "") {
+    return "''";
+  }
+  // Escape single quotes by exiting the single-quoted string, inserting an
+  // escaped single quote, and re-entering the quoted string. This makes the
+  // value safe for POSIX shells when used inside single quotes.
+  return `'${value.replace(/'/g, "'\"'\"'")}'`;
+}
+
 export function substituteCommand(
   template: string,
   vars: {
@@ -153,7 +163,7 @@ export function substituteCommand(
     .replace(/\{\{skills\}\}/g, vars.skills ?? "")
     .replace(/\{\{model\}\}/g, vars.model ?? "")
     .replace(/\{\{step_key\}\}/g, vars.step_key ?? "")
-    .replace(/\{\{title\}\}/g, vars.title ?? "")
-    .replace(/\{\{body\}\}/g, vars.body ?? "")
+    .replace(/\{\{title\}\}/g, shellEscape(vars.title ?? ""))
+    .replace(/\{\{body\}\}/g, shellEscape(vars.body ?? ""))
     .replace(/\{\{result_file\}\}/g, vars.result_file ?? "");
 }
