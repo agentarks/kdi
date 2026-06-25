@@ -702,44 +702,44 @@
 
 ### Critical Bugs Discovered
 
-1. **Global/subcommand `--board` flag is ignored**  
-   `kdi <cmd> ... --board <slug>` resolves to `default` instead of the supplied slug. Only `KDI_BOARD` env var and the `~/.local/share/kdi/current` file work. This breaks the board resolution chain documented in KDI-013 and causes the entire e2e suite to fail when tests pass `--board myproj`.  
-   Evidence: `bun run src/index.ts create "x" --board myproj --assignee opencode` → `Board "default" not found.`  
+1. **Global/subcommand `--board` flag is ignored**
+   `kdi <cmd> ... --board <slug>` resolves to `default` instead of the supplied slug. Only `KDI_BOARD` env var and the `~/.local/share/kdi/current` file work. This breaks the board resolution chain documented in KDI-013 and causes the entire e2e suite to fail when tests pass `--board myproj`.
+   Evidence: `bun run src/index.ts create "x" --board myproj --assignee opencode` → `Board "default" not found.`
    Hermes behavior: `--board` is honored on every subcommand.
 
-2. **Unresolved git merge conflict in `src/flags.ts`**  
+2. **Unresolved git merge conflict in `src/flags.ts`**
    `<<<<<<< Updated upstream` / `=======` / `>>>>>>> Stashed changes` markers were present at lines 17 and 52, breaking `bun run build` and `bun run dev`. Resolved during this session by keeping both stashed additions (`FF_BOARD_CREATE_SWITCH`, `FF_GLOBAL_BOARD`).
 
-3. **`kdi boards create --switch` is missing**  
+3. **`kdi boards create --switch` is missing**
    Backlog marks this as implemented (KDI-012), but `bun run src/index.ts boards create myproj --workdir ... --switch` returns `error: unknown option '--switch'`.
 
-4. **`kdi boards rename` semantics do not match Hermes**  
+4. **`kdi boards rename` semantics do not match Hermes**
    `kdi boards rename <old-slug> <new-slug>` renames the board slug (and warns if the data directory is missing). Hermes `boards rename <slug> <name>` changes only the display name; the slug is immutable. KDI's display-name rename lives under `kdi boards edit <slug> --name <name>`, which is the Hermes-equivalent operation.
 
-5. **`kdi create` default initial status is `todo`, not `running`**  
+5. **`kdi create` default initial status is `todo`, not `running`**
    Hermes defaults `--initial-status` to `running`. KDI defaults to `todo`, so a plain `kdi create "title"` parks the card instead of making it dispatchable.
 
-6. **`kdi create` has no `--parent` / `--dependency` option**  
+6. **`kdi create` has no `--parent` / `--dependency` option**
    Hermes supports repeatable `--parent <task_id>` on create to build dependency graphs at creation time. KDI requires a separate `link` / `unlink` command (if it exists), but those commands are not exposed in the top-level help and the create-time path is missing.
 
-7. **`kdi boards create` has no `--description` option**  
+7. **`kdi boards create` has no `--description` option**
    Hermes boards carry `description` metadata. KDI stores `name`, `icon`, and `color` only.
 
 
 
-9. **`kdi archive` bulk archive is broken**  
+9. **`kdi archive` bulk archive is broken**
    Help text advertises `[task_ids...]`, but `kdi archive 1 2` returns `Error: Archive only supports a single task ID (use --rm for bulk deletion of archived tasks)`. Bulk `--rm` of archived tasks works; bulk archive does not.
 
-10. **`kdi tail` has no non-following / `--lines` mode**  
+10. **`kdi tail` has no non-following / `--lines` mode**
     Hermes `tail` follows by default but can be piped/limited by the caller. KDI `tail <task_id>` blocks forever following events; there is no CLI flag to print the last N events and exit.
 
-11. **`kdi init` does not ensure a `default` board exists**  
+11. **`kdi init` does not ensure a `default` board exists**
     Hermes treats `default` as always-present. After `kdi init`, `kdi boards show` (with no current board) fails with `Board "default" not found.`
 
-12. **`kdi dispatch` is daemon-only; no one-shot tick mode**  
+12. **`kdi dispatch` is daemon-only; no one-shot tick mode**
     Hermes `dispatch` performs one dispatcher pass and exits. KDI `dispatch` starts a long-running loop (`--interval` defaults to 5000 ms) with no documented `--once` / `--tick` flag.
 
-13. **`kdi swarm` CLI differs from Hermes**  
+13. **`kdi swarm` CLI differs from Hermes**
     Hermes: `swarm <goal> --worker PROFILE:TITLE[:SKILL,SKILL] --verifier ... --synthesizer ...`. KDI: `swarm --worker profile:title` with no goal positional and no skills suffix.
 
 ### Test Suite Health
@@ -760,49 +760,52 @@ The bulk of failures are cascading from bug #1 (`--board` ignored). Fixing that 
 
 Add to the appropriate phases above:
 
-- [x] **KDI-042: Fix `--board` flag resolution**  
+- [x] **KDI-042: Fix `--board` flag resolution**
   Global and subcommand `--board` must both resolve to the explicit board. Add e2e coverage for `--board` on `create`, `list`, `show`, `dispatch`, and `swarm`.
 
-- [x] **KDI-043: Implement `boards create --switch`**  
+- [x] **KDI-043: Implement `boards create --switch`**
   Auto-switch to the newly created board (currently marked done in KDI-012 but missing in CLI).
 
-- [x] **KDI-044: Add `--description` to board metadata**  
+- [x] **KDI-044: Add `--description` to board metadata**
   Store and display board description, matching Hermes `boards create --description`.
 
-- [x] **KDI-045: Add `--parent` repeatable option to `kdi create`**  
+- [x] **KDI-045: Add `--parent` repeatable option to `kdi create`**
   Create task links at creation time; equivalent to Hermes `--parent`.
 
-- [x] **KDI-046: Align `boards rename` with Hermes semantics**  
+- [x] **KDI-046: Align `boards rename` with Hermes semantics**
   Already implemented behind `FF_BOARD_RENAME_HERMES`. `kdi boards rename <slug> <name>` changes display name; `kdi boards rename-slug <old> <new>` changes slug. Spec discarded.
 
-- [x] **KDI-047: Support multiple task IDs in `kdi unblock`**  
+- [x] **KDI-047: Support multiple task IDs in `kdi unblock`**
   Bulk unblock matching Hermes `unblock <task_ids...>`.
 
-- [x] **KDI-048: Fix bulk archive**  
+- [x] **KDI-048: Fix bulk archive**
   Already implemented behind `FF_BULK_OPERATIONS`. `kdi archive <id> <id>...` soft-archives multiple IDs; `kdi archive --rm <id>...` hard-deletes archived IDs. Spec discarded.
 
-- [x] **KDI-049: Add non-following `tail` mode**  
+- [x] **KDI-049: Add non-following `tail` mode**
   Already implemented behind `FF_TAIL_NO_FOLLOW`. `kdi tail --lines N` and `kdi tail --no-follow` print events and exit. Spec discarded.
 
-- [x] **KDI-050: Ensure `default` board exists after `kdi init`**  
+- [x] **KDI-050: Ensure `default` board exists after `kdi init`**
   Implemented. `kdi init` now creates an active `default` board when missing, is idempotent, and leaves archived defaults untouched. BRD at `specs/brd-kdi-050-init-default-board.md`.
 
-- [x] **KDI-051: Add one-shot dispatch mode**  
+- [x] **KDI-051: Add one-shot dispatch mode**
   `kdi dispatch --once` (or `--tick`) for a single dispatcher pass, matching Hermes behavior.
 
-- [x] **KDI-052: Pass task title/body to harness**  
+- [x] **KDI-052: Pass task title/body to harness**
   Implemented behind `FF_HARNESS_CONTEXT` (default `false`). `{{title}}` and `{{body}}` are in `ALLOWED_TEMPLATES` and substituted by `substituteCommand`; the dispatcher exports `KDI_TASK_TITLE`, `KDI_TASK_BODY`, `KDI_TASK_ID`, and `KDI_BOARD` to the harness env only when `FF_HARNESS_CONTEXT` is enabled. Tests cover template substitution, env vars, null-body handling, and disabled-flag behavior.
 
-- [x] **KDI-053: Store clean result/summary from harness output**  
+- [x] **KDI-053: Store clean result/summary from harness output**
   Currently the entire raw JSON stream from `opencode run --format json` is dumped into `tasks.result`. Hermes expects a human-readable result/summary. Provide a convention for harnesses to emit a result file (e.g., `{{workdir}}/.kdi-result.txt`) or parse the last text chunk from JSON-mode output; store that as `result`/`summary` instead of raw stdout.
 
-- [x] **KDI-054: Real harness parity test**  
+- [x] **KDI-054: Real harness parity test**
   Added opt-in smoke test at `tests/real-harness-parity.test.ts` (gated by `KDI_REAL_HARNESS_TEST=true`). Proves `kdi create --assignee opencode` → `promote` → `dispatch` passes task context to a real harness, writes a marker file in the active worktree, and stores a clean result visible via `kdi show`.
 
-- [ ] **KDI-055: Consider whether task changes should propagate to original repo**  
-  Worktree isolation is correct, but downstream workflows may expect the original board workdir to reflect the completed edit. Document the intended handoff (worktree branch stays until merged/pushed) or add an option to copy/commit changes back.
+- [x] **KDI-055: Consider whether task changes should propagate to original repo**
+  BRD drafted at `specs/brd-kdi-055-worktree-handoff.md`. Decision: do not copy/commit/merge task changes back automatically; preserve the task-owned `wt/<profile>/<task_id>` branch/worktree as the handoff until the operator merges, pushes, or deletes it.
 
-- [x] **KDI-052: Stabilize test suite**  
+- [ ] **KDI-056: Ship real Pi/opencode harness profiles**
+  Current kdi profile dispatch can launch external CLIs, but the user-level `~/.config/kdi/profiles.yaml` can override built-ins with stale test harnesses (observed `/tmp/mock-harness`, causing `opencode`/`pi` tasks to block with exit 127). Add a supported bootstrap/doctor path that installs or repairs real `opencode` and `pi` profiles, validates referenced binaries/agents before dispatch, and documents the Pi/opencode command contract for `$KDI_TASK_*` and `$KDI_RESULT_FILE`.
+
+- [x] **KDI-052: Stabilize test suite**
   Root cause after KDI-042 fixes: the remaining reproducible flake was worker log capture. `spawnHarness` resolved immediately after `logStream.end()` without waiting for the stream flush, so large stdout/stderr output could be missing from the log file when tests read it. Fixed by resolving/rejecting only after the log stream flush callback, with a regression test for large combined stdout/stderr. Verification: `bun run lint`, `bun run test` (931 pass / 0 fail), `bun run build`.
 
 ---
@@ -827,13 +830,13 @@ Dispatched 4 parallel `pi` agents via cmux. All 135 tests pass. Work committed t
 
 ### Spec Conflicts (resolved silently — documented here for audit trail)
 
-1. **`kdi schedule --ids <id1> <id2>` (backlog) vs `<task_ids...>` (implementation)**  
+1. **`kdi schedule --ids <id1> <id2>` (backlog) vs `<task_ids...>` (implementation)**
    Backlog specified `--ids` flag syntax. Implementation uses Commander positional `<task_ids...>` argument which is more idiomatic (no flag needed, just `kdi schedule 1 2 3 --at ...`). Behavior is equivalent; the `--ids` flag was dropped as a design decision.
 
-2. **`complete --metadata` part of KDI-005 (backlog) vs gated behind `FF_COMPLETE_METADATA` (implementation)**  
+2. **`complete --metadata` part of KDI-005 (backlog) vs gated behind `FF_COMPLETE_METADATA` (implementation)**
    Backlog treats `--metadata` as unconditionally part of KDI-005. Implementation gates it behind a feature flag (`FF_COMPLETE_METADATA`, default `false`) for staged rollout. The flag only gates the `--metadata` option; `--result` and `--summary` are always available.
 
-3. **`kdi schedule <task_id> --reason ...` (backlog) vs `--at <timestamp>` required (implementation)**  
+3. **`kdi schedule <task_id> --reason ...` (backlog) vs `--at <timestamp>` required (implementation)**
    Backlog shows schedule as taking a reason without mentioning `--at`. Implementation correctly requires `--at <timestamp>` (a scheduled task needs a future time) and makes `--reason` optional. This is the correct behavior — the spec was incomplete.
 
 ---

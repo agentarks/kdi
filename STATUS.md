@@ -1,5 +1,9 @@
 # kdi — Status
 
+## Backlog Updates — KDI-056 Real Agent Profiles
+- [x] Added KDI-056 backlog item for real Pi/opencode harness profile bootstrap/doctor support after local smoke showed user-level profiles can point to stale `/tmp/mock-harness` and block dispatch with exit 127.
+- [ ] Pending implementation: supported repair/install path for real `opencode` and `pi` profiles, pre-dispatch binary/agent validation, and documented `$KDI_TASK_*` / `$KDI_RESULT_FILE` contract.
+
 ## KDI-052: Stabilize Test Suite — Done
 - [x] Reproduced intermittent failure in `worker log capture > spawnHarness writes combined stdout/stderr to log file`
 - [x] Root cause: `spawnHarness` resolved before `logStream.end()` flushed data, so immediate file reads could observe partial logs
@@ -76,6 +80,12 @@
 - [x] KDI-052: Pass task title/body/context to harnesses implemented.
 - [x] KDI-053: Clean result/summary capture from harness output implemented.
 - [x] KDI-054: Real harness parity test added (opt-in via `KDI_REAL_HARNESS_TEST=true`).
+
+## KDI-055: Worktree Handoff — Spec Drafted
+- [x] BRD drafted at `specs/brd-kdi-055-worktree-handoff.md`
+- [x] Decision documented: do not copy/commit/merge task changes back automatically; preserve the task-owned `wt/<profile>/<task_id>` branch/worktree as the operator handoff artifact
+- [x] Planned feature flag documented in `specs/feature-flags.md` as `ff_worktree_handoff` / `FF_WORKTREE_HANDOFF`, default `false`
+- [ ] Implementation pending
 
 ## KDI-052 / KDI-053 / KDI-054: Hermes Parity Bundle — Done
 - [x] Feature flags `ff_harness_context` / `FF_HARNESS_CONTEXT` and `ff_result_summary` / `FF_RESULT_SUMMARY` registered in `src/flags.ts` and `specs/feature-flags.md`, defaults to `false`

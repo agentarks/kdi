@@ -76,6 +76,7 @@ stateDiagram-v2
 | `ff_goal_mode` | `FF_GOAL_MODE` | CLI / create + dispatcher | InDev | `false` | KDI-038 | Ralph-style multi-turn goal loop; `kdi create --goal`/`--goal-max-turns`/`--goal-judge`; dispatcher decrements a turn budget and requeues until the (v1 approximated) judge says done.
 | `ff_harness_context` | `FF_HARNESS_CONTEXT` | CLI / dispatcher | Active | `true` | KDI-052 | Pass task title/body/id and board slug to harness via `{{title}}`/`{{body}}` templates and `KDI_TASK_TITLE`/`KDI_TASK_BODY`/`KDI_TASK_ID`/`KDI_BOARD` env vars.
 | `ff_result_summary` | `FF_RESULT_SUMMARY` | CLI / dispatcher | Active | `true` | KDI-053 | Store clean result/summary from harness output; reads `.kdi-result.txt` or the last JSON text chunk instead of raw stdout.
+| `ff_worktree_handoff` | `FF_WORKTREE_HANDOFF` | CLI / dispatcher/worktree | Planned | `false` | KDI-055 | Preserve successful task worktree branches as the handoff artifact instead of copying changes back to the original repo.
 
 ## Rollout Notes
 
