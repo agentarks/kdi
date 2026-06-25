@@ -802,8 +802,8 @@ Add to the appropriate phases above:
 - [ ] **KDI-055: Consider whether task changes should propagate to original repo**  
   Worktree isolation is correct, but downstream workflows may expect the original board workdir to reflect the completed edit. Document the intended handoff (worktree branch stays until merged/pushed) or add an option to copy/commit changes back.
 
-- [ ] **KDI-052: Stabilize test suite**  
-  Repair the 125 failing tests; root-cause the non-cascading failures after KDI-042 is fixed.
+- [x] **KDI-052: Stabilize test suite**  
+  Root cause after KDI-042 fixes: the remaining reproducible flake was worker log capture. `spawnHarness` resolved immediately after `logStream.end()` without waiting for the stream flush, so large stdout/stderr output could be missing from the log file when tests read it. Fixed by resolving/rejecting only after the log stream flush callback, with a regression test for large combined stdout/stderr. Verification: `bun run lint`, `bun run test` (931 pass / 0 fail), `bun run build`.
 
 ---
 

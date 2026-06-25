@@ -1,5 +1,12 @@
 # kdi — Status
 
+## KDI-052: Stabilize Test Suite — Done
+- [x] Reproduced intermittent failure in `worker log capture > spawnHarness writes combined stdout/stderr to log file`
+- [x] Root cause: `spawnHarness` resolved before `logStream.end()` flushed data, so immediate file reads could observe partial logs
+- [x] Added regression coverage for large combined stdout/stderr log output
+- [x] Fixed `spawnHarness` to wait for log stream flush before resolving/rejecting while keeping log-write failures best-effort
+- [x] Verification: `bun run lint`, `bun run test` (931 pass / 0 fail), `bun run build`
+
 ## End-User Rollout — Feature Flags Promoted to Active
 - [x] Hermes Kanban parity smoke test completed (create → promote → dispatch --once → done, result captured, worktree cleaned)
 - [x] Promoted stable feature flags to **Active** (default `true`) in `src/flags.ts`:
