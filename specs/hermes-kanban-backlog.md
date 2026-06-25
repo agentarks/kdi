@@ -799,8 +799,8 @@ Add to the appropriate phases above:
 - [x] **KDI-054: Real harness parity test**  
   Added opt-in smoke test at `tests/real-harness-parity.test.ts` (gated by `KDI_REAL_HARNESS_TEST=true`). Proves `kdi create --assignee opencode` → `promote` → `dispatch` passes task context to a real harness, writes a marker file in the active worktree, and stores a clean result visible via `kdi show`.
 
-- [ ] **KDI-055: Consider whether task changes should propagate to original repo**  
-  Worktree isolation is correct, but downstream workflows may expect the original board workdir to reflect the completed edit. Document the intended handoff (worktree branch stays until merged/pushed) or add an option to copy/commit changes back.
+- [x] **KDI-055: Consider whether task changes should propagate to original repo**
+  BRD drafted at `specs/brd-kdi-055-worktree-handoff.md`. Decision: do not copy/commit/merge task changes back automatically; preserve the task-owned `wt/<profile>/<task_id>` branch/worktree as the handoff until the operator merges, pushes, or deletes it.
 
 - [ ] **KDI-052: Stabilize test suite**  
   Repair the 125 failing tests; root-cause the non-cascading failures after KDI-042 is fixed.
