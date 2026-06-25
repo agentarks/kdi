@@ -5,6 +5,10 @@
 - Contract documented: original board workdir is untouched; temp worktree/local branch are cleaned; harness/profile must persist durable handoff before exit.
 - No feature flag, schema migration, tests, or dispatcher behavior change.
 
+## Backlog Updates — KDI-056 Real Agent Profiles
+- [x] Added KDI-056 backlog item for real Pi/opencode harness profile bootstrap/doctor support after local smoke showed user-level profiles can point to stale `/tmp/mock-harness` and block dispatch with exit 127.
+- [ ] Pending implementation: supported repair/install path for real `opencode` and `pi` profiles, pre-dispatch binary/agent validation, and documented `$KDI_TASK_*` / `$KDI_RESULT_FILE` contract.
+
 ## End-User Rollout — Feature Flags Promoted to Active
 - [x] Hermes Kanban parity smoke test completed (create → promote → dispatch --once → done, result captured, worktree cleaned)
 - [x] Promoted stable feature flags to **Active** (default `true`) in `src/flags.ts`:

@@ -802,6 +802,9 @@ Add to the appropriate phases above:
 - [x] **KDI-055: Consider whether task changes should propagate to original repo**
   Decision drafted: keep worktree isolation. KDI cleans the temporary branch/worktree after dispatch; the harness must persist durable handoff before exit by pushing `{{branch}}`, opening a PR, or writing a patch/artifact outside the temp worktree.
 
+- [ ] **KDI-056: Ship real Pi/opencode harness profiles**  
+  Current kdi profile dispatch can launch external CLIs, but the user-level `~/.config/kdi/profiles.yaml` can override built-ins with stale test harnesses (observed `/tmp/mock-harness`, causing `opencode`/`pi` tasks to block with exit 127). Add a supported bootstrap/doctor path that installs or repairs real `opencode` and `pi` profiles, validates referenced binaries/agents before dispatch, and documents the Pi/opencode command contract for `$KDI_TASK_*` and `$KDI_RESULT_FILE`.
+
 - [ ] **KDI-052: Stabilize test suite**  
   Repair the 125 failing tests; root-cause the non-cascading failures after KDI-042 is fixed.
 
