@@ -66,6 +66,14 @@ Functional Requirements
   substitute `{{workdir}}`, `{{branch}}`, `{{task_id}}`, `{{agent}}` into
   command template, spawn in isolated worktree, capture stdout/stderr/result,
   update task status.
+- Dispatch worktree handoff: KDI creates a temporary per-task git worktree on
+  branch `wt/<profile>/<task_id>` from the board `base_ref`, then cleans up by
+  removing the worktree and deleting the local branch. The original board
+  workdir is never mutated by KDI. `done` means successful harness exit plus
+  result/summary capture; it does not mean code was merged, copied back, or
+  preserved locally. Durable handoff is the harness/profile's job before exit:
+  push `{{branch}}`, open a PR, write a patch/artifact outside `{{workdir}}`,
+  or write task result text to `KDI_RESULT_FILE`.
 - Profile routing: assignee string maps to a harness profile. Profile registry
   is a simple YAML file, not hard-coded to any vendor.
 - Worktree isolation: per-task git worktrees with configurable base ref

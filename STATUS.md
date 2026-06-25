@@ -1,5 +1,10 @@
 # kdi — Status
 
+## KDI-055 — Worktree handoff decision
+- Docs-only decision: KDI does not copy back, merge, auto-commit, or preserve dispatch worktrees.
+- Contract documented: original board workdir is untouched; temp worktree/local branch are cleaned; harness/profile must persist durable handoff before exit.
+- No feature flag, schema migration, tests, or dispatcher behavior change.
+
 ## End-User Rollout — Feature Flags Promoted to Active
 - [x] Hermes Kanban parity smoke test completed (create → promote → dispatch --once → done, result captured, worktree cleaned)
 - [x] Promoted stable feature flags to **Active** (default `true`) in `src/flags.ts`:
