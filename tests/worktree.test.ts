@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { createWorktree, removeWorktree, detectWorktreeChanges } from "../src/worktree";
+import { setupTempGitRepo } from "./gitTestHelpers";
 
 let tempDir: string;
 let repoDir: string;
@@ -15,16 +16,7 @@ function git(args: string[], cwd?: string) {
 describe("worktree", () => {
   beforeAll(() => {
     tempDir = mkdtempSync(join(tmpdir(), "kdi-worktree-test-"));
-    repoDir = join(tempDir, "repo");
-
-    // Create a temp git repo
-    mkdirSync(repoDir, { recursive: true });
-    git(["init"]);
-    git(["config", "user.email", "test@test.com"]);
-    git(["config", "user.name", "Test User"]);
-    git(["commit", "--allow-empty", "-m", "initial commit"]);
-    // Simulate a remote main ref so origin/main resolves like real cloned repos.
-    execFileSync("git", ["update-ref", "refs/remotes/origin/main", "HEAD"], { cwd: repoDir, stdio: "pipe" });
+    repoDir = setupTempGitRepo();
   });
 
   afterAll(() => {

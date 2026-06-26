@@ -16,18 +16,9 @@ import { getEvents } from "../src/models/taskEvent";
 import { getRuns, updateRun } from "../src/models/taskRun";
 import { cleanupDb } from "./cleanupDb";
 import { createWorktree, removeWorktree } from "../src/worktree";
-import { execFileSync } from "node:child_process";
+import { setupTempGitRepo } from "./gitTestHelpers";
 
 let testDbPath: string;
-
-function setupTempGitRepo(): string {
-  const repoDir = mkdtempSync(join(tmpdir(), "kdi-dispatcher-repo-"));
-  execFileSync("git", ["init"], { cwd: repoDir, stdio: "pipe" });
-  execFileSync("git", ["config", "user.email", "test@test.com"], { cwd: repoDir, stdio: "pipe" });
-  execFileSync("git", ["config", "user.name", "Test User"], { cwd: repoDir, stdio: "pipe" });
-  execFileSync("git", ["commit", "--allow-empty", "-m", "initial commit"], { cwd: repoDir, stdio: "pipe" });
-  return repoDir;
-}
 
 function setupTempHome(profiles: { name: string; command: string }[]): string {
   const home = mkdtempSync(join(tmpdir(), "kdi-dispatcher-home-"));
