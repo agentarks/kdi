@@ -808,6 +808,11 @@ Add to the appropriate phases above:
 - [x] **KDI-052: Stabilize test suite**
   Root cause after KDI-042 fixes: the remaining reproducible flake was worker log capture. `spawnHarness` resolved immediately after `logStream.end()` without waiting for the stream flush, so large stdout/stderr output could be missing from the log file when tests read it. Fixed by resolving/rejecting only after the log stream flush callback, with a regression test for large combined stdout/stderr. Verification: `bun run lint`, `bun run test` (931 pass / 0 fail), `bun run build`.
 
+### Frontend Backlog
+
+- [ ] **KDI-UI-000..016: SvelteKit operator UI**
+  Backlog drafted at `specs/sveltekit-ui-backlog.md`. It maps the implemented Hermes/KDI board, task lifecycle, dispatch, observability, notification, triage, swarm, workflow, and goal-mode features into SvelteKit UI slices. The whole UI is planned behind `ff_sveltekit_frontend` / `FF_SVELTEKIT_FRONTEND` / `VITE_FF_SVELTEKIT_FRONTEND`.
+
 ---
 
 ## Agent Batch — 2026-06-11

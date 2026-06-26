@@ -6,7 +6,7 @@ This document is the single source of truth for all `ff_*` feature flags in `kdi
 
 - Every new feature is gated behind an `ff_*` flag registered here before implementation.
 - CLI / server environment variable form: `FF_<FEATURE>=false` (upper snake case of the flag name, e.g. `FF_COMPLETE_METADATA=false`). The dispatcher flag `ff_kanban_dispatch` uses the explicit env var `FF_ENABLE_KANBAN_DISPATCH` for historical reasons.
-- Browser environment variable form: not applicable (kdi is a Bun CLI binary)
+- Browser environment variable form for future SvelteKit UI flags: `VITE_FF_<FEATURE>=false`.
 - All flags default to `false` in every environment unless explicitly promoted.
 - A flag is removed from code and this registry only after completing the deprecation window.
 - **Foundational commands** (`kdi init`, `kdi boards create`, `kdi boards list`, `kdi boards show`, `kdi boards archive`) are exempt from feature-flag gating. These commands provide the minimum viable surface for board and database management and must always be available.
@@ -77,6 +77,7 @@ stateDiagram-v2
 | `ff_harness_context` | `FF_HARNESS_CONTEXT` | CLI / dispatcher | Active | `true` | KDI-052 | Pass task title/body/id and board slug to harness via `{{title}}`/`{{body}}` templates and `KDI_TASK_TITLE`/`KDI_TASK_BODY`/`KDI_TASK_ID`/`KDI_BOARD` env vars.
 | `ff_result_summary` | `FF_RESULT_SUMMARY` | CLI / dispatcher | Active | `true` | KDI-053 | Store clean result/summary from harness output; reads `.kdi-result.txt` or the last JSON text chunk instead of raw stdout.
 | `ff_worktree_handoff` | `FF_WORKTREE_HANDOFF` | CLI / dispatcher/worktree | InDev | `true` | KDI-055 | Preserve successful task worktree branches as the handoff artifact; emit handoff event with branch and worktree path.
+| `ff_sveltekit_frontend` | `FF_SVELTEKIT_FRONTEND` / `VITE_FF_SVELTEKIT_FRONTEND` | SvelteKit UI | Planned | `false` | KDI-UI-000 | Gates the future SvelteKit operator UI backlog in `specs/sveltekit-ui-backlog.md`. |
 
 ## Rollout Notes
 
