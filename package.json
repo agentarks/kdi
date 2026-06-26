@@ -7,9 +7,16 @@
   "bin": {
     "kdi": "./src/index.ts"
   },
+  "workspaces": [
+    "apps/web"
+  ],
   "scripts": {
     "dev": "bun run src/index.ts",
     "build": "bun build src/index.ts --compile --outfile kdi",
+    "build:web": "bun run --cwd apps/web build",
+    "dev:web": "bun run --cwd apps/web dev",
+    "preview:web": "bun run --cwd apps/web preview",
+    "check:web": "bun run --cwd apps/web check",
     "test": "bun test",
     "lint": "tsc --noEmit"
   },
