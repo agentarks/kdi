@@ -8,9 +8,9 @@ import { addEvent } from "./models/taskEvent";
 import { atomicClaim, heartbeat } from "./models/claim";
 import { decrementGoalTurns } from "./models/task";
 import { isBlockedByDependencies } from "./models/dependency";
-import { getProfile, substituteCommand } from "./profiles";
+import { getProfile, substituteCommand, resolveCommandBinary } from "./profiles";
 import { createWorktree, removeWorktree, detectWorktreeChanges, type RemoveWorktreeResult } from "./worktree";
-import { isEnabled, FF_ENABLE_KANBAN_DISPATCH, FF_WORKER_LOG_CAPTURE, FF_CRASH_GRACE_PERIOD, FF_HEARTBEAT, FF_RATE_LIMIT_EXIT_CODE, FF_NOTIFY_SUBS, FF_SWARM_MODE, FF_GOAL_MODE, FF_HARNESS_CONTEXT, FF_RESULT_SUMMARY, FF_WORKTREE_HANDOFF } from "./flags";
+import { isEnabled, FF_ENABLE_KANBAN_DISPATCH, FF_WORKER_LOG_CAPTURE, FF_CRASH_GRACE_PERIOD, FF_HEARTBEAT, FF_RATE_LIMIT_EXIT_CODE, FF_NOTIFY_SUBS, FF_SWARM_MODE, FF_GOAL_MODE, FF_HARNESS_CONTEXT, FF_RESULT_SUMMARY, FF_WORKTREE_HANDOFF, FF_REAL_HARNESS_PROFILES } from "./flags";
 import { extractHarnessResult } from "./harnessResult";
 
 import { runNotifierWatcher, getLastSeenEventId, setLastSeenEventId } from "./notifiers";
@@ -519,6 +519,30 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
 
     const taskAgeMs = Date.now() - task.created_at * 1000;
     recordTaskAge(taskAgeMs);
+
+    // KDI-056: pre-claim harness binary guard. When enabled, refuse to claim a
+    // task whose profile binary is missing instead of claiming and failing with
+    // exit 127. Leaves the task `ready` and emits profile_invalid. The profile is
+    // resolved again after claim (below); the double load is cheap.
+    if (isEnabled(FF_REAL_HARNESS_PROFILES)) {
+      let guardProfile;
+      try {
+        guardProfile = getProfile(task.assignee ?? "opencode");
+      } catch {
+        const slug = getBoardSlug(task.board_id);
+        const profileName = task.assignee ?? "opencode";
+        addEvent(task.id, "profile_invalid", { profile: profileName, binary: "", reason: "unknown profile" });
+        if (slug) logToBoard(slug, `Task ${task.id} skipped: unknown profile "${profileName}". Run: kdi profiles bootstrap / kdi profiles doctor`);
+        continue;
+      }
+      const { binary, resolvedPath } = resolveCommandBinary(guardProfile.command);
+      if (!resolvedPath) {
+        const slug = getBoardSlug(task.board_id);
+        addEvent(task.id, "profile_invalid", { profile: guardProfile.name, binary });
+        if (slug) logToBoard(slug, `Task ${task.id} skipped: profile "${guardProfile.name}" binary "${binary}" not found. Run: kdi profiles bootstrap / kdi profiles doctor`);
+        continue;
+      }
+    }
 
     const claimResult = claimTask(task.id, task.assignee);
     recordClaim(claimResult.success);

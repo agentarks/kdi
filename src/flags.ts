@@ -48,6 +48,7 @@ export const FF_TAIL_NO_FOLLOW = "FF_TAIL_NO_FOLLOW";
 export const FF_HARNESS_CONTEXT = "FF_HARNESS_CONTEXT";
 export const FF_RESULT_SUMMARY = "FF_RESULT_SUMMARY";
 export const FF_WORKTREE_HANDOFF = "FF_WORKTREE_HANDOFF";
+export const FF_REAL_HARNESS_PROFILES = "FF_REAL_HARNESS_PROFILES";
 
 const flagRegistry = new Map<string, boolean>();
 const flagOverrides = new Map<string, boolean>();
@@ -147,3 +148,4 @@ registerFlag(FF_TAIL_NO_FOLLOW, true);
 registerFlag(FF_HARNESS_CONTEXT, true);
 registerFlag(FF_RESULT_SUMMARY, true);
 registerFlag(FF_WORKTREE_HANDOFF, true);
+registerFlag(FF_REAL_HARNESS_PROFILES, false);

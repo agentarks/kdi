@@ -5,8 +5,16 @@ import {
   substituteCommand,
   ensureProfiles,
   validateProfile,
+  resolveCommandBinary,
+  doctorProfiles,
+  bootstrapRealProfiles,
+  BUILTIN_PROFILES,
 } from "../src/profiles";
-import { writeFileSync, unlinkSync, existsSync, readFileSync, rmdirSync } from "node:fs";
+import { writeFileSync, unlinkSync, existsSync, readFileSync, rmdirSync, mkdirSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, dirname } from "node:path";
+import YAML from "yaml";
 
 const TEST_PROFILES_PATH = "/tmp/kdi-test-profiles.yaml";
 
@@ -317,6 +325,148 @@ describe("profiles", () => {
       expect(() => loadProfiles(TEST_PROFILES_PATH)).toThrow("YAML array");
     } finally {
       unlinkSync(TEST_PROFILES_PATH);
+    }
+  });
+});
+
+describe("resolveCommandBinary", () => {
+  it("resolves a binary on PATH (echo)", () => {
+    const r = resolveCommandBinary("echo hello world");
+    expect(r.binary).toBe("echo");
+    expect(r.resolvedPath).not.toBeNull();
+    expect(existsSync(r.resolvedPath!)).toBe(true);
+  });
+
+  it("returns null resolvedPath for a missing binary", () => {
+    const r = resolveCommandBinary("/tmp/mock-harness run");
+    expect(r.binary).toBe("/tmp/mock-harness");
+    expect(r.resolvedPath).toBeNull();
+  });
+
+  it("returns null resolvedPath for a bare missing name", () => {
+    const r = resolveCommandBinary("definitely-not-a-real-binary-xyzzy {{workdir}}");
+    expect(r.binary).toBe("definitely-not-a-real-binary-xyzzy");
+    expect(r.resolvedPath).toBeNull();
+  });
+
+  it("resolves an absolute executable path", () => {
+    const dir = mkdtempSync(join(tmpdir(), "kdi-bin-"));
+    const binPath = join(dir, "fake-harness");
+    writeFileSync(binPath, "#!/bin/sh\necho hi\n", { mode: 0o755 });
+    try {
+      const r = resolveCommandBinary(`${binPath} --cwd {{workdir}}`);
+      expect(r.binary).toBe(binPath);
+      expect(r.resolvedPath).toBe(binPath);
+    } finally {
+      rmdirSync(dir, { recursive: true } as any);
+    }
+  });
+
+  it("returns null for an empty command", () => {
+    const r = resolveCommandBinary("   ");
+    expect(r.binary).toBe("");
+    expect(r.resolvedPath).toBeNull();
+  });
+});
+
+describe("doctorProfiles", () => {
+  it("reports ok for a profile whose binary resolves (echo)", () => {
+    const dir = mkdtempSync(join(tmpdir(), "kdi-dr-"));
+    const path = join(dir, "profiles.yaml");
+    writeFileSync(path, YAML.stringify([{ name: "echoer", command: "echo hi" }]));
+    try {
+      const report = doctorProfiles(path);
+      const r = report.find((e) => e.name === "echoer");
+      expect(r).toBeDefined();
+      expect(r!.status).toBe("ok");
+      expect(r!.ok).toBe(true);
+      expect(r!.resolved_path).not.toBeNull();
+    } finally {
+      rmdirSync(dir, { recursive: true } as any);
+    }
+  });
+
+  it("reports missing-binary for a stale /tmp/mock-harness profile", () => {
+    const dir = mkdtempSync(join(tmpdir(), "kdi-dr-"));
+    const path = join(dir, "profiles.yaml");
+    writeFileSync(path, YAML.stringify([{ name: "stale", command: "/tmp/mock-harness run" }]));
+    try {
+      const report = doctorProfiles(path);
+      const r = report.find((e) => e.name === "stale");
+      expect(r).toBeDefined();
+      expect(r!.status).toBe("missing-binary");
+      expect(r!.ok).toBe(false);
+      expect(r!.binary).toBe("/tmp/mock-harness");
+    } finally {
+      rmdirSync(dir, { recursive: true } as any);
+    }
+  });
+});
+
+describe("bootstrapRealProfiles", () => {
+  const wantNames = ["opencode", "pi"];
+
+  it("writes opencode+pi entries when none exist", () => {
+    const dir = mkdtempSync(join(tmpdir(), "kdi-boot-"));
+    const path = join(dir, "profiles.yaml");
+    try {
+      const results = bootstrapRealProfiles(path, false);
+      const names = results.map((r) => r.name).sort();
+      expect(names).toEqual(wantNames);
+      expect(results.every((r) => r.action === "written")).toBe(true);
+      const parsed = YAML.parse(readFileSync(path, "utf-8")) as any[];
+      const parsedNames = parsed.map((p) => p.name).sort();
+      expect(parsedNames).toEqual(wantNames);
+      expect(parsed.find((p) => p.name === "opencode").command).toBe(
+        BUILTIN_PROFILES.find((p) => p.name === "opencode")!.command
+      );
+    } finally {
+      rmdirSync(dir, { recursive: true } as any);
+    }
+  });
+
+  it("preserves existing opencode/pi entries without --force", () => {
+    const dir = mkdtempSync(join(tmpdir(), "kdi-boot-"));
+    const path = join(dir, "profiles.yaml");
+    writeFileSync(path, YAML.stringify([{ name: "opencode", command: "my-opencode --cwd {{workdir}}" }]));
+    try {
+      const results = bootstrapRealProfiles(path, false);
+      const oc = results.find((r) => r.name === "opencode");
+      expect(oc!.action).toBe("preserved");
+      const parsed = YAML.parse(readFileSync(path, "utf-8")) as any[];
+      expect(parsed.find((p) => p.name === "opencode").command).toBe("my-opencode --cwd {{workdir}}");
+    } finally {
+      rmdirSync(dir, { recursive: true } as any);
+    }
+  });
+
+  it("overwrites existing opencode/pi entries with --force", () => {
+    const dir = mkdtempSync(join(tmpdir(), "kdi-boot-"));
+    const path = join(dir, "profiles.yaml");
+    writeFileSync(path, YAML.stringify([{ name: "opencode", command: "my-opencode --cwd {{workdir}}" }]));
+    try {
+      const results = bootstrapRealProfiles(path, true);
+      const oc = results.find((r) => r.name === "opencode");
+      expect(oc!.action).toBe("overwritten");
+      const parsed = YAML.parse(readFileSync(path, "utf-8")) as any[];
+      expect(parsed.find((p) => p.name === "opencode").command).toBe(
+        BUILTIN_PROFILES.find((p) => p.name === "opencode")!.command
+      );
+    } finally {
+      rmdirSync(dir, { recursive: true } as any);
+    }
+  });
+
+  it("preserves unrelated custom entries", () => {
+    const dir = mkdtempSync(join(tmpdir(), "kdi-boot-"));
+    const path = join(dir, "profiles.yaml");
+    writeFileSync(path, YAML.stringify([{ name: "custom", command: "echo {{workdir}}" }]));
+    try {
+      bootstrapRealProfiles(path, false);
+      const parsed = YAML.parse(readFileSync(path, "utf-8")) as any[];
+      expect(parsed.find((p) => p.name === "custom").command).toBe("echo {{workdir}}");
+    } finally {
+      rmdirSync(dir, { recursive: true } as any);
     }
   });
 });

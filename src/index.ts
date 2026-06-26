@@ -46,6 +46,7 @@ import {
 import { workflowsCommand } from "./commands/workflows";
 import { swarmCommand } from "./commands/swarm";
 import { linkCommand, unlinkCommand } from "./commands/links";
+import { profilesCommand } from "./commands/profiles";
 import { isEnabled, FF_GLOBAL_BOARD } from "./flags";
 
 const program = new Command();
@@ -168,5 +169,6 @@ program.addCommand(notifyUnsubscribeCommand);
 program.addCommand(swarmCommand);
 program.addCommand(linkCommand);
 program.addCommand(unlinkCommand);
+program.addCommand(profilesCommand);
 
 program.parse();

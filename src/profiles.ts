@@ -1,4 +1,4 @@
-import { readFileSync, existsSync, writeFileSync, mkdirSync } from "node:fs";
+import { readFileSync, existsSync, writeFileSync, mkdirSync, accessSync, constants } from "node:fs";
 import { homedir } from "node:os";
 import { join, dirname } from "node:path";
 import YAML from "yaml";
@@ -10,7 +10,7 @@ export interface Profile {
   agent?: string;
 }
 
-function defaultProfilesPath(): string {
+export function defaultProfilesPath(): string {
   return process.env.KDI_PROFILES_PATH || join(homedir(), ".config/kdi/profiles.yaml");
 }
 const ALLOWED_FIELDS = new Set(["name", "command", "agent", "env"]);
@@ -166,4 +166,98 @@ export function substituteCommand(
     .replace(/\{\{title\}\}/g, shellEscape(vars.title ?? ""))
     .replace(/\{\{body\}\}/g, shellEscape(vars.body ?? ""))
     .replace(/\{\{result_file\}\}/g, vars.result_file ?? "");
+}
+
+/** Resolve the leading binary token of a harness command against PATH.
+ * ponytail: pure stat over PATH entries, no shell exec. Per-tick cheap; add a
+ * per-profile liveness cache if dispatch latency ever shows it. */
+export function resolveCommandBinary(command: string): { binary: string; resolvedPath: string | null } {
+  const firstToken = command.trim().split(/\s+/)[0] ?? "";
+  if (!firstToken) return { binary: "", resolvedPath: null };
+
+  if (firstToken.includes("/")) {
+    try {
+      accessSync(firstToken, constants.X_OK);
+      return { binary: firstToken, resolvedPath: firstToken };
+    } catch {
+      return { binary: firstToken, resolvedPath: null };
+    }
+  }
+
+  const pathDirs = (process.env.PATH ?? "").split(":");
+  for (const dir of pathDirs) {
+    if (!dir) continue;
+    const full = join(dir, firstToken);
+    try {
+      accessSync(full, constants.X_OK);
+      return { binary: firstToken, resolvedPath: full };
+    } catch {
+      continue;
+    }
+  }
+  return { binary: firstToken, resolvedPath: null };
+}
+
+export interface DoctorReportEntry {
+  name: string;
+  agent: string | undefined;
+  command: string;
+  binary: string;
+  resolved_path: string | null;
+  ok: boolean;
+  status: "ok" | "missing-binary" | "parse-error";
+}
+
+/** Load the merged profile set and resolve each profile's leading binary. */
+export function doctorProfiles(path: string = defaultProfilesPath()): DoctorReportEntry[] {
+  const profiles = loadProfiles(path);
+  return profiles.map((p) => {
+    const { binary, resolvedPath } = resolveCommandBinary(p.command);
+    let status: DoctorReportEntry["status"] = "ok";
+    if (!binary) status = "parse-error";
+    else if (!resolvedPath) status = "missing-binary";
+    return {
+      name: p.name,
+      agent: p.agent,
+      command: p.command,
+      binary,
+      resolved_path: resolvedPath,
+      ok: status === "ok",
+      status,
+    };
+  });
+}
+
+/** Write known-good real `opencode` and `pi` profile entries to the profiles
+ * YAML, preserving other entries and (without --force) existing opencode/pi. */
+export function bootstrapRealProfiles(
+  path: string = defaultProfilesPath(),
+  force = false
+): { name: string; action: "written" | "preserved" | "overwritten"; command: string }[] {
+  const want = BUILTIN_PROFILES.filter((p) => p.name === "opencode" || p.name === "pi");
+  mkdirSync(dirname(path), { recursive: true });
+
+  let existing: Profile[] = [];
+  if (existsSync(path)) {
+    const parsed = YAML.parse(readFileSync(path, "utf-8"));
+    if (Array.isArray(parsed)) {
+      existing = (parsed as unknown[]).map((p, i) => validateProfile(p, i));
+    }
+  }
+
+  const byName = new Map(existing.map((p) => [p.name, p]));
+  const results: { name: string; action: "written" | "preserved" | "overwritten"; command: string }[] = [];
+
+  for (const w of want) {
+    const had = byName.has(w.name);
+    if (had && !force) {
+      results.push({ name: w.name, action: "preserved", command: byName.get(w.name)!.command });
+      continue;
+    }
+    byName.set(w.name, w);
+    results.push({ name: w.name, action: had ? "overwritten" : "written", command: w.command });
+  }
+
+  writeFileSync(path, YAML.stringify(Array.from(byName.values())), "utf-8");
+  return results;
 }

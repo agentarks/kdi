@@ -78,7 +78,7 @@ stateDiagram-v2
 | `ff_result_summary` | `FF_RESULT_SUMMARY` | CLI / dispatcher | Active | `true` | KDI-053 | Store clean result/summary from harness output; reads `.kdi-result.txt` or the last JSON text chunk instead of raw stdout.
 | `ff_worktree_handoff` | `FF_WORKTREE_HANDOFF` | CLI / dispatcher/worktree | InDev | `true` | KDI-055 | Preserve successful task worktree branches as the handoff artifact; emit handoff event with branch and worktree path.
 | `ff_sveltekit_frontend` | `FF_SVELTEKIT_FRONTEND` / `VITE_FF_SVELTEKIT_FRONTEND` | SvelteKit UI | InDev | `false` | KDI-UI-000 | Gates the SvelteKit operator UI (`apps/web/`). Server hook reads `FF_SVELTEKIT_FRONTEND`; browser badge reads `VITE_FF_SVELTEKIT_FRONTEND`. See `specs/sveltekit-ui-backlog.md`. |
-
+| `ff_real_harness_profiles` | `FF_REAL_HARNESS_PROFILES` | CLI / dispatcher | InDev | `false` | KDI-056 | Real `opencode`/`pi` profile bootstrap + doctor and a pre-dispatch binary guard that refuses to claim a task whose harness binary is missing (no more exit-127 after claim). Contract documented in `specs/harness-contract.md`. |
 ## Rollout Notes
 
 ### End-user rollout (post KDI-054 Hermes parity smoke test)
