@@ -9,8 +9,8 @@ import { atomicClaim, heartbeat } from "./models/claim";
 import { decrementGoalTurns } from "./models/task";
 import { isBlockedByDependencies } from "./models/dependency";
 import { getProfile, substituteCommand } from "./profiles";
-import { createWorktree, removeWorktree, type RemoveWorktreeResult } from "./worktree";
-import { isEnabled, FF_ENABLE_KANBAN_DISPATCH, FF_WORKER_LOG_CAPTURE, FF_CRASH_GRACE_PERIOD, FF_HEARTBEAT, FF_RATE_LIMIT_EXIT_CODE, FF_NOTIFY_SUBS, FF_SWARM_MODE, FF_GOAL_MODE, FF_HARNESS_CONTEXT, FF_RESULT_SUMMARY } from "./flags";
+import { createWorktree, removeWorktree, detectWorktreeChanges, type RemoveWorktreeResult } from "./worktree";
+import { isEnabled, FF_ENABLE_KANBAN_DISPATCH, FF_WORKER_LOG_CAPTURE, FF_CRASH_GRACE_PERIOD, FF_HEARTBEAT, FF_RATE_LIMIT_EXIT_CODE, FF_NOTIFY_SUBS, FF_SWARM_MODE, FF_GOAL_MODE, FF_HARNESS_CONTEXT, FF_RESULT_SUMMARY, FF_WORKTREE_HANDOFF } from "./flags";
 import { extractHarnessResult } from "./harnessResult";
 
 import { runNotifierWatcher, getLastSeenEventId, setLastSeenEventId } from "./notifiers";
@@ -559,6 +559,8 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
     const boardSlug = getBoardSlug(task.board_id);
     const logPath = boardSlug && isEnabled(FF_WORKER_LOG_CAPTURE) ? getTaskLogPath(boardSlug, task.id) : undefined;
 
+    let taskCompleted = false;
+
     try {
       const skillsValue = task.skills && task.skills.length > 0 ? task.skills.join(",") : "";
       const modelValue = task.model_override ?? "";
@@ -632,6 +634,7 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
             ? extractHarnessResult(worktreePath, harnessResult.stdout)
             : { result: harnessResult.stdout, summary: harnessResult.stdout.slice(0, 200) };
           finishTask(task, result, runId, summary);
+          taskCompleted = true;
           processed++;
         } else {
           recordAgentError(profile.agent ?? profile.name);
@@ -647,6 +650,7 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
           ? extractHarnessResult(worktreePath, harnessResult.stdout)
           : { result: harnessResult.stdout, summary: harnessResult.stdout.slice(0, 200) };
         finishTask(task, result, runId, summary);
+        taskCompleted = true;
         processed++;
       } else if (exitCode === 75 && isEnabled(FF_RATE_LIMIT_EXIT_CODE)) {
         handleRateLimit(task, runId, rateLimitCooldownSeconds, stderr || stdout);
@@ -664,7 +668,16 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
       failuresThisPass++;
     } finally {
       try {
-        doRemoveWorktree(workdir, profile.name, String(task.id), worktreePath);
+        const branchName = `wt/${profile.name}/${task.id}`;
+        const shouldHandOff = taskCompleted && isEnabled(FF_WORKTREE_HANDOFF) && detectWorktreeChanges(worktreePath, baseRef);
+        if (shouldHandOff) {
+          addEvent(task.id, "worktree_handed_off", { branch: branchName, worktree_path: worktreePath }, runId ?? undefined);
+          if (boardSlug) {
+            logToBoard(boardSlug, `Task #${task.id} worktree handed off: ${branchName} at ${worktreePath}`);
+          }
+        } else {
+          doRemoveWorktree(workdir, profile.name, String(task.id), worktreePath);
+        }
       } catch {
         // Best effort cleanup
       }

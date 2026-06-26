@@ -6,7 +6,7 @@ import { initDb, closeDb, getDb } from "../src/db";
 import { createBoard } from "../src/models/board";
 import { createTask, promoteTask, showTask } from "../src/models/task";
 import { addDependency } from "../src/models/dependency";
-import { setFlag, clearOverrides, FF_RATE_LIMIT_EXIT_CODE, FF_NOTIFY_SUBS, FF_DISPATCH_CONTROLS, FF_GOAL_MODE, FF_HARNESS_CONTEXT, FF_ENABLE_KANBAN_DISPATCH, FF_RESULT_SUMMARY } from "../src/flags";
+import { setFlag, clearOverrides, FF_RATE_LIMIT_EXIT_CODE, FF_NOTIFY_SUBS, FF_DISPATCH_CONTROLS, FF_GOAL_MODE, FF_HARNESS_CONTEXT, FF_ENABLE_KANBAN_DISPATCH, FF_RESULT_SUMMARY, FF_WORKTREE_HANDOFF } from "../src/flags";
 import { extractHarnessResult } from "../src/harnessResult";
 import { subscribe } from "../src/models/notifySub";
 import { atomicClaim, heartbeat } from "../src/models/claim";
@@ -15,8 +15,19 @@ import { parseFailureLimit } from "../src/commands/dispatch";
 import { getEvents } from "../src/models/taskEvent";
 import { getRuns, updateRun } from "../src/models/taskRun";
 import { cleanupDb } from "./cleanupDb";
+import { createWorktree, removeWorktree } from "../src/worktree";
+import { execFileSync } from "node:child_process";
 
 let testDbPath: string;
+
+function setupTempGitRepo(): string {
+  const repoDir = mkdtempSync(join(tmpdir(), "kdi-dispatcher-repo-"));
+  execFileSync("git", ["init"], { cwd: repoDir, stdio: "pipe" });
+  execFileSync("git", ["config", "user.email", "test@test.com"], { cwd: repoDir, stdio: "pipe" });
+  execFileSync("git", ["config", "user.name", "Test User"], { cwd: repoDir, stdio: "pipe" });
+  execFileSync("git", ["commit", "--allow-empty", "-m", "initial commit"], { cwd: repoDir, stdio: "pipe" });
+  return repoDir;
+}
 
 function setupTempHome(profiles: { name: string; command: string }[]): string {
   const home = mkdtempSync(join(tmpdir(), "kdi-dispatcher-home-"));
@@ -2142,5 +2153,97 @@ describe("dispatcher goal mode", () => {
     expect(capturedEnv!.KDI_TASK_BODY).toBe("Verify harness context");
     expect(capturedEnv!.KDI_TASK_ID).toBe(String(task.id));
     expect(capturedEnv!.KDI_BOARD).toBe("context-board");
+  });
+
+  describe("worktree handoff (KDI-055)", () => {
+    it("preserves worktree/branch and emits event when task has changes", async () => {
+      setFlag(FF_WORKTREE_HANDOFF, true);
+      const repoDir = setupTempGitRepo();
+
+      const board = createBoard("handoff-board", repoDir);
+      const task = createTask({ board_id: board.id, title: "Handoff task", assignee: "opencode" });
+      promoteTask(task.id);
+
+      const mockRemoveWorktree = mock(() => ({ worktreeRemoved: true, branchDeleted: true, found: true }));
+
+      await tick({
+        spawnHarness: async (_command, cwd) => {
+          writeFileSync(join(cwd, "changed.txt"), "changed");
+          return { stdout: "ok", stderr: "", exitCode: 0 };
+        },
+        createWorktree: createWorktree,
+        removeWorktree: mockRemoveWorktree,
+      });
+
+      const updated = showTask(task.id);
+      expect(updated!.status).toBe("done");
+      expect(mockRemoveWorktree).not.toHaveBeenCalled();
+
+      const events = getEvents(task.id);
+      const handoffEvent = events.find((e) => e.kind === "worktree_handed_off");
+      expect(handoffEvent).toBeDefined();
+      const payload = JSON.parse(handoffEvent!.payload ?? "{}");
+      expect(payload.branch).toBe(`wt/opencode/${task.id}`);
+      expect(payload.worktree_path).toContain(`kdi-opencode-${task.id}-`);
+
+      // Clean up the preserved worktree/branch
+      removeWorktree(repoDir, "opencode", String(task.id), payload.worktree_path);
+      rmSync(repoDir, { recursive: true, force: true });
+    });
+
+    it("cleans up successful worktree when there are no changes", async () => {
+      setFlag(FF_WORKTREE_HANDOFF, true);
+      const repoDir = setupTempGitRepo();
+
+      const board = createBoard("handoff-clean-board", repoDir);
+      const task = createTask({ board_id: board.id, title: "Handoff clean task", assignee: "opencode" });
+      promoteTask(task.id);
+
+      const mockRemoveWorktree = mock(() => ({ worktreeRemoved: true, branchDeleted: true, found: true }));
+
+      await tick({
+        spawnHarness: async () => ({ stdout: "ok", stderr: "", exitCode: 0 }),
+        createWorktree: createWorktree,
+        removeWorktree: mockRemoveWorktree,
+      });
+
+      const updated = showTask(task.id);
+      expect(updated!.status).toBe("done");
+      expect(mockRemoveWorktree).toHaveBeenCalled();
+
+      const events = getEvents(task.id);
+      expect(events.some((e) => e.kind === "worktree_handed_off")).toBe(false);
+
+      rmSync(repoDir, { recursive: true, force: true });
+    });
+
+    it("cleans up worktree with changes when handoff flag is disabled", async () => {
+      setFlag(FF_WORKTREE_HANDOFF, false);
+      const repoDir = setupTempGitRepo();
+
+      const board = createBoard("handoff-disabled-board", repoDir);
+      const task = createTask({ board_id: board.id, title: "Handoff disabled task", assignee: "opencode" });
+      promoteTask(task.id);
+
+      const mockRemoveWorktree = mock(() => ({ worktreeRemoved: true, branchDeleted: true, found: true }));
+
+      await tick({
+        spawnHarness: async (_command, cwd) => {
+          writeFileSync(join(cwd, "changed.txt"), "changed");
+          return { stdout: "ok", stderr: "", exitCode: 0 };
+        },
+        createWorktree: createWorktree,
+        removeWorktree: mockRemoveWorktree,
+      });
+
+      const updated = showTask(task.id);
+      expect(updated!.status).toBe("done");
+      expect(mockRemoveWorktree).toHaveBeenCalled();
+
+      const events = getEvents(task.id);
+      expect(events.some((e) => e.kind === "worktree_handed_off")).toBe(false);
+
+      rmSync(repoDir, { recursive: true, force: true });
+    });
   });
 });

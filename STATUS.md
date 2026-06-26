@@ -1,5 +1,19 @@
 # kdi — Status
 
+## KDI-055: Worktree Handoff — Done
+- [x] BRD finalized at `specs/brd-kdi-055-worktree-handoff.md`
+- [x] Feature flag `ff_worktree_handoff` / `FF_WORKTREE_HANDOFF` registered in `specs/feature-flags.md` and `src/flags.ts`, defaults to `false`
+- [x] `src/worktree.ts` exposes `detectWorktreeChanges()` helper
+- [x] Dispatcher checks successful task worktrees for uncommitted changes or commits ahead of the board base ref when `FF_WORKTREE_HANDOFF=true`
+- [x] Successful worktrees with changes preserve the `wt/<profile>/<task_id>` branch and worktree; a `worktree_handed_off` event records the branch and worktree path, and the board log receives operator-facing handoff message
+- [x] Successful worktrees with no changes continue to be cleaned up as today
+- [x] When `FF_WORKTREE_HANDOFF=false`, existing cleanup behavior is unchanged
+- [x] Original board workdir is never modified by this feature
+- [x] Unit tests in `tests/worktree.test.ts` cover clean, untracked, modified, and committed-change detection plus handoff metadata
+- [x] Dispatcher integration tests in `tests/dispatcher.test.ts` cover preserve-with-changes, cleanup-without-changes, and disabled-flag fallback
+- [x] User-loop smoke test with temp `HOME`/`KDI_DB` proves real CLI dispatch preserves the worktree/branch and leaves the original repo clean
+- [x] `bun run lint`, `bun test` (**937 pass / 0 fail**), `bun run build` pass
+
 ## End-User Rollout — Feature Flags Promoted to Active
 - [x] Hermes Kanban parity smoke test completed (create → promote → dispatch --once → done, result captured, worktree cleaned)
 - [x] Promoted stable feature flags to **Active** (default `true`) in `src/flags.ts`:

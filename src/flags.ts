@@ -47,6 +47,7 @@ export const FF_CREATE_PARENT = "FF_CREATE_PARENT";
 export const FF_TAIL_NO_FOLLOW = "FF_TAIL_NO_FOLLOW";
 export const FF_HARNESS_CONTEXT = "FF_HARNESS_CONTEXT";
 export const FF_RESULT_SUMMARY = "FF_RESULT_SUMMARY";
+export const FF_WORKTREE_HANDOFF = "FF_WORKTREE_HANDOFF";
 
 const flagRegistry = new Map<string, boolean>();
 const flagOverrides = new Map<string, boolean>();
@@ -145,3 +146,4 @@ registerFlag(FF_CREATE_PARENT, true);
 registerFlag(FF_TAIL_NO_FOLLOW, true);
 registerFlag(FF_HARNESS_CONTEXT, true);
 registerFlag(FF_RESULT_SUMMARY, true);
+registerFlag(FF_WORKTREE_HANDOFF, false);
