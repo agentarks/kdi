@@ -123,6 +123,15 @@ Functional Requirements
   `KDI_GOAL_MAX_TURNS`, `KDI_GOAL_REMAINING_TURNS`, `KDI_GOAL_TURN`,
   `KDI_GOAL_CONTEXT`, `KDI_GOAL_VERDICT_FILE`. No other `KDI_*` env vars are
   part of this contract.
+
+> **Assumption (Fail-Loud):** the harness env-var contract documented here
+> reflects the *already-shipped* dispatcher behavior in `src/dispatcher.ts`
+> (lines 590–612). KDI-056 does not change that contract; it adds
+> `kdi profile doctor` printing of the contract and a regression
+> contract-assertion test in Verification Notes. AC numbering follows the
+> labelled imperative `AC-XX:` convention used by BRD-006/008/009, not the
+> unlabelled-sentence convention of BRD-KDI-055; the section *structure*
+> mirrors BRD-KDI-055 exactly.
 - When `FF_REAL_AGENT_PROFILES=false`, no pre-dispatch validation runs and the
   dispatcher behaves exactly as today (claim first, surface exit 127 as a
   normal harness failure).
@@ -207,15 +216,10 @@ All acceptance criteria assume `FF_REAL_AGENT_PROFILES=true` unless noted.
       profile whose binary is missing follows the existing behavior: it is
       claimed, the harness exits 127, and the run records a normal harness
       failure (no `harness_invalid` event, no pre-claim block).
-- [ ] AC-15: The dispatcher exports `KDI_TASK_ID`, `KDI_TASK_TITLE`,
-      `KDI_TASK_BODY`, and `KDI_BOARD` to the harness process when
-      `FF_HARNESS_CONTEXT=true`, and exports `KDI_RESULT_FILE` when
-      `FF_RESULT_SUMMARY=true` (regression, not new behavior — covered by a
-      contract assertion test added in this BRD).
-- [ ] AC-16: `KDI_PROFILES_PATH` overrides the profiles file path for `kdi
+- [ ] AC-15: `KDI_PROFILES_PATH` overrides the profiles file path for `kdi
       profile doctor` and `kdi profile bootstrap <name>`, mirroring
       `ensureProfiles` / `loadProfiles`.
-- [ ] AC-17: `bun run lint`, `bun test`, and `bun run build` pass with the new
+- [ ] AC-16: `bun run lint`, `bun test`, and `bun run build` pass with the new
       profiles/commands and tests.
 
 -------------------------------------------------------------------------------

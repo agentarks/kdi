@@ -22,7 +22,7 @@
 
 ## Backlog Updates — KDI-056 Real Agent Profiles
 - [x] Added KDI-056 backlog item for real Pi/opencode harness profile bootstrap/doctor support after local smoke showed user-level profiles can point to stale `/tmp/mock-harness` and block dispatch with exit 127.
-- [x] BRD drafted at `specs/brd-kdi-056-real-agent-profiles.md` (gated behind `ff_real_agent_profiles` / `FF_REAL_AGENT_PROFILES`, default `false`; covers pre-dispatch `validateProfileHarness`, `kdi profile doctor` / `kdi profile bootstrap <pi|opencode>`, and the documented `$KDI_TASK_*` / `$KDI_RESULT_FILE` env contract; 17 acceptance criteria).
+- [x] BRD drafted at `specs/brd-kdi-056-real-agent-profiles.md` (gated behind `ff_real_agent_profiles` / `FF_REAL_AGENT_PROFILES`, default `false`; covers pre-dispatch `validateProfileHarness`, `kdi profile doctor` / `kdi profile bootstrap <pi|opencode>`, and the documented `$KDI_TASK_*` / `$KDI_RESULT_FILE` env contract; 16 acceptance criteria). Contract is asserted against already-shipped `src/dispatcher.ts` exports.
 - [ ] Pending implementation: register `FF_REAL_AGENT_PROFILES` in `specs/feature-flags.md` and `src/flags.ts`, implement `validateProfileHarness` pre-claim validation, `kdi profile doctor` / `bootstrap`, contract assertion tests, and TDD per AC-01..AC-17.
 
 ## KDI-052: Stabilize Test Suite — Done
