@@ -15,7 +15,10 @@
 - [x] Dev smoke with isolated env: flag-off `GET /` → 307 `/disabled`; flag-on `GET /` → 200 shell (`Board: default`, `board-switcher`, badge).
 - [x] `bun test` (938 pass / 0 fail) — CLI suite unaffected.
 - [x] Promoted `ff_sveltekit_frontend` to `InDev` (default `false`) in `specs/feature-flags.md`; updated `AGENTS.md` repo rules + verified stack versions for the `apps/web` workspace.
-- [ ] Pending: KDI-UI-001 (server-side data bridge), then P1 board/task UI, dispatch/observability, and UI smoke loop (KDI-UI-016).
+- [x] Specs drafted for next items:
+  - `specs/sveltekit-ui/KDI-UI-001-server-data-bridge.md`
+  - `specs/sveltekit-ui/KDI-UI-002-board-management.md`
+- [ ] Pending implementation: KDI-UI-001 (server-side data bridge), then P1 board/task UI, dispatch/observability, and UI smoke loop (KDI-UI-016).
 
 ## KDI-055: Worktree Handoff — Done
 - [x] BRD finalized at `specs/brd-kdi-055-worktree-handoff.md`
