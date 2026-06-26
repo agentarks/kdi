@@ -1,5 +1,19 @@
 # kdi — Status
 
+## KDI-055: Worktree Handoff — Done
+- [x] BRD finalized at `specs/brd-kdi-055-worktree-handoff.md`
+- [x] Feature flag `ff_worktree_handoff` / `FF_WORKTREE_HANDOFF` registered in `specs/feature-flags.md` and `src/flags.ts`, defaults to `true`
+- [x] `src/worktree.ts` exposes `detectWorktreeChanges()` helper
+- [x] Dispatcher checks successful task worktrees for uncommitted changes or commits ahead of the board base ref when `FF_WORKTREE_HANDOFF=true`
+- [x] Successful worktrees with changes preserve the `wt/<profile>/<task_id>` branch and worktree; a `worktree_handed_off` event records the branch and worktree path, and the board log receives operator-facing handoff message
+- [x] Successful worktrees with no changes continue to be cleaned up as today
+- [x] When `FF_WORKTREE_HANDOFF=false`, existing cleanup behavior is unchanged
+- [x] Original board workdir is never modified by this feature
+- [x] Unit tests in `tests/worktree.test.ts` cover clean, untracked, modified, and committed-change detection plus handoff metadata
+- [x] Dispatcher integration tests in `tests/dispatcher.test.ts` cover preserve-with-changes, cleanup-without-changes, and disabled-flag fallback
+- [x] User-loop smoke test with temp `HOME`/`KDI_DB` proves real CLI dispatch preserves the worktree/branch and leaves the original repo clean
+- [x] `bun run lint`, `bun test` (**938 pass / 0 fail**), `bun run build` pass
+
 ## Backlog Updates — KDI-056 Real Agent Profiles
 - [x] Added KDI-056 backlog item for real Pi/opencode harness profile bootstrap/doctor support after local smoke showed user-level profiles can point to stale `/tmp/mock-harness` and block dispatch with exit 127.
 - [ ] Pending implementation: supported repair/install path for real `opencode` and `pi` profiles, pre-dispatch binary/agent validation, and documented `$KDI_TASK_*` / `$KDI_RESULT_FILE` contract.
@@ -9,7 +23,7 @@
 - [x] Root cause: `spawnHarness` resolved before `logStream.end()` flushed data, so immediate file reads could observe partial logs
 - [x] Added regression coverage for large combined stdout/stderr log output
 - [x] Fixed `spawnHarness` to wait for log stream flush before resolving/rejecting while keeping log-write failures best-effort
-- [x] Verification: `bun run lint`, `bun run test` (931 pass / 0 fail), `bun run build`
+- [x] Verification: `bun run lint`, `bun run test` (931 pass / 0 fail), `bun run build` pass
 
 ## End-User Rollout — Feature Flags Promoted to Active
 - [x] Hermes Kanban parity smoke test completed (create → promote → dispatch --once → done, result captured, worktree cleaned)

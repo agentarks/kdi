@@ -3,7 +3,8 @@ import { mkdtempSync, mkdirSync, rmSync, existsSync, lstatSync, writeFileSync } 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
-import { createWorktree, removeWorktree } from "../src/worktree";
+import { createWorktree, removeWorktree, detectWorktreeChanges } from "../src/worktree";
+import { setupTempGitRepo } from "./gitTestHelpers";
 
 let tempDir: string;
 let repoDir: string;
@@ -15,14 +16,7 @@ function git(args: string[], cwd?: string) {
 describe("worktree", () => {
   beforeAll(() => {
     tempDir = mkdtempSync(join(tmpdir(), "kdi-worktree-test-"));
-    repoDir = join(tempDir, "repo");
-
-    // Create a temp git repo
-    mkdirSync(repoDir, { recursive: true });
-    git(["init"]);
-    git(["config", "user.email", "test@test.com"]);
-    git(["config", "user.name", "Test User"]);
-    git(["commit", "--allow-empty", "-m", "initial commit"]);
+    repoDir = setupTempGitRepo();
   });
 
   afterAll(() => {
@@ -146,4 +140,40 @@ describe("worktree", () => {
     expect(() => createWorktree(repoDir, "bad;profile", "task-006")).toThrow("profile must be alphanumeric");
     expect(() => createWorktree(repoDir, "default", "bad task")).toThrow("taskId must be alphanumeric");
   });
+
+  it("detectWorktreeChanges returns false for a clean worktree", () => {
+    const worktreePath = createWorktree(repoDir, "default", "task-clean");
+    expect(detectWorktreeChanges(worktreePath, "origin/main")).toBe(false);
+    removeWorktree(repoDir, "default", "task-clean");
+  });
+
+  it("detectWorktreeChanges returns true for an untracked file", () => {
+    const worktreePath = createWorktree(repoDir, "default", "task-untracked");
+    writeFileSync(join(worktreePath, "new-file.txt"), "new content");
+    expect(detectWorktreeChanges(worktreePath, "origin/main")).toBe(true);
+    removeWorktree(repoDir, "default", "task-untracked");
+  });
+
+  it("detectWorktreeChanges returns true for a modified tracked file", () => {
+    const trackedFile = join(repoDir, "tracked.txt");
+    writeFileSync(trackedFile, "original");
+    git(["add", "tracked.txt"]);
+    git(["commit", "-m", "add tracked file"]);
+
+    const worktreePath = createWorktree(repoDir, "default", "task-modified");
+    writeFileSync(join(worktreePath, "tracked.txt"), "modified");
+    expect(detectWorktreeChanges(worktreePath, "origin/main")).toBe(true);
+    removeWorktree(repoDir, "default", "task-modified");
+  });
+
+  it("detectWorktreeChanges returns true for a commit on the task branch", () => {
+    const worktreePath = createWorktree(repoDir, "default", "task-commit");
+    writeFileSync(join(worktreePath, "commit-file.txt"), "commit content");
+    git(["add", "commit-file.txt"], worktreePath);
+    git(["commit", "-m", "task commit"], worktreePath);
+
+    expect(detectWorktreeChanges(worktreePath, "origin/main")).toBe(true);
+    removeWorktree(repoDir, "default", "task-commit");
+  });
+
 });

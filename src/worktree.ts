@@ -20,7 +20,7 @@ export function createWorktree(
   validateId("profile", profile);
   validateId("taskId", taskId);
 
-  const branchName = `wt/${profile}/${taskId}`;
+  const branchName = branchNameFor(profile, taskId);
 
   // Determine the base ref to branch from
   let resolvedBaseRef: string;
@@ -60,6 +60,72 @@ export interface RemoveWorktreeResult {
   found: boolean;
 }
 
+function branchNameFor(profile: string, taskId: string): string {
+  return `wt/${profile}/${taskId}`;
+}
+
+function resolveBaseCommit(worktreePath: string, baseRef: string): string | null {
+  try {
+    const resolved = execFileSync("git", ["rev-parse", "--verify", baseRef], {
+      cwd: worktreePath,
+      encoding: "utf-8",
+      stdio: "pipe",
+    });
+    return resolved.trim();
+  } catch {
+    // Base ref does not exist in this worktree; cannot determine a merge base.
+    return null;
+  }
+}
+
+function hasUncommittedChanges(worktreePath: string): boolean {
+  try {
+    const status = execFileSync("git", ["status", "--porcelain"], {
+      cwd: worktreePath,
+      encoding: "utf-8",
+      stdio: "pipe",
+    });
+    return status.trim().length > 0;
+  } catch {
+    return false;
+  }
+}
+
+function countCommitsAhead(worktreePath: string, baseCommit: string): number {
+  try {
+    const count = execFileSync("git", ["rev-list", "--count", `${baseCommit}..HEAD`], {
+      cwd: worktreePath,
+      encoding: "utf-8",
+      stdio: "pipe",
+    });
+    return parseInt(count.trim(), 10) || 0;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Detect whether a successful task worktree contains local changes or commits
+ * relative to the task base ref. Returns true for uncommitted changes (tracked
+ * or untracked) or for commits on the task branch ahead of the base ref.
+ */
+export function detectWorktreeChanges(
+  worktreePath: string,
+  baseRef: string,
+): boolean {
+  if (hasUncommittedChanges(worktreePath)) {
+    return true;
+  }
+
+  const baseCommit = resolveBaseCommit(worktreePath, baseRef);
+  if (baseCommit === null) {
+    // Without a resolvable base ref we can only detect uncommitted changes.
+    return false;
+  }
+
+  return countCommitsAhead(worktreePath, baseCommit) > 0;
+}
+
 export function removeWorktree(
   repoDir: string,
   profile: string,
@@ -69,7 +135,7 @@ export function removeWorktree(
   validateId("profile", profile);
   validateId("taskId", taskId);
 
-  const branchName = `wt/${profile}/${taskId}`;
+  const branchName = branchNameFor(profile, taskId);
   let found = false;
   let worktreeRemoved = false;
   let branchDeleted = false;
