@@ -12,7 +12,7 @@
 - [x] Unit tests in `tests/worktree.test.ts` cover clean, untracked, modified, and committed-change detection plus handoff metadata
 - [x] Dispatcher integration tests in `tests/dispatcher.test.ts` cover preserve-with-changes, cleanup-without-changes, and disabled-flag fallback
 - [x] User-loop smoke test with temp `HOME`/`KDI_DB` proves real CLI dispatch preserves the worktree/branch and leaves the original repo clean
-- [x] `bun run lint`, `bun test` (**937 pass / 0 fail**), `bun run build` pass
+- [x] `bun run lint`, `bun test` (**938 pass / 0 fail**), `bun run build` pass
 
 ## Backlog Updates — KDI-056 Real Agent Profiles
 - [x] Added KDI-056 backlog item for real Pi/opencode harness profile bootstrap/doctor support after local smoke showed user-level profiles can point to stale `/tmp/mock-harness` and block dispatch with exit 127.
