@@ -2,7 +2,7 @@
 
 ## KDI-055: Worktree Handoff — Done
 - [x] BRD finalized at `specs/brd-kdi-055-worktree-handoff.md`
-- [x] Feature flag `ff_worktree_handoff` / `FF_WORKTREE_HANDOFF` registered in `specs/feature-flags.md` and `src/flags.ts`, defaults to `false`
+- [x] Feature flag `ff_worktree_handoff` / `FF_WORKTREE_HANDOFF` registered in `specs/feature-flags.md` and `src/flags.ts`, defaults to `true`
 - [x] `src/worktree.ts` exposes `detectWorktreeChanges()` helper
 - [x] Dispatcher checks successful task worktrees for uncommitted changes or commits ahead of the board base ref when `FF_WORKTREE_HANDOFF=true`
 - [x] Successful worktrees with changes preserve the `wt/<profile>/<task_id>` branch and worktree; a `worktree_handed_off` event records the branch and worktree path, and the board log receives operator-facing handoff message

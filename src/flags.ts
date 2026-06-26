@@ -146,4 +146,4 @@ registerFlag(FF_CREATE_PARENT, true);
 registerFlag(FF_TAIL_NO_FOLLOW, true);
 registerFlag(FF_HARNESS_CONTEXT, true);
 registerFlag(FF_RESULT_SUMMARY, true);
-registerFlag(FF_WORKTREE_HANDOFF, false);
+registerFlag(FF_WORKTREE_HANDOFF, true);
