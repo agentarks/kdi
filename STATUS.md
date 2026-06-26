@@ -1,5 +1,11 @@
 # kdi — Status
 
+## SvelteKit UI Backlog - Drafted
+- [x] Drafted UI backlog at `specs/sveltekit-ui-backlog.md` based on implemented Hermes/KDI parity features.
+- [x] Linked frontend backlog from `specs/hermes-kanban-backlog.md`.
+- [x] Registered planned `ff_sveltekit_frontend` / `FF_SVELTEKIT_FRONTEND` / `VITE_FF_SVELTEKIT_FRONTEND` in `specs/feature-flags.md`, default `false`.
+- [ ] Pending implementation: SvelteKit scaffold, server-side data bridge, board/task UI, dispatch/observability screens, advanced workflow UI, and UI smoke tests.
+
 ## KDI-055: Worktree Handoff — Done
 - [x] BRD finalized at `specs/brd-kdi-055-worktree-handoff.md`
 - [x] Feature flag `ff_worktree_handoff` / `FF_WORKTREE_HANDOFF` registered in `specs/feature-flags.md` and `src/flags.ts`, defaults to `true`
