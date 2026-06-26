@@ -54,6 +54,24 @@ describe("worker log capture", () => {
     }
   });
 
+  it("spawnHarness waits for log stream flush before resolving", async () => {
+    const home = makeTempHome();
+    const logPath = join(home, ".local", "share", "kdi", "logs", "myboard", "large.log");
+    const bun = JSON.stringify(process.execPath);
+    const command = `${bun} -e 'process.stdout.write("o".repeat(5000000) + "\\n"); process.stderr.write("e".repeat(5000000) + "\\n")'`;
+
+    try {
+      const result = await spawnHarness(command, tmpdir(), logPath);
+      expect(result.exitCode).toBe(0);
+      const content = readFileSync(logPath, "utf-8");
+      expect(content.length).toBe(result.stdout.length + result.stderr.length);
+      expect(content).toContain("o".repeat(1000));
+      expect(content).toContain("e".repeat(1000));
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
   it("spawnHarness does not fail when log directory is unwritable", async () => {
     const home = makeTempHome();
     process.env.HOME = home;

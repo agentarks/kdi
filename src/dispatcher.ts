@@ -63,24 +63,38 @@ export async function spawnHarness(command: string, cwd: string, logPath?: strin
           child.kill("SIGKILL");
         }
       }, 5000);
-      reject(new Error(`Harness timed out after ${timeoutMs}ms`));
+      finishLogStream(() => reject(new Error(`Harness timed out after ${timeoutMs}ms`)));
     }, timeoutMs);
 
     let stdout = "";
     let stderr = "";
 
     let logStream: ReturnType<typeof createWriteStream> | undefined;
+    let logStreamFailed = false;
     if (logPath) {
       try {
         mkdirSync(dirname(logPath), { recursive: true });
         logStream = createWriteStream(logPath, { flags: "a" });
         logStream.on("error", () => {
           // Swallow stream errors so log-write failures don't fail the task
+          logStreamFailed = true;
         });
       } catch {
         // Best effort logging
       }
     }
+
+    const finishLogStream = (done: () => void): void => {
+      if (!logStream || logStreamFailed || logStream.destroyed) {
+        done();
+        return;
+      }
+      try {
+        logStream.end(done);
+      } catch {
+        done();
+      }
+    };
 
     child.stdout!.on("data", (data) => {
       const chunk = data.toString();
@@ -102,20 +116,14 @@ export async function spawnHarness(command: string, cwd: string, logPath?: strin
       if (settled) return;
       settled = true;
       clearTimeout(timeout);
-      if (logStream) {
-        try { logStream.end(); } catch {}
-      }
-      resolve({ stdout, stderr, exitCode: code ?? 0, pid: child.pid ?? undefined });
+      finishLogStream(() => resolve({ stdout, stderr, exitCode: code ?? 0, pid: child.pid ?? undefined }));
     });
 
     child.on("error", (err) => {
       if (settled) return;
       settled = true;
       clearTimeout(timeout);
-      if (logStream) {
-        try { logStream.end(); } catch {}
-      }
-      reject(err);
+      finishLogStream(() => reject(err));
     });
   });
 }
