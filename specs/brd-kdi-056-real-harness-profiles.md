@@ -81,12 +81,21 @@ Functional Requirements
   splits the command string, expands the first token, and resolves it against
   `PATH` (plus an absolute-path shortcut). Returns `null` when not found. No
   shell invocation; safe to run per tick.
-- **FR-5 (contract doc):** Add a `docs/harness-contract.md` section (or
-  `specs/harness-contract.md`) listing: every env var KDI exports to a harness
-  (`KDI_TASK_ID`, `KDI_TASK_TITLE`, `KDI_TASK_BODY`, `KDI_BOARD`, `KDI_RESULT_FILE`,
-  plus `KDI_GOAL_*` and `KDI_CURRENT_STEP_KEY` when their flags are on); every
-  supported `{{template}}` variable; and the result-file convention
-  (`.kdi-result.txt` in the workdir, read by `extractHarnessResult()`).
+- **FR-5 (contract doc):** Add a `specs/harness-contract.md` (or
+  `docs/harness-contract.md`) listing every env var `harnessEnv` actually exports
+  in `src/dispatcher.ts`, grouped by the flag that gates it:
+  always-on task fields (`KDI_TASK_ID`, `KDI_TASK_TITLE`, `KDI_TASK_BODY`,
+  `KDI_BOARD` gated by `FF_HARNESS_CONTEXT`; `KDI_SKILLS` when `task.skills`
+  is non-empty; `KDI_MODEL` when `task.model_override` is set; `KDI_CURRENT_STEP_KEY`
+  when `task.current_step_key` is set), result contract (`KDI_RESULT_FILE` gated
+  by `FF_RESULT_SUMMARY`), and goal mode (`KDI_GOAL_MODE`, `KDI_GOAL_MAX_TURNS`,
+  `KDI_GOAL_REMAINING_TURNS`, `KDI_GOAL_TURN`, `KDI_GOAL_CONTEXT`,
+  `KDI_GOAL_VERDICT_FILE` gated by `FF_GOAL_MODE`). Also list every supported
+  `{{template}}` variable from `ALLOWED_TEMPLATES` in `src/profiles.ts`
+  (`workdir`, `branch`, `task_id`, `agent`, `skills`, `model`, `step_key`,
+  `title`, `body`, `result_file`) and the result-file convention
+  (`.kdi-result.txt` in the workdir, read by `extractHarnessResult()`), plus the
+  goal-verdict file convention (`.kdi-goal-verdict.json` in the workdir).
 - **FR-6 (flag registration):** Register `ff_real_harness_profiles` /
   `FF_REAL_HARNESS_PROFILES` in `src/flags.ts` and `specs/feature-flags.md`,
   default `false`, status `InDev`.
