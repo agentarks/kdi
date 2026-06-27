@@ -5,7 +5,7 @@
   const boardSlug = $derived(page.url.searchParams.get("board") ?? "default");
 </script>
 
-<h1 style="margin: 0 0 16px;">Board: {boardSlug}</h1>
+<h1 class="stack-md">Board: {boardSlug}</h1>
 
 <Placeholder
   title="Kanban board view"

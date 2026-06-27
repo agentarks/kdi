@@ -21,6 +21,7 @@ Pin these exact versions when adding or upgrading dependencies. Verify new versi
 | commander | 12.1.0 |
 | yaml | 2.9.0 |
 | @types/bun | 1.3.14 |
+| bun-types | 1.3.14 |
 
 ### SvelteKit UI workspace (`apps/web/`) — verified KDI-UI-000
 

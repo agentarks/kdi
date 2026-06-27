@@ -6,7 +6,7 @@ import { redirect, type Handle } from "@sveltejs/kit";
 // guard rather than per-route checks.
 export const handle: Handle = async ({ event, resolve }) => {
   const enabled = process.env.FF_SVELTEKIT_FRONTEND === "true";
-  const onDisabled = event.url.pathname.startsWith("/disabled");
+  const onDisabled = event.url.pathname === "/disabled";
 
   if (!enabled && !onDisabled) {
     throw redirect(307, "/disabled");
