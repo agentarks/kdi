@@ -1,4 +1,4 @@
-import { readFileSync, existsSync, writeFileSync, mkdirSync, accessSync, constants } from "node:fs";
+import { readFileSync, existsSync, writeFileSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, dirname } from "node:path";
 import YAML from "yaml";
@@ -169,33 +169,12 @@ export function substituteCommand(
 }
 
 /** Resolve the leading binary token of a harness command against PATH.
- * ponytail: pure stat over PATH entries, no shell exec. Per-tick cheap; add a
- * per-profile liveness cache if dispatch latency ever shows it. */
+ * ponytail: Bun.which() is the built-in resolver; no hand-rolled PATH loop. */
 export function resolveCommandBinary(command: string): { binary: string; resolvedPath: string | null } {
   const firstToken = command.trim().split(/\s+/)[0] ?? "";
   if (!firstToken) return { binary: "", resolvedPath: null };
-
-  if (firstToken.includes("/")) {
-    try {
-      accessSync(firstToken, constants.X_OK);
-      return { binary: firstToken, resolvedPath: firstToken };
-    } catch {
-      return { binary: firstToken, resolvedPath: null };
-    }
-  }
-
-  const pathDirs = (process.env.PATH ?? "").split(":");
-  for (const dir of pathDirs) {
-    if (!dir) continue;
-    const full = join(dir, firstToken);
-    try {
-      accessSync(full, constants.X_OK);
-      return { binary: firstToken, resolvedPath: full };
-    } catch {
-      continue;
-    }
-  }
-  return { binary: firstToken, resolvedPath: null };
+  const resolvedPath = Bun.which(firstToken);
+  return { binary: firstToken, resolvedPath };
 }
 
 export interface DoctorReportEntry {
@@ -205,7 +184,7 @@ export interface DoctorReportEntry {
   binary: string;
   resolved_path: string | null;
   ok: boolean;
-  status: "ok" | "missing-binary" | "parse-error";
+  status: "ok" | "missing-binary";
 }
 
 /** Load the merged profile set and resolve each profile's leading binary. */
@@ -213,9 +192,7 @@ export function doctorProfiles(path: string = defaultProfilesPath()): DoctorRepo
   const profiles = loadProfiles(path);
   return profiles.map((p) => {
     const { binary, resolvedPath } = resolveCommandBinary(p.command);
-    let status: DoctorReportEntry["status"] = "ok";
-    if (!binary) status = "parse-error";
-    else if (!resolvedPath) status = "missing-binary";
+    const status: DoctorReportEntry["status"] = binary && resolvedPath ? "ok" : "missing-binary";
     return {
       name: p.name,
       agent: p.agent,
@@ -233,7 +210,7 @@ export function doctorProfiles(path: string = defaultProfilesPath()): DoctorRepo
 export function bootstrapRealProfiles(
   path: string = defaultProfilesPath(),
   force = false
-): { name: string; action: "written" | "preserved" | "overwritten"; command: string }[] {
+): { name: string; action: "written" | "preserved" | "overwritten" }[] {
   const want = BUILTIN_PROFILES.filter((p) => p.name === "opencode" || p.name === "pi");
   mkdirSync(dirname(path), { recursive: true });
 
@@ -246,16 +223,16 @@ export function bootstrapRealProfiles(
   }
 
   const byName = new Map(existing.map((p) => [p.name, p]));
-  const results: { name: string; action: "written" | "preserved" | "overwritten"; command: string }[] = [];
+  const results: { name: string; action: "written" | "preserved" | "overwritten" }[] = [];
 
   for (const w of want) {
     const had = byName.has(w.name);
     if (had && !force) {
-      results.push({ name: w.name, action: "preserved", command: byName.get(w.name)!.command });
+      results.push({ name: w.name, action: "preserved" });
       continue;
     }
     byName.set(w.name, w);
-    results.push({ name: w.name, action: had ? "overwritten" : "written", command: w.command });
+    results.push({ name: w.name, action: had ? "overwritten" : "written" });
   }
 
   writeFileSync(path, YAML.stringify(Array.from(byName.values())), "utf-8");

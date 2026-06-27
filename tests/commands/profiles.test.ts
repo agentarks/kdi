@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { execFileSync } from "node:child_process";
-import { resolve } from "node:path";
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -8,7 +7,7 @@ import YAML from "yaml";
 import { initDb } from "../../src/db";
 import { cleanupDb } from "../cleanupDb";
 
-const PROJECT_ROOT = resolve(import.meta.dir, "..", "..");
+const PROJECT_ROOT = join(import.meta.dir, "..", "..");
 
 describe("kdi profiles (FF_REAL_HARNESS_PROFILES)", () => {
   let tmp: string;

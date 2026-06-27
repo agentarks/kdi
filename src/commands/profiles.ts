@@ -54,7 +54,7 @@ profilesCommand
     ensureFlag();
     try {
       const path = options.path ?? defaultProfilesPath();
-      const results = bootstrapRealProfiles(path, options.force ?? false);
+      const results = bootstrapRealProfiles(path, options.force);
       for (const r of results) {
         console.log(`  ${r.name.padEnd(10)} ${r.action}`);
       }
