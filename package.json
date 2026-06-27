@@ -7,14 +7,22 @@
   "bin": {
     "kdi": "./src/index.ts"
   },
+  "workspaces": [
+    "apps/web"
+  ],
   "scripts": {
     "dev": "bun run src/index.ts",
     "build": "bun build src/index.ts --compile --outfile kdi",
+    "build:web": "bun run --cwd apps/web build",
+    "dev:web": "bun run --cwd apps/web dev",
+    "preview:web": "bun run --cwd apps/web preview",
+    "check:web": "bun run --cwd apps/web check",
     "test": "bun test",
     "lint": "tsc --noEmit"
   },
   "devDependencies": {
     "@types/bun": "1.3.14",
+    "bun-types": "1.3.14",
     "typescript": "5.9.3"
   },
   "dependencies": {

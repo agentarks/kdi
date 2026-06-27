@@ -21,7 +21,24 @@ Pin these exact versions when adding or upgrading dependencies. Verify new versi
 | commander | 12.1.0 |
 | yaml | 2.9.0 |
 | @types/bun | 1.3.14 |
+| bun-types | 1.3.14 |
 
+### SvelteKit UI workspace (`apps/web/`) — verified KDI-UI-000
+
+The operator UI is an optional SvelteKit workspace under `apps/web/`, wired through Bun workspaces (`"workspaces": ["apps/web"]` in the root `package.json`). The kdi CLI stays the root product; `apps/web` is opt-in and gated behind `ff_sveltekit_frontend`.
+
+| Package | Version |
+| --- | --- |
+| svelte | 5.56.4 |
+| @sveltejs/kit | 2.68.0 |
+| @sveltejs/vite-plugin-svelte | 7.1.2 |
+| vite | 8.1.0 |
+| @sveltejs/adapter-node | 5.5.7 |
+| svelte-check | 4.7.1 |
+
+Root scripts (CLI verification commands are unchanged):
+- `bun run dev:web` / `bun run build:web` / `bun run check:web` / `bun run preview:web` operate on `apps/web`.
+- `bun run build` still compiles the CLI binary; `bun run lint` still runs `tsc --noEmit` on the CLI `src/` only.
 ## Operating Rules
 
 - Work from a feature branch. Open PRs for every change. Never push directly to `main`.
@@ -143,7 +160,7 @@ All commands must pass with no errors. If a test is flaky or environment-specifi
 - Do not invent unverified package versions or import paths.
 - Do not add new features without registering the corresponding feature flag.
 - Do not leave `TBD` in `specs/feature-flags.md` or `STATUS.md`.
-- Do not add source code to `backend/` or `frontend/`; this project is a single Bun CLI binary.
+- Do not add source code to `backend/` or `frontend/`. The only non-CLI source location is the SvelteKit UI workspace at `apps/web/` (introduced KDI-UI-000); CLI source stays in `src/`.
 
 ## PR Workflow
 

@@ -4,7 +4,18 @@
 - [x] Drafted UI backlog at `specs/sveltekit-ui-backlog.md` based on implemented Hermes/KDI parity features.
 - [x] Linked frontend backlog from `specs/hermes-kanban-backlog.md`.
 - [x] Registered planned `ff_sveltekit_frontend` / `FF_SVELTEKIT_FRONTEND` / `VITE_FF_SVELTEKIT_FRONTEND` in `specs/feature-flags.md`, default `false`.
-- [ ] Pending implementation: SvelteKit scaffold, server-side data bridge, board/task UI, dispatch/observability screens, advanced workflow UI, and UI smoke tests.
+
+## KDI-UI-000: SvelteKit App Shell — InDev
+- [x] Scaffolded SvelteKit app under `apps/web/` (Bun workspaces); repo root `package.json` gains `workspaces` and `dev:web` / `build:web` / `check:web` / `preview:web` scripts. CLI `build`/`lint` unchanged.
+- [x] Pinned live-compatible versions: svelte `5.56.4`, `@sveltejs/kit` `2.68.0`, `@sveltejs/vite-plugin-svelte` `7.1.2`, vite `8.1.0`, `@sveltejs/adapter-node` `5.5.7`, svelte-check `4.7.1` (peers verified live).
+- [x] Restricted product UI shell: board switcher, left navigation, main work area, command/action bar, flag badge (`apps/web/src/routes/+layout.svelte`).
+- [x] Feature flag handling: server hook `apps/web/src/hooks.server.ts` redirects to `/disabled` while `FF_SVELTEKIT_FRONTEND != "true"`; `FlagBadge` reads `VITE_FF_SVELTEKIT_FRONTEND`.
+- [x] Stub routes: `/` board placeholder (KDI-UI-003) and catch-all placeholder for unbuilt nav views (tasks/dispatch/activity/stats).
+- [x] `bun run lint` (CLI `tsc --noEmit`: clean), `bun run build` (CLI binary: 121 modules), `bun run build:web` (adapter-node), `bun run check:web` (svelte-check 0/0), `bun run dev:web` (vite) all pass.
+- [x] Dev smoke with isolated env: flag-off `GET /` → 307 `/disabled`; flag-on `GET /` → 200 shell (`Board: default`, `board-switcher`, badge).
+- [x] `bun test` (938 pass / 0 fail) — CLI suite unaffected.
+- [x] Promoted `ff_sveltekit_frontend` to `InDev` (default `false`) in `specs/feature-flags.md`; updated `AGENTS.md` repo rules + verified stack versions for the `apps/web` workspace.
+- [ ] Pending: KDI-UI-001 (server-side data bridge), then P1 board/task UI, dispatch/observability, and UI smoke loop (KDI-UI-016).
 
 ## KDI-055: Worktree Handoff — Done
 - [x] BRD finalized at `specs/brd-kdi-055-worktree-handoff.md`

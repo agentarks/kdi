@@ -77,7 +77,7 @@ stateDiagram-v2
 | `ff_harness_context` | `FF_HARNESS_CONTEXT` | CLI / dispatcher | Active | `true` | KDI-052 | Pass task title/body/id and board slug to harness via `{{title}}`/`{{body}}` templates and `KDI_TASK_TITLE`/`KDI_TASK_BODY`/`KDI_TASK_ID`/`KDI_BOARD` env vars.
 | `ff_result_summary` | `FF_RESULT_SUMMARY` | CLI / dispatcher | Active | `true` | KDI-053 | Store clean result/summary from harness output; reads `.kdi-result.txt` or the last JSON text chunk instead of raw stdout.
 | `ff_worktree_handoff` | `FF_WORKTREE_HANDOFF` | CLI / dispatcher/worktree | InDev | `true` | KDI-055 | Preserve successful task worktree branches as the handoff artifact; emit handoff event with branch and worktree path.
-| `ff_sveltekit_frontend` | `FF_SVELTEKIT_FRONTEND` / `VITE_FF_SVELTEKIT_FRONTEND` | SvelteKit UI | Planned | `false` | KDI-UI-000 | Gates the future SvelteKit operator UI backlog in `specs/sveltekit-ui-backlog.md`. |
+| `ff_sveltekit_frontend` | `FF_SVELTEKIT_FRONTEND` / `VITE_FF_SVELTEKIT_FRONTEND` | SvelteKit UI | InDev | `false` | KDI-UI-000 | Gates the SvelteKit operator UI (`apps/web/`). Server hook reads `FF_SVELTEKIT_FRONTEND`; browser badge reads `VITE_FF_SVELTEKIT_FRONTEND`. See `specs/sveltekit-ui-backlog.md`. |
 
 ## Rollout Notes
 
@@ -749,3 +749,17 @@ stateDiagram-v2
   - Worktree creation and command template substitution are covered by tests.
 - **Rollback / deactivation:** Set `FF_ENABLE_KANBAN_DISPATCH=false` to stop the dispatcher loop while keeping board and task management commands available.
 - **Deprecation plan:** N/A
+
+### `ff_sveltekit_frontend` — InDev
+
+- **Owner:** kdi core team
+- **BRD:** [sveltekit-ui-backlog.md](sveltekit-ui-backlog.md) (KDI-UI-000..016)
+- **Status transitions:**
+  - `Planned` → `InDev` when the SvelteKit app shell scaffolded under `apps/web/` without breaking the CLI build (KDI-UI-000).
+  - `InDev` → `Active` when the data bridge (KDI-UI-001), board/task UI, and a UI smoke loop (KDI-UI-016) are green on an isolated `KDI_DB`.
+- **Activation criteria:**
+  - `bun run dev:web`, `bun run build:web`, and `bun run check:web` pass.
+  - `bun run build` (CLI binary) and `bun run lint` (CLI `tsc --noEmit`) are unaffected.
+  - Server hook (`apps/web/src/hooks.server.ts`) redirects all routes to `/disabled` while `FF_SVELTEKIT_FRONTEND != "true"`.
+- **Rollback / deactivation:** Set `FF_SVELTEKIT_FRONTEND=false` (and `VITE_FF_SVELTEKIT_FRONTEND=false` for the badge) to hide the UI. The kdi CLI is unaffected.
+- **Deprecation plan:** N/A (additive; the `apps/web` workspace is optional to run).
