@@ -6,7 +6,7 @@ import { initDb, closeDb, getDb } from "../src/db";
 import { createBoard } from "../src/models/board";
 import { createTask, promoteTask, showTask } from "../src/models/task";
 import { addDependency } from "../src/models/dependency";
-import { setFlag, clearOverrides, FF_RATE_LIMIT_EXIT_CODE, FF_NOTIFY_SUBS, FF_DISPATCH_CONTROLS, FF_GOAL_MODE, FF_HARNESS_CONTEXT, FF_ENABLE_KANBAN_DISPATCH, FF_RESULT_SUMMARY, FF_WORKTREE_HANDOFF } from "../src/flags";
+import { setFlag, clearOverrides, FF_RATE_LIMIT_EXIT_CODE, FF_NOTIFY_SUBS, FF_DISPATCH_CONTROLS, FF_GOAL_MODE, FF_HARNESS_CONTEXT, FF_ENABLE_KANBAN_DISPATCH, FF_RESULT_SUMMARY, FF_WORKTREE_HANDOFF, FF_REAL_HARNESS_PROFILES } from "../src/flags";
 import { extractHarnessResult } from "../src/harnessResult";
 import { subscribe } from "../src/models/notifySub";
 import { atomicClaim, heartbeat } from "../src/models/claim";
@@ -2235,6 +2235,107 @@ describe("dispatcher goal mode", () => {
       expect(events.some((e) => e.kind === "worktree_handed_off")).toBe(false);
 
       rmSync(repoDir, { recursive: true, force: true });
+    });
+  });
+
+  describe("FF_REAL_HARNESS_PROFILES pre-claim guard", () => {
+    it("skips claim and emits profile_invalid when binary is missing (flag on)", async () => {
+      setFlag(FF_REAL_HARNESS_PROFILES, true);
+      const home = setupTempHome([{ name: "stale", command: "/tmp/mock-harness run --cwd {{workdir}}" }]);
+      const originalPath = process.env.KDI_PROFILES_PATH;
+      process.env.KDI_PROFILES_PATH = join(home, ".config/kdi/profiles.yaml");
+
+      const board = createBoard("stale-board", "/tmp/stale-board");
+      const task = createTask({ board_id: board.id, title: "Stale task", assignee: "stale" });
+      promoteTask(task.id);
+
+      const mockHarness = mock(() => Promise.resolve({ stdout: "", stderr: "", exitCode: 0 }));
+      const mockCreateWorktree = mock(() => "/tmp/mock-worktree");
+
+      const result = await tick({
+        spawnHarness: mockHarness,
+        createWorktree: mockCreateWorktree,
+      });
+
+      // Not claimed, not spawned, no worktree.
+      expect(result.processed).toBe(0);
+      expect(mockHarness).not.toHaveBeenCalled();
+      expect(mockCreateWorktree).not.toHaveBeenCalled();
+
+      const updated = showTask(task.id);
+      expect(updated!.status).toBe("ready");
+
+      const events = getEvents(task.id);
+      expect(events.some((e) => e.kind === "profile_invalid")).toBe(true);
+      const evt = events.find((e) => e.kind === "profile_invalid")!;
+      const payload = JSON.parse(evt.payload!);
+      expect(payload.profile).toBe("stale");
+      expect(payload.binary).toBe("/tmp/mock-harness");
+
+      if (originalPath !== undefined) process.env.KDI_PROFILES_PATH = originalPath;
+      else delete process.env.KDI_PROFILES_PATH;
+      rmSync(home, { recursive: true, force: true });
+    });
+
+    it("claims and spawns when the binary resolves (flag on)", async () => {
+      setFlag(FF_REAL_HARNESS_PROFILES, true);
+      const home = setupTempHome([{ name: "echor", command: "echo hi --cwd {{workdir}}" }]);
+      const originalPath = process.env.KDI_PROFILES_PATH;
+      process.env.KDI_PROFILES_PATH = join(home, ".config/kdi/profiles.yaml");
+
+      const board = createBoard("echo-board", "/tmp/echo-board");
+      const task = createTask({ board_id: board.id, title: "Echo task", assignee: "echor" });
+      promoteTask(task.id);
+
+      const mockHarness = mock(() => Promise.resolve({ stdout: "ok", stderr: "", exitCode: 0 }));
+      const mockCreateWorktree = mock(() => "/tmp/mock-worktree");
+      const mockRemoveWorktree = mock(() => ({ worktreeRemoved: true, branchDeleted: true, found: true }));
+
+      await tick({
+        spawnHarness: mockHarness,
+        createWorktree: mockCreateWorktree,
+        removeWorktree: mockRemoveWorktree,
+      });
+
+      expect(mockCreateWorktree).toHaveBeenCalled();
+      expect(mockHarness).toHaveBeenCalled();
+      const updated = showTask(task.id);
+      expect(updated!.status).toBe("done");
+
+      if (originalPath !== undefined) process.env.KDI_PROFILES_PATH = originalPath;
+      else delete process.env.KDI_PROFILES_PATH;
+      rmSync(home, { recursive: true, force: true });
+    });
+
+    it("does not guard when the flag is off (current behavior unchanged)", async () => {
+      setFlag(FF_REAL_HARNESS_PROFILES, false);
+      const home = setupTempHome([{ name: "stale", command: "/tmp/mock-harness run --cwd {{workdir}}" }]);
+      const originalPath = process.env.KDI_PROFILES_PATH;
+      process.env.KDI_PROFILES_PATH = join(home, ".config/kdi/profiles.yaml");
+
+      const board = createBoard("stale-off-board", "/tmp/stale-off-board");
+      const task = createTask({ board_id: board.id, title: "Stale off task", assignee: "stale" });
+      promoteTask(task.id);
+
+      const mockHarness = mock(() => Promise.resolve({ stdout: "", stderr: "", exitCode: 1 }));
+      const mockCreateWorktree = mock(() => "/tmp/mock-worktree");
+      const mockRemoveWorktree = mock(() => ({ worktreeRemoved: true, branchDeleted: true, found: true }));
+
+      await tick({
+        spawnHarness: mockHarness,
+        createWorktree: mockCreateWorktree,
+        removeWorktree: mockRemoveWorktree,
+      });
+
+      // Flag off: existing claim-then-spawn behavior; worktree + harness run happen.
+      expect(mockCreateWorktree).toHaveBeenCalled();
+      expect(mockHarness).toHaveBeenCalled();
+      const events = getEvents(task.id);
+      expect(events.some((e) => e.kind === "profile_invalid")).toBe(false);
+
+      if (originalPath !== undefined) process.env.KDI_PROFILES_PATH = originalPath;
+      else delete process.env.KDI_PROFILES_PATH;
+      rmSync(home, { recursive: true, force: true });
     });
   });
 });

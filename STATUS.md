@@ -31,9 +31,19 @@
 - [x] User-loop smoke test with temp `HOME`/`KDI_DB` proves real CLI dispatch preserves the worktree/branch and leaves the original repo clean
 - [x] `bun run lint`, `bun test` (**938 pass / 0 fail**), `bun run build` pass
 
-## Backlog Updates — KDI-056 Real Agent Profiles
+## KDI-056: Real Harness Profiles — InDev
 - [x] Added KDI-056 backlog item for real Pi/opencode harness profile bootstrap/doctor support after local smoke showed user-level profiles can point to stale `/tmp/mock-harness` and block dispatch with exit 127.
-- [ ] Pending implementation: supported repair/install path for real `opencode` and `pi` profiles, pre-dispatch binary/agent validation, and documented `$KDI_TASK_*` / `$KDI_RESULT_FILE` contract.
+- [x] BRD drafted at `specs/brd-kdi-056-real-harness-profiles.md` (gated behind `ff_real_harness_profiles` / `FF_REAL_HARNESS_PROFILES`, default `false`).
+- [x] Flag `ff_real_harness_profiles` / `FF_REAL_HARNESS_PROFILES` registered in `specs/feature-flags.md` and `src/flags.ts`, defaults to `false`.
+- [x] `resolveCommandBinary()` pure helper in `src/profiles.ts` resolves a profile's leading binary against `PATH` (no shell exec).
+- [x] `kdi profiles doctor [--json]` reports per-profile health (`ok` / `missing-binary` / `parse-error`) and exits non-zero when any profile is unhealthy.
+- [x] `kdi profiles bootstrap [--force]` writes known-good `opencode`+`pi` entries, preserving other entries and (without `--force`) existing `opencode`/`pi`.
+- [x] Pre-claim dispatcher guard (in `src/dispatcher.ts`): when the flag is on, a task whose profile binary is missing is NOT claimed, no worktree is created, a `profile_invalid` event is recorded with `{ profile, binary }`, and an operator-facing hint is written to the board log; the task stays `ready`.
+- [x] Harness env/template contract documented in `specs/harness-contract.md` (every `KDI_*` env var, every `{{template}}`, `.kdi-result.txt` convention).
+- [x] Unit tests in `tests/profiles.test.ts` for `resolveCommandBinary`, `doctorProfiles`, `bootstrapRealProfiles`; dispatcher guard tests in `tests/dispatcher.test.ts` (skip-claim on missing binary, claim when binary resolves, no-op when flag off); CLI tests in `tests/commands/profiles.test.ts`.
+- [x] User-loop smoke with temp `HOME`/`KDI_DB`: flag-on dispatch against a `/tmp/mock-harness` profile leaves the task `ready` with a `profile_invalid` event and no run; flag-off dispatch claims, spawns, and records `exit 127` (current behavior unchanged).
+- [x] `bun run lint`, `bun test` (**959 pass / 0 fail**), `bun run build` pass
+- [ ] Pending: promote flag to Active after real `opencode`/`pi` install smoke and contract review; collect operator feedback on `claude`/`codex` bootstrap.
 
 ## KDI-052: Stabilize Test Suite — Done
 - [x] Reproduced intermittent failure in `worker log capture > spawnHarness writes combined stdout/stderr to log file`
