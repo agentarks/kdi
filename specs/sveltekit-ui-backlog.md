@@ -14,13 +14,13 @@
 
 ## P0 - UI Foundation
 
-- [ ] **KDI-UI-000: SvelteKit app shell**
+- [x] **KDI-UI-000: SvelteKit app shell** (implemented in `apps/web/`)
   - Create the SvelteKit app structure and scripts without breaking the CLI build.
   - Add a restrained product UI shell: board switcher, left navigation, main work area, command/action area.
   - Add feature flag handling for `FF_SVELTEKIT_FRONTEND` and `VITE_FF_SVELTEKIT_FRONTEND`.
   - Acceptance: `bun run lint`, CLI build, and SvelteKit build/dev command all work with isolated `KDI_DB`.
 
-- [ ] **KDI-UI-001: Server-side data bridge**
+- [x] **KDI-UI-001: Server-side data bridge** (spec written: `specs/sveltekit-ui/KDI-UI-001-server-data-bridge.md`)
   - Add SvelteKit server routes or load functions that call existing KDI models for boards, tasks, events, runs, logs, stats, diagnostics, workflows, and notifications.
   - Keep SQLite access server-side only.
   - Return small JSON shapes designed for UI screens, not raw CLI text.
@@ -28,7 +28,7 @@
 
 ## P1 - Core Operator Workflow
 
-- [ ] **KDI-UI-002: Board management UI**
+- [x] **KDI-UI-002: Board management UI** (spec written: `specs/sveltekit-ui/KDI-UI-002-board-management-ui.md`)
   - List boards with current marker, archived toggle, metadata, workdir, base ref, and task counts.
   - Create/edit boards with name, icon, color, description, workdir, default workdir, base ref, and `switch after create`.
   - Archive and hard-delete only with explicit confirmation.
