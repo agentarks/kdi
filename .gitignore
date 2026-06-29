@@ -5,3 +5,4 @@ kdi
 .DS_Store
 dist/
 .worktrees/
+.kdi.sqlite*
