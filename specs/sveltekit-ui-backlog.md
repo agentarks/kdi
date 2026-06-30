@@ -92,7 +92,7 @@
   - Show LLM errors and invalid responses as blocking feedback.
   - Acceptance: maps to `specify` and `decompose`, including `--skip-llm` for manual promotion.
 
-- [ ] **KDI-UI-012: Swarm builder**
+- [x] **KDI-UI-012: Swarm builder** (spec written: `specs/sveltekit-ui/KDI-UI-012-swarm-builder.md`)
   - Create swarm graphs with workers, verifier, synthesizer, shared body, workspace, session, priority, and workspace kind.
   - Include dry-run preview before creation.
   - Acceptance: covers `kdi swarm --dry-run` and real swarm creation.
