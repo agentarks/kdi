@@ -97,7 +97,7 @@
   - Include dry-run preview before creation.
   - Acceptance: covers `kdi swarm --dry-run` and real swarm creation.
 
-- [ ] **KDI-UI-013: Workflow templates UI**
+- [x] **KDI-UI-013: Workflow templates UI** (spec written: `specs/sveltekit-ui/KDI-UI-013-workflow-templates-ui.md`)
   - Define/list workflow templates with template id, name, and ordered step keys.
   - Create tasks from workflow templates and advance/jump steps with reasons.
   - Acceptance: covers `workflows define`, `workflows list`, `create --workflow-template-id`, and `step`.
@@ -109,12 +109,12 @@
 
 ## P4 - Product Quality Gates
 
-- [ ] **KDI-UI-015: Accessibility and keyboard baseline**
+- [x] **KDI-UI-015: Accessibility and keyboard baseline** (spec written: `specs/sveltekit-ui/KDI-UI-015-accessibility-keyboard-baseline.md`)
   - Keyboard navigable board, task list, filters, forms, and action menus.
   - Visible focus states, labels on every input, and accessible status/action announcements.
   - Acceptance: Playwright selectors use stable roles/names or `input[name=...]`; no unlabeled form fields.
 
-- [ ] **KDI-UI-016: End-to-end UI smoke loop**
+- [x] **KDI-UI-016: End-to-end UI smoke loop** (spec written: `specs/sveltekit-ui/KDI-UI-016-end-to-end-ui-smoke-loop.md`)
   - Use temp `HOME` and temp `KDI_DB`.
   - Real path: init → create board → create task → promote → dispatch once → inspect result/log/events → archive.
   - Acceptance: the smoke test proves the UI path and CLI path read/write the same data.
