@@ -14,6 +14,17 @@ import {
 
 const TEST_DB = join(tmpdir(), "kdi-ui-006-test.db");
 
+const FLAG_KEYS = [
+  "FF_BULK_OPERATIONS",
+  "FF_SCHEDULED_STATUS",
+  "FF_COMPLETE_METADATA",
+  "FF_ASSIGN_REASSIGN",
+  "FF_REVIEW_STATUS",
+  "FF_HEARTBEAT",
+  "FF_SVELTEKIT_FRONTEND",
+];
+
+let savedEnv: Partial<Record<string, string | undefined>> = {};
 let savedHome: string | undefined;
 let savedKdiDb: string | undefined;
 
@@ -26,6 +37,10 @@ function cleanupDb(path: string) {
 }
 
 function setupEnv() {
+  savedEnv = {};
+  for (const key of FLAG_KEYS) {
+    savedEnv[key] = process.env[key];
+  }
   savedHome = process.env.HOME;
   savedKdiDb = process.env.KDI_DB;
   process.env.HOME = mkdtempSync(join(tmpdir(), "kdi-ui-006-home-"));
@@ -36,10 +51,23 @@ function setupEnv() {
 
 function teardownEnv() {
   cleanupDb(TEST_DB);
-  if (savedHome !== undefined) process.env.HOME = savedHome;
-  else delete process.env.HOME;
-  if (savedKdiDb !== undefined) process.env.KDI_DB = savedKdiDb;
-  else delete process.env.KDI_DB;
+  for (const key of FLAG_KEYS) {
+    if (savedEnv[key] === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = savedEnv[key];
+    }
+  }
+  if (savedHome === undefined) {
+    delete process.env.HOME;
+  } else {
+    process.env.HOME = savedHome;
+  }
+  if (savedKdiDb === undefined) {
+    delete process.env.KDI_DB;
+  } else {
+    process.env.KDI_DB = savedKdiDb;
+  }
 }
 
 function formData(entries: Record<string, string>): FormData {
