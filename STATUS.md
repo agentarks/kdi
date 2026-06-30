@@ -5,6 +5,38 @@
 - [x] Linked frontend backlog from `specs/hermes-kanban-backlog.md`.
 - [x] Registered planned `ff_sveltekit_frontend` / `FF_SVELTEKIT_FRONTEND` / `VITE_FF_SVELTEKIT_FRONTEND` in `specs/feature-flags.md`, default `false`.
 
+## KDI-UI-003: Kanban Board View — Spec
+- [x] BRD/spec drafted at `specs/sveltekit-ui/KDI-UI-003-kanban-board-view.md`
+- [ ] Kanban board view renders nine status columns with counts, assignee, priority, tenant, age, status reasons, and stale/rate-limited markers
+- [ ] Filter bar reproduces `kdi list` filters: status, assignee, tenant, created-by, mine, session, archived, workflow template, step key, sort
+- [ ] Consumes board shell from KDI-UI-002 and data bridge endpoints from KDI-UI-001
+- [ ] Gated by `FF_SVELTEKIT_FRONTEND`; reuses CLI flags
+- [ ] Acceptance: UI reproduces `kdi list` filtered/sorted views against a temp `HOME`/`KDI_DB`; all builds pass
+
+## KDI-UI-004: Task Create/Edit UI — Spec
+- [x] BRD/spec drafted at `specs/sveltekit-ui/KDI-UI-004-task-create-edit-ui.md`
+- [ ] Create form supports title, body, assignee, status, schedule time, priority, tenant, created-by, skills, model override, runtime, retries, workspace, session, workflow template + step key, goal mode, and parent dependencies
+- [ ] Edit form supports only `body` (the only field `editTask` currently supports)
+- [ ] Every optional field gated by the same CLI feature flag; no new flags
+- [ ] Acceptance: created task displays correctly in board view (KDI-UI-003) and `kdi show`
+- [ ] `bun run lint`, CLI build, SvelteKit build pass
+
+## KDI-UI-005: Task Detail Panel — Spec
+- [x] BRD/spec drafted at `specs/sveltekit-ui/KDI-UI-005-task-detail-panel.md`
+- [ ] Task detail page renders body, metadata, result, summary, comments, attachments, dependencies, context, runs, events, worker log, and worktree handoff
+- [ ] Aggregate endpoint returns full snapshot; specialized routes for log, dependencies, and handoff
+- [ ] Polling for events and log tail; run filtering when `FF_SHOW_RUN_FILTERING` is on
+- [ ] Smoke test with temp HOME/KDI_DB opens a CLI-created task and asserts the panel renders title, status, and body
+- [ ] `bun run lint`, CLI build, `bun run check:web`, and `bun run build:web` pass
+
+## KDI-UI-006: Task Lifecycle Actions — Spec
+- [x] BRD/spec drafted at `specs/sveltekit-ui/KDI-UI-006-task-lifecycle-actions.md`
+- [ ] Single actions: promote, promote dry-run, block, unblock, schedule, review, archive, complete, assign, reassign, claim, reclaim, heartbeat
+- [ ] Bulk actions: promote, block, unblock, schedule, archive, complete
+- [ ] Confirm destructive actions; inline reason fields for block/schedule/review/reclaim/reassign
+- [ ] Acceptance: every action maps to an existing CLI/model path and shows success/skip/error per task
+- [ ] `bun run lint`, CLI build, SvelteKit build pass
+
 ## KDI-UI-000: SvelteKit App Shell — InDev
 - [x] Scaffolded SvelteKit app under `apps/web/` (Bun workspaces); repo root `package.json` gains `workspaces` and `dev:web` / `build:web` / `check:web` / `preview:web` scripts. CLI `build`/`lint` unchanged.
 - [x] Pinned live-compatible versions: svelte `5.56.4`, `@sveltejs/kit` `2.68.0`, `@sveltejs/vite-plugin-svelte` `7.1.2`, vite `8.1.0`, `@sveltejs/adapter-node` `5.5.7`, svelte-check `4.7.1` (peers verified live).
@@ -18,6 +50,10 @@
 - [x] Specs drafted for next items:
   - `specs/sveltekit-ui/KDI-UI-001-server-data-bridge.md`
   - `specs/sveltekit-ui/KDI-UI-002-board-management.md`
+  - `specs/sveltekit-ui/KDI-UI-003-kanban-board-view.md`
+  - `specs/sveltekit-ui/KDI-UI-004-task-create-edit-ui.md`
+  - `specs/sveltekit-ui/KDI-UI-005-task-detail-panel.md`
+  - `specs/sveltekit-ui/KDI-UI-006-task-lifecycle-actions.md`
 - [ ] Pending implementation: KDI-UI-001 (server-side data bridge), then P1 board/task UI, dispatch/observability, and UI smoke loop (KDI-UI-016).
 
 ## KDI-055: Worktree Handoff — Done

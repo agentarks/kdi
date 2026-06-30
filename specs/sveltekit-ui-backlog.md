@@ -34,25 +34,25 @@
   - Archive and hard-delete only with explicit confirmation.
   - Acceptance: covers `boards create/list/show/edit/switch/archive/rm/set-default-workdir/rename` behavior.
 
-- [ ] **KDI-UI-003: Kanban board view**
+- [x] **KDI-UI-003: Kanban board view** (spec written: `specs/sveltekit-ui/KDI-UI-003-kanban-board-view.md`)
   - Show the 9 statuses: `triage`, `todo`, `scheduled`, `ready`, `running`, `blocked`, `review`, `done`, `archived`.
   - Show counts, assignee, priority, tenant, age, status reasons, and stale/rate-limited markers.
   - Filters: status, assignee, tenant, created-by, mine, session, archived, workflow template, step key, sort.
   - Acceptance: UI can reproduce `kdi list` filtered/sorted views.
 
-- [ ] **KDI-UI-004: Task create/edit UI**
+- [x] **KDI-UI-004: Task create/edit UI** (spec written: `specs/sveltekit-ui/KDI-UI-004-task-create-edit-ui.md`)
   - Create tasks with title, body, assignee, status, schedule time, priority, tenant, created-by, skills, model, runtime, retries, workspace, session, workflow, goal mode, and parent dependencies.
   - Edit task fields supported by current CLI/model behavior.
   - Use native form controls first; no custom widgets unless required.
   - Acceptance: a created task displays correctly in board view and `kdi show`.
 
-- [ ] **KDI-UI-005: Task detail panel**
+- [x] **KDI-UI-005: Task detail panel** (spec written: `specs/sveltekit-ui/KDI-UI-005-task-detail-panel.md`)
   - Show body, metadata, result, summary, comments, dependencies, attachments, context, runs, events, worker log, and worktree handoff branch/path.
   - Support run filtering by status/outcome.
   - Support log tail and event tail non-follow modes.
   - Acceptance: detail panel covers `show`, `runs`, `tail`, `log`, `context`, and `attach` data.
 
-- [ ] **KDI-UI-006: Task lifecycle actions**
+- [x] **KDI-UI-006: Task lifecycle actions** (spec written: `specs/sveltekit-ui/KDI-UI-006-task-lifecycle-actions.md`)
   - Actions: promote, promote dry-run, block, unblock, schedule, review, archive, restore if implemented later, complete, assign, reassign, claim, reclaim, heartbeat.
   - Bulk actions: promote, block, unblock, schedule, archive, complete.
   - Confirm destructive actions; inline reason fields for block/schedule/review/reclaim/reassign.
