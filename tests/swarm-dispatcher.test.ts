@@ -5,7 +5,7 @@ import { createBoard } from "../src/models/board";
 import { createTask, showTask, blockTask, completeTask, archiveTask } from "../src/models/task";
 import { getEvents } from "../src/models/taskEvent";
 import { tick } from "../src/dispatcher";
-import { setFlag, clearOverrides, FF_SWARM_MODE, FF_ENABLE_KANBAN_DISPATCH } from "../src/flags";
+import { setFlag, clearOverrides, FF_SWARM_MODE, FF_ENABLE_KANBAN_DISPATCH, FF_REAL_HARNESS_PROFILES } from "../src/flags";
 
 const TEST_DB = "/tmp/kdi-swarm-dispatcher-test.db";
 
@@ -24,6 +24,7 @@ describe("dispatcher swarm watcher", () => {
     initDb(TEST_DB);
     setFlag(FF_ENABLE_KANBAN_DISPATCH, true);
     setFlag(FF_SWARM_MODE, true);
+    setFlag(FF_REAL_HARNESS_PROFILES, false);
   });
 
   afterEach(() => {

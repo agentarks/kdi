@@ -1073,7 +1073,7 @@ describe("kdi e2e acceptance", () => {
       const repoDir = join(tmp, "repo");
       mkdirSync(repoDir, { recursive: true });
       setupGitRepo(repoDir);
-      setupProfiles(tmp, [{ name: "failagent", command: "exit 1" }]);
+      setupProfiles(tmp, [{ name: "failagent", command: "sh -c 'exit 1'" }]);
       const env = { KDI_DB: dbPath, HOME: tmp, FF_ENABLE_KANBAN_DISPATCH: "true", FF_MAX_RETRIES: "true" };
 
       runKdi(`boards create myproj --workdir ${repoDir}`, env);
@@ -1117,7 +1117,7 @@ describe("kdi e2e acceptance", () => {
       const repoDir = join(tmp, "repo");
       mkdirSync(repoDir, { recursive: true });
       setupGitRepo(repoDir);
-      setupProfiles(tmp, [{ name: "rateagent", command: "exit 75" }]);
+      setupProfiles(tmp, [{ name: "rateagent", command: "sh -c 'exit 75'" }]);
       const env = {
         KDI_DB: dbPath,
         HOME: tmp,

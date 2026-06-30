@@ -5,7 +5,7 @@ import { dirname, join, sep } from "node:path";
 import { initDb, closeDb } from "../src/db";
 import { createBoard } from "../src/models/board";
 import { createTask, promoteTask, showTask } from "../src/models/task";
-import { setFlag, clearOverrides } from "../src/flags";
+import { setFlag, clearOverrides, FF_REAL_HARNESS_PROFILES } from "../src/flags";
 import { spawnHarness, tick } from "../src/dispatcher";
 import { getTaskLogPath } from "../src/observability";
 import { cleanupDb } from "./cleanupDb";
@@ -24,6 +24,7 @@ describe("worker log capture", () => {
     cleanupDb(testDbPath);
     initDb(testDbPath);
     setFlag("FF_ENABLE_KANBAN_DISPATCH", true);
+    setFlag(FF_REAL_HARNESS_PROFILES, false);
   });
 
   afterEach(() => {

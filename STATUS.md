@@ -45,8 +45,11 @@
 - [x] Harness env/template contract documented in `specs/harness-contract.md` (every `KDI_*` env var, every `{{template}}`, `.kdi-result.txt` convention).
 - [x] Unit tests in `tests/profiles.test.ts` for `resolveCommandBinary`, `doctorProfiles`, `bootstrapRealProfiles`; dispatcher guard tests in `tests/dispatcher.test.ts` (skip-claim on missing binary, claim when binary resolves, no-op when flag off); CLI tests in `tests/commands/profiles.test.ts`.
 - [x] User-loop smoke with temp `HOME`/`KDI_DB`: flag-on dispatch against a `/tmp/mock-harness` profile leaves the task `ready` with a `profile_invalid` event and no run; flag-off dispatch claims, spawns, and records `exit 127` (current behavior unchanged).
+- [x] Real `opencode`/`pi` install smoke: `profiles bootstrap` repairs stale profiles to real `/opt/homebrew/bin/opencode` and `/opt/homebrew/bin/pi`; `profiles doctor` reports both as `ok`; dispatch against a resolvable binary reaches `done`; dispatch against `/tmp/nonexistent-harness` leaves task `ready` with `profile_invalid`.
 - [x] `bun run lint`, `bun test` (**959 pass / 0 fail**), `bun run build` pass
-- [ ] Pending: promote flag to Active after real `opencode`/`pi` install smoke and contract review; collect operator feedback on `claude`/`codex` bootstrap.
+- [x] Promoted `ff_real_harness_profiles` / `FF_REAL_HARNESS_PROFILES` to **Active** (default `true`) in `src/flags.ts` and `specs/feature-flags.md`
+- [x] Updated `STATUS.md` to mark KDI-056 complete
+- [ ] Pending: collect operator feedback on `claude`/`codex` bootstrap.
 
 ## KDI-052: Stabilize Test Suite — Done
 - [x] Reproduced intermittent failure in `worker log capture > spawnHarness writes combined stdout/stderr to log file`

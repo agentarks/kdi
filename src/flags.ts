@@ -148,4 +148,4 @@ registerFlag(FF_TAIL_NO_FOLLOW, true);
 registerFlag(FF_HARNESS_CONTEXT, true);
 registerFlag(FF_RESULT_SUMMARY, true);
 registerFlag(FF_WORKTREE_HANDOFF, true);
-registerFlag(FF_REAL_HARNESS_PROFILES, false);
+registerFlag(FF_REAL_HARNESS_PROFILES, true);
