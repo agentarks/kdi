@@ -71,6 +71,30 @@
 - [ ] UI smoke with temp HOME/KDI_DB asserts list matches `kdi list --status triage` and actions update task states
 - [ ] `bun run lint`, CLI build, SvelteKit build pass with isolated `KDI_DB`
 
+## KDI-UI-008: Live Activity View — Spec
+- [x] BRD/spec drafted at `specs/sveltekit-ui/KDI-UI-008-live-activity-view.md`
+- [ ] Board-wide activity stream with filters for assignee, tenant, and event kinds
+- [ ] Per-task event stream and worker log view
+- [ ] Poll first, with pause/resume and manual refresh
+- [ ] Acceptance: covers `watch`, `tail`, and `log` without requiring a WebSocket server
+- [ ] `bun run lint`, CLI build, `bun run check:web`, and `bun run build:web` pass with isolated `KDI_DB`
+
+## KDI-UI-009: Stats and Diagnostics UI — Spec
+- [x] BRD/spec drafted at `specs/sveltekit-ui/KDI-UI-009-stats-diagnostics-ui.md`
+- [ ] Show per-status counts, per-assignee counts, oldest-ready age, and health diagnostics
+- [ ] Severity filter and task-specific diagnostics
+- [ ] Action shortcuts for diagnostics actions: reclaim, reassign, unblock, comment, open docs/CLI hint
+- [ ] Acceptance: UI output matches `kdi stats --json` and `kdi diagnostics --json`
+- [ ] `bun run lint`, CLI build, `bun run check:web`, and `bun run build:web` pass with isolated `KDI_DB`
+
+## KDI-UI-010: Notification Subscriptions UI — Spec
+- [x] BRD/spec drafted at `specs/sveltekit-ui/KDI-UI-010-notification-subscriptions-ui.md`
+- [ ] List global and per-task subscriptions
+- [ ] Subscribe/unsubscribe with platform, chat id, thread id, user id, and notifier profile
+- [ ] Include archived/unsubscribed toggle
+- [ ] Acceptance: covers `notify-subscribe`, `notify-list`, and `notify-unsubscribe`
+- [ ] `bun run lint`, CLI build, `bun run check:web`, and `bun run build:web` pass with isolated `KDI_DB`
+
 ## KDI-UI-007: Dispatch Control Center — Spec
 - [ ] BRD drafted at `specs/sveltekit-ui/KDI-UI-007-dispatch-control-center.md`
 - [ ] `/dispatch` page renders dispatcher presence, ready/running counts, profile
