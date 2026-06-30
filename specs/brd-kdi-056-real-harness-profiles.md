@@ -183,6 +183,10 @@ Feature Flag
 - **Rollback / deactivation:** Set `FF_REAL_HARNESS_PROFILES=false` to reject
   `bootstrap`/`doctor` and disable the pre-dispatch guard.
 - **Deprecation plan:** N/A (additive).
+- **Rollout note:** Real `opencode` and `pi` binaries were verified at
+  `/opt/homebrew/bin/opencode` and `/opt/homebrew/bin/pi`; `bootstrap` repairs
+  stale profiles, `doctor` reports `ok`, and the dispatch guard skips missing
+  binaries.
 
 -------------------------------------------------------------------------------
 Rollout / Promotion
