@@ -52,7 +52,7 @@
   - Support log tail and event tail non-follow modes.
   - Acceptance: detail panel covers `show`, `runs`, `tail`, `log`, `context`, and `attach` data.
 
-- [x] **KDI-UI-006: Task lifecycle actions** (spec written: `specs/sveltekit-ui/KDI-UI-006-task-lifecycle-actions.md`)
+- [x] **KDI-UI-006: Task lifecycle actions** (implemented in `apps/web/`; spec: `specs/sveltekit-ui/KDI-UI-006-task-lifecycle-actions.md`)
   - Actions: promote, promote dry-run, block, unblock, schedule, review, archive, restore if implemented later, complete, assign, reassign, claim, reclaim, heartbeat.
   - Bulk actions: promote, block, unblock, schedule, archive, complete.
   - Confirm destructive actions; inline reason fields for block/schedule/review/reclaim/reassign.

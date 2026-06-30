@@ -29,14 +29,6 @@
 - [ ] Smoke test with temp HOME/KDI_DB opens a CLI-created task and asserts the panel renders title, status, and body
 - [ ] `bun run lint`, CLI build, `bun run check:web`, and `bun run build:web` pass
 
-## KDI-UI-006: Task Lifecycle Actions — Spec
-- [x] BRD/spec drafted at `specs/sveltekit-ui/KDI-UI-006-task-lifecycle-actions.md`
-- [ ] Single actions: promote, promote dry-run, block, unblock, schedule, review, archive, complete, assign, reassign, claim, reclaim, heartbeat
-- [ ] Bulk actions: promote, block, unblock, schedule, archive, complete
-- [ ] Confirm destructive actions; inline reason fields for block/schedule/review/reclaim/reassign
-- [ ] Acceptance: every action maps to an existing CLI/model path and shows success/skip/error per task
-- [ ] `bun run lint`, CLI build, SvelteKit build pass
-
 ## KDI-UI-000: SvelteKit App Shell — InDev
 - [x] Scaffolded SvelteKit app under `apps/web/` (Bun workspaces); repo root `package.json` gains `workspaces` and `dev:web` / `build:web` / `check:web` / `preview:web` scripts. CLI `build`/`lint` unchanged.
 - [x] Pinned live-compatible versions: svelte `5.56.4`, `@sveltejs/kit` `2.68.0`, `@sveltejs/vite-plugin-svelte` `7.1.2`, vite `8.1.0`, `@sveltejs/adapter-node` `5.5.7`, svelte-check `4.7.1` (peers verified live).
@@ -54,7 +46,19 @@
   - `specs/sveltekit-ui/KDI-UI-004-task-create-edit-ui.md`
   - `specs/sveltekit-ui/KDI-UI-005-task-detail-panel.md`
   - `specs/sveltekit-ui/KDI-UI-006-task-lifecycle-actions.md`
-- [ ] Pending implementation: KDI-UI-001 (server-side data bridge), then P1 board/task UI, dispatch/observability, and UI smoke loop (KDI-UI-016).
+- [ ] Pending implementation: KDI-UI-001 (server-side data bridge), KDI-UI-002 (board management), KDI-UI-003 (kanban board), KDI-UI-004 (task create/edit), KDI-UI-005 (task detail), dispatch/observability, and UI smoke loop (KDI-UI-016). KDI-UI-006 is implemented.
+
+## KDI-UI-006: Task Lifecycle Actions — Done
+- [x] Implemented minimal task list page at `/tasks` (`apps/web/src/routes/tasks/+page.svelte`, `+page.server.ts`) with board resolution, selectable rows, bulk toolbar, and result reporting.
+- [x] Implemented minimal task detail page at `/tasks/[id]` (`apps/web/src/routes/tasks/[id]/+page.svelte`, `+page.server.ts`) with title, status, body, assignee, priority, reason fields, claim lock display, and action forms.
+- [x] Implemented server action dispatcher in `apps/web/src/lib/server/taskActions.ts` calling existing model functions: `promoteTaskAdvanced`, `blockTask`, `unblockTask`, `scheduleTask`, `reviewTask`, `archiveTask`, `completeTask`, `assignTask`, `unassignTask`, `reassignTask`, `atomicClaim`, `reclaimTask`, `heartbeat`.
+- [x] Single actions: promote (with `force`/`dryRun`), block, unblock, schedule, review, archive, complete, assign, reassign, claim, reclaim, heartbeat. Inline reason fields for block, unblock, schedule, review, reassign, reclaim. Destructive confirmations via browser `confirm()` for archive, complete, reassign, reclaim.
+- [x] Bulk actions: promote, block, unblock, schedule, archive, complete, gated by `FF_BULK_OPERATIONS`; shared reason/result/datetime inputs; per-task results and summary counts (`{ attempted, succeeded, skipped, failed }`).
+- [x] Flag gating reused existing CLI flags (`FF_BULK_OPERATIONS`, `FF_SCHEDULED_STATUS`, `FF_REVIEW_STATUS`, `FF_COMPLETE_METADATA`, `FF_ASSIGN_REASSIGN`, `FF_HEARTBEAT`) with the same CLI error text; master `FF_SVELTEKIT_FRONTEND` re-checked in every `load` and action handler.
+- [x] Added `apps/web/tests/task-lifecycle-actions.test.ts` (10 tests, 61 expect calls) covering promote→block→unblock→complete→archive, claim→heartbeat→reclaim, schedule/review/assign/reassign, bulk actions, skip handling, and flag-off rejection.
+- [x] Updated `apps/web/tsconfig.json` with `~/*` path mapping to root `src/` and `bun-types` for server-side imports from `~/db`, `~/models/*`, `~/flags`, `~/resolveBoard`.
+- [x] Updated `apps/web/vite.config.ts` to externalize `bun:sqlite` and `apps/web/package.json` to run Vite under Bun so adapter-node builds succeed.
+- [x] Verification: `bun run lint` clean, `bun run build` CLI binary OK, `bun test` **969 pass / 0 fail**, `bun run check:web` 0 errors, `bun run build:web` adapter-node build OK.
 
 ## KDI-055: Worktree Handoff — Done
 - [x] BRD finalized at `specs/brd-kdi-055-worktree-handoff.md`
