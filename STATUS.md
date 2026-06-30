@@ -54,9 +54,69 @@
   - `specs/sveltekit-ui/KDI-UI-004-task-create-edit-ui.md`
   - `specs/sveltekit-ui/KDI-UI-005-task-detail-panel.md`
   - `specs/sveltekit-ui/KDI-UI-006-task-lifecycle-actions.md`
+  - `specs/sveltekit-ui/KDI-UI-007-dispatch-control-center.md`
+  - `specs/sveltekit-ui/KDI-UI-008-live-activity-view.md`
+  - `specs/sveltekit-ui/KDI-UI-009-stats-diagnostics-ui.md`
+  - `specs/sveltekit-ui/KDI-UI-010-notification-subscriptions-ui.md`
+  - `specs/sveltekit-ui/KDI-UI-011-triage-automation-ui.md`
+  - `specs/sveltekit-ui/KDI-UI-012-swarm-builder.md`
 - [ ] Pending implementation: KDI-UI-001 (server-side data bridge), then P1 board/task UI, dispatch/observability, and UI smoke loop (KDI-UI-016).
 
-## KDI-055: Worktree Handoff — Done
+## KDI-UI-011: Triage Automation UI — Spec
+- [x] BRD drafted at `specs/sveltekit-ui/KDI-UI-011-triage-automation-ui.md`
+- [ ] `/triage` route lists triage tasks with Specify, Specify manually, and Decompose actions
+- [ ] Single-task and sweep actions for `specify` and `decompose`, including tenant-filtered variants
+- [ ] LLM configuration, progress, and blocking feedback on LLM/validation errors
+- [ ] Server actions call existing `specifyTaskWithLlm`, `specifyTask`, `decomposeTask`, and `callTriageLlm` directly; no new CLI/model/LLM code
+- [ ] UI smoke with temp HOME/KDI_DB asserts list matches `kdi list --status triage` and actions update task states
+- [ ] `bun run lint`, CLI build, SvelteKit build pass with isolated `KDI_DB`
+
+## KDI-UI-008: Live Activity View — Spec
+- [x] BRD/spec drafted at `specs/sveltekit-ui/KDI-UI-008-live-activity-view.md`
+- [ ] Board-wide activity stream with filters for assignee, tenant, and event kinds
+- [ ] Per-task event stream and worker log view
+- [ ] Poll first, with pause/resume and manual refresh
+- [ ] Acceptance: covers `watch`, `tail`, and `log` without requiring a WebSocket server
+- [ ] `bun run lint`, CLI build, `bun run check:web`, and `bun run build:web` pass with isolated `KDI_DB`
+
+## KDI-UI-009: Stats and Diagnostics UI — Spec
+- [x] BRD/spec drafted at `specs/sveltekit-ui/KDI-UI-009-stats-diagnostics-ui.md`
+- [ ] Show per-status counts, per-assignee counts, oldest-ready age, and health diagnostics
+- [ ] Severity filter and task-specific diagnostics
+- [ ] Action shortcuts for diagnostics actions: reclaim, reassign, unblock, comment, open docs/CLI hint
+- [ ] Acceptance: UI output matches `kdi stats --json` and `kdi diagnostics --json`
+- [ ] `bun run lint`, CLI build, `bun run check:web`, and `bun run build:web` pass with isolated `KDI_DB`
+
+## KDI-UI-010: Notification Subscriptions UI — Spec
+- [x] BRD/spec drafted at `specs/sveltekit-ui/KDI-UI-010-notification-subscriptions-ui.md`
+- [ ] List global and per-task subscriptions
+- [ ] Subscribe/unsubscribe with platform, chat id, thread id, user id, and notifier profile
+- [ ] Include archived/unsubscribed toggle
+- [ ] Acceptance: covers `notify-subscribe`, `notify-list`, and `notify-unsubscribe`
+- [ ] `bun run lint`, CLI build, `bun run check:web`, and `bun run build:web` pass with isolated `KDI_DB`
+
+## KDI-UI-007: Dispatch Control Center — Spec
+- [ ] BRD drafted at `specs/sveltekit-ui/KDI-UI-007-dispatch-control-center.md`
+- [ ] `/dispatch` page renders dispatcher presence, ready/running counts, profile
+      health, recent spawn failures, and a one-shot dispatch form
+- [ ] Server action calls `tick()` directly with `max`, `failureLimit`, and
+      `rateLimitCooldown` options; returns spawned/blocked/skipped/failed/processed
+      breakdown
+- [ ] Profile health/repair card gated by `FF_REAL_HARNESS_PROFILES`
+- [ ] Smoke test with temp HOME/KDI_DB creates a ready task and triggers one-shot
+      dispatch from the UI, asserting the counts update
+- [ ] `bun run lint`, CLI build, `bun run check:web`, and `bun run build:web` pass
+
+## KDI-UI-012: Swarm Builder — Spec
+- [x] BRD drafted at `specs/sveltekit-ui/KDI-UI-012-swarm-builder.md`
+- [ ] `/swarm` page renders a form for workers, verifier, synthesizer, and shared fields
+- [ ] Dry-run preview uses `planSwarmGraph` and matches `kdi swarm --dry-run`
+- [ ] Create action uses `createSwarmGraph` and redirects to board view or orchestrator detail
+- [ ] Server-side validation mirrors the CLI; gated by `FF_SWARM_MODE` and `FF_SVELTEKIT_FRONTEND`
+- [ ] Smoke test with temp HOME/KDI_DB creates a swarm through the UI and asserts parity with `kdi swarm`
+- [ ] `bun run lint`, CLI build, `bun run check:web`, and `bun run build:web` pass
+
+## KDI-UI-055: Worktree Handoff — Done
 - [x] BRD finalized at `specs/brd-kdi-055-worktree-handoff.md`
 - [x] Feature flag `ff_worktree_handoff` / `FF_WORKTREE_HANDOFF` registered in `specs/feature-flags.md` and `src/flags.ts`, defaults to `true`
 - [x] `src/worktree.ts` exposes `detectWorktreeChanges()` helper

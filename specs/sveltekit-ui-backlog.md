@@ -60,25 +60,25 @@
 
 ## P2 - Dispatch, Health, and Observability
 
-- [ ] **KDI-UI-007: Dispatch control center**
+- [x] **KDI-UI-007: Dispatch control center** (spec written: `specs/sveltekit-ui/KDI-UI-007-dispatch-control-center.md`)
   - Show dispatcher presence, ready/running counts, profile availability, and recent spawn failures.
   - Trigger `dispatch --once` with `max`, `failure-limit`, and rate-limit cooldown options.
   - Surface KDI-056 profile doctor/repair state when that backend work lands.
   - Acceptance: user can safely run one dispatch pass and see spawned/blocked/skipped results.
 
-- [ ] **KDI-UI-008: Live activity view**
+- [x] **KDI-UI-008: Live activity view** (spec written: `specs/sveltekit-ui/KDI-UI-008-live-activity-view.md`)
   - Board-wide activity stream with filters for assignee, tenant, and event kinds.
   - Per-task event stream and worker log view.
   - Poll first, with pause/resume and manual refresh.
   - Acceptance: covers `watch`, `tail`, and `log` without requiring a WebSocket server.
 
-- [ ] **KDI-UI-009: Stats and diagnostics UI**
+- [x] **KDI-UI-009: Stats and diagnostics UI** (spec written: `specs/sveltekit-ui/KDI-UI-009-stats-diagnostics-ui.md`)
   - Show per-status counts, per-assignee counts, oldest-ready age, and health diagnostics.
   - Severity filter and task-specific diagnostics.
   - Add action shortcuts for diagnostics actions: reclaim, reassign, unblock, comment, open docs/CLI hint.
   - Acceptance: UI output matches `kdi stats --json` and `kdi diagnostics --json`.
 
-- [ ] **KDI-UI-010: Notification subscriptions UI**
+- [x] **KDI-UI-010: Notification subscriptions UI** (spec written: `specs/sveltekit-ui/KDI-UI-010-notification-subscriptions-ui.md`)
   - List global and per-task subscriptions.
   - Subscribe/unsubscribe with platform, chat id, thread id, user id, and notifier profile.
   - Include archived/unsubscribed toggle.
@@ -86,13 +86,13 @@
 
 ## P3 - Advanced Workflow UI
 
-- [ ] **KDI-UI-011: Triage automation UI**
+- [x] **KDI-UI-011: Triage automation UI** (spec written: `specs/sveltekit-ui/KDI-UI-011-triage-automation-ui.md`)
   - Specify one triage task, all triage tasks, or tenant-filtered triage tasks.
   - Decompose one/all/tenant-filtered triage tasks.
   - Show LLM errors and invalid responses as blocking feedback.
   - Acceptance: maps to `specify` and `decompose`, including `--skip-llm` for manual promotion.
 
-- [ ] **KDI-UI-012: Swarm builder**
+- [x] **KDI-UI-012: Swarm builder** (spec written: `specs/sveltekit-ui/KDI-UI-012-swarm-builder.md`)
   - Create swarm graphs with workers, verifier, synthesizer, shared body, workspace, session, priority, and workspace kind.
   - Include dry-run preview before creation.
   - Acceptance: covers `kdi swarm --dry-run` and real swarm creation.
