@@ -474,105 +474,38 @@ export function applyBulkAction(
   let failed = 0;
 
   for (const id of ids) {
+    let result: TaskActionResult;
     try {
-      let result: TaskActionResult;
-      switch (action) {
-        case "promote": {
-          const force = formData.has("force");
-          const dryRun = formData.has("dryRun");
-          result = formatPromote(
-            id,
-            promoteTaskAdvanced(id, { force, dryRun }),
-            dryRun
-          );
-          break;
+      const current = showTask(id);
+      if (!current) {
+        result = { taskId: id, status: "skipped", message: "skipped: not_found" };
+      } else if (action === "block") {
+        if (current.status === "blocked") {
+          result = { taskId: id, status: "skipped", message: "skipped: already blocked" };
+        } else if (current.archived_at !== null) {
+          result = { taskId: id, status: "skipped", message: "skipped: already archived" };
+        } else {
+          result = applyTaskAction(action, id, formData);
         }
-        case "block": {
-          const reason = String(formData.get("reason") ?? "").trim();
-          if (!reason) {
-            result = { taskId: id, status: "error", message: "Block reason is required." };
-          } else {
-            const current = showTask(id);
-            if (!current) {
-              result = { taskId: id, status: "skipped", message: "skipped: not_found" };
-            } else if (current.status === "blocked") {
-              result = { taskId: id, status: "skipped", message: "skipped: already blocked" };
-            } else if (current.archived_at !== null) {
-              result = { taskId: id, status: "skipped", message: "skipped: already archived" };
-            } else {
-              const task = blockTask(id, reason);
-              result = { taskId: id, status: "success", message: `Blocked task ${id}.`, currentStatus: task.status };
-            }
-          }
-          break;
+      } else if (action === "unblock") {
+        if (current.status === "scheduled" && !isEnabled(FF_SCHEDULED_STATUS)) {
+          result = { taskId: id, status: "error", message: "Scheduled status feature is not enabled." };
+        } else if (current.status !== "blocked" && current.status !== "scheduled") {
+          result = { taskId: id, status: "skipped", message: `skipped: wrong_status (current: ${current.status})` };
+        } else {
+          result = applyTaskAction(action, id, formData);
         }
-        case "unblock": {
-          const current = showTask(id);
-          if (!current) {
-            result = { taskId: id, status: "skipped", message: "skipped: not_found" };
-          } else if (current.status === "scheduled" && !isEnabled(FF_SCHEDULED_STATUS)) {
-            result = { taskId: id, status: "error", message: "Scheduled status feature is not enabled." };
-          } else if (current.status !== "blocked" && current.status !== "scheduled") {
-            result = { taskId: id, status: "skipped", message: `skipped: wrong_status (current: ${current.status})` };
-          } else {
-            const reason = String(formData.get("reason") ?? "").trim() || undefined;
-            const task = unblockTask(id, reason);
-            result = { taskId: id, status: "success", message: task.status === "ready" ? `Task ${id} is now ready.` : `Unblocked task ${id}.`, currentStatus: task.status };
-          }
-          break;
-        }
-        case "schedule": {
-          if (!isEnabled(FF_SCHEDULED_STATUS)) {
-            result = { taskId: id, status: "error", message: "Scheduled status feature is not enabled." };
-          } else {
-            const at = parseTimestamp(String(formData.get("at") ?? ""));
-            if (at === null) {
-              result = { taskId: id, status: "error", message: "Invalid scheduled time." };
-            } else if (at <= Math.floor(Date.now() / 1000)) {
-              result = { taskId: id, status: "error", message: "Scheduled time must be in the future" };
-            } else {
-              const reason = String(formData.get("reason") ?? "").trim() || undefined;
-              try {
-                const task = scheduleTask(id, at, reason);
-                result = { taskId: id, status: "success", message: `Scheduled task ${id} for ${new Date(at * 1000).toISOString()}.`, currentStatus: task.status };
-              } catch (err: any) {
-                result = { taskId: id, status: "error", message: err.message };
-              }
-            }
-          }
-          break;
-        }
-        case "archive": {
-          try {
-            const task = archiveTask(id);
-            result = { taskId: id, status: "success", message: `Archived task ${id}.`, currentStatus: task.status };
-          } catch (err: any) {
-            result = { taskId: id, status: "error", message: err.message };
-          }
-          break;
-        }
-        case "complete": {
-          const resultValue = String(formData.get("result") ?? "").trim() || undefined;
-          try {
-            const task = completeTask(id, { result: resultValue });
-            result = { taskId: id, status: "success", message: `Completed task ${id}.`, currentStatus: task.status };
-          } catch (err: any) {
-            result = { taskId: id, status: "error", message: err.message };
-          }
-          break;
-        }
-        default:
-          result = { taskId: id, status: "error", message: `Unknown bulk action: ${action}` };
+      } else {
+        result = applyTaskAction(action, id, formData);
       }
-
-      results.push(result);
-      if (result.status === "success") succeeded++;
-      else if (result.status === "skipped") skipped++;
-      else failed++;
     } catch (err: any) {
-      results.push({ taskId: id, status: "error", message: err.message });
-      failed++;
+      result = { taskId: id, status: "error", message: err.message };
     }
+
+    results.push(result);
+    if (result.status === "success") succeeded++;
+    else if (result.status === "skipped") skipped++;
+    else failed++;
   }
 
   return {
