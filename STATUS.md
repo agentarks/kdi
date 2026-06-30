@@ -60,7 +60,10 @@
   - `specs/sveltekit-ui/KDI-UI-010-notification-subscriptions-ui.md`
   - `specs/sveltekit-ui/KDI-UI-011-triage-automation-ui.md`
   - `specs/sveltekit-ui/KDI-UI-012-swarm-builder.md`
-- [ ] Pending implementation: KDI-UI-001 (server-side data bridge), then P1 board/task UI, dispatch/observability, and UI smoke loop (KDI-UI-016).
+  - `specs/sveltekit-ui/KDI-UI-013-workflow-templates-ui.md`
+  - `specs/sveltekit-ui/KDI-UI-015-accessibility-keyboard-baseline.md`
+  - `specs/sveltekit-ui/KDI-UI-016-end-to-end-ui-smoke-loop.md`
+- [ ] Pending implementation: KDI-UI-001 (server-side data bridge), then P1 board/task UI, dispatch/observability, and UI smoke loop (KDI-UI-016). Specs drafted for P3/P4 items KDI-UI-013, KDI-UI-015, and KDI-UI-016 in PR #66.
 
 ## KDI-UI-011: Triage Automation UI — Spec
 - [x] BRD drafted at `specs/sveltekit-ui/KDI-UI-011-triage-automation-ui.md`
@@ -115,6 +118,35 @@
 - [ ] Server-side validation mirrors the CLI; gated by `FF_SWARM_MODE` and `FF_SVELTEKIT_FRONTEND`
 - [ ] Smoke test with temp HOME/KDI_DB creates a swarm through the UI and asserts parity with `kdi swarm`
 - [ ] `bun run lint`, CLI build, `bun run check:web`, and `bun run build:web` pass
+
+## KDI-UI-013: Workflow Templates UI — Spec
+- [x] BRD/spec drafted at `specs/sveltekit-ui/KDI-UI-013-workflow-templates-ui.md`
+- [ ] `/boards/[slug]/workflows` route lists templates and provides a define/upsert form
+- [ ] Quick-create action on each template row creates a task via `createTask` with the template and an optional step key
+- [ ] Step action on task detail page advances or jumps workflow steps with an optional reason
+- [ ] Server-side validation mirrors the CLI; gated by `FF_WORKFLOW_TEMPLATES` and `FF_SVELTEKIT_FRONTEND`
+- [ ] UI smoke with temp HOME/KDI_DB defines templates, creates tasks from templates, and steps tasks; matches `kdi workflows list`/`kdi show`/`kdi step`
+- [ ] `bun run lint`, CLI build, `bun run check:web`, and `bun run build:web` pass with isolated `KDI_DB`
+
+## KDI-UI-015: Accessibility and Keyboard Baseline — Spec
+- [x] BRD/spec drafted at `specs/sveltekit-ui/KDI-UI-015-accessibility-keyboard-baseline.md`
+- [ ] Skip link, visible focus states, and landmark regions in app shell
+- [ ] Labels and ARIA names on all form inputs and icon-only buttons
+- [ ] Keyboard-operable board view, filters, forms, and action menus
+- [ ] ARIA live region for status announcements and loading states
+- [ ] `prefers-reduced-motion` support and contrast/focus contract
+- [ ] Playwright tests use stable role/name selectors; no CSS-class-based assertions
+- [ ] Keyboard smoke test covers core operator path
+- [ ] `bun run check:web` and `bun run build:web` pass
+
+## KDI-UI-016: End-to-end UI Smoke Loop — Spec
+- [x] BRD/spec drafted at `specs/sveltekit-ui/KDI-UI-016-end-to-end-ui-smoke-loop.md`
+- [ ] Hermetic smoke test uses temp HOME and temp KDI_DB
+- [ ] Real path: init → create board → create task → promote → dispatch once → inspect result/log/events → archive
+- [ ] CLI-created task is visible in UI board view and detail panel
+- [ ] UI-created task is visible in `kdi show` / `kdi list`
+- [ ] No new UI screens, CLI commands, or flags; only a test harness and no-op smoke profile
+- [ ] `bun run lint`, CLI build, `bun run build:web`, and `bun run check:web` pass
 
 ## KDI-UI-055: Worktree Handoff — Done
 - [x] BRD finalized at `specs/brd-kdi-055-worktree-handoff.md`
