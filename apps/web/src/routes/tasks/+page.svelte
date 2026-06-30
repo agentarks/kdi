@@ -39,9 +39,11 @@
       event.preventDefault();
       return;
     }
-    const formEl = event.currentTarget as HTMLFormElement;
-    const hidden = formEl.querySelector("input[name=_action]") as HTMLInputElement;
-    hidden.value = action;
+    const button = event.currentTarget as HTMLButtonElement;
+    const formEl = button.form;
+    if (!formEl) return;
+    const hidden = formEl.querySelector("input[name=_action]") as HTMLInputElement | null;
+    if (hidden) hidden.value = action;
   }
 
   const bulkReason = $state({
