@@ -15,7 +15,7 @@ import {
   type PromoteTaskResult,
 } from "~/models/task";
 import { atomicClaim, heartbeat, reclaimTask } from "~/models/claim";
-import { createBoard, getBoardById, showBoard } from "~/models/board";
+import { getBoardById, showBoard } from "~/models/board";
 import { readCurrentBoard } from "~/resolveBoard";
 import {
   FF_ASSIGN_REASSIGN,
@@ -114,26 +114,9 @@ function formatPromote(
 
 export function loadTaskList(boardSlug: string) {
   initDb();
-  let board = showBoard(boardSlug);
+  const board = showBoard(boardSlug);
   if (!board) {
-    // ponytail: create a minimal board so the UI has a stable surface even
-    // before the operator runs `kdi init`. Upgraded board management lives in
-    // KDI-UI-002.
-    const created = createBoard(boardSlug, "", "origin/main");
-    board = {
-      ...created,
-      taskCounts: {
-        triage: 0,
-        todo: 0,
-        ready: 0,
-        running: 0,
-        done: 0,
-        blocked: 0,
-        review: 0,
-        scheduled: 0,
-        archived: 0,
-      },
-    };
+    return { board: null, tasks: [] };
   }
   const tasks = listTasks({ board_id: board.id, includeArchived: false });
   return { board, tasks };

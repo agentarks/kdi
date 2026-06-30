@@ -54,10 +54,9 @@ describe("task lifecycle actions", () => {
   beforeEach(setupEnv);
   afterEach(teardownEnv);
 
-  it("loadTaskList resolves and creates a missing board", () => {
-    const { board, tasks } = loadTaskList("default");
-    expect(board).not.toBeNull();
-    expect(board!.slug).toBe("default");
+  it("loadTaskList returns null board and empty tasks when board is missing", () => {
+    const { board, tasks } = loadTaskList("missing-board");
+    expect(board).toBeNull();
     expect(tasks).toEqual([]);
   });
 

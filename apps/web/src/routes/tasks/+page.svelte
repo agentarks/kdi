@@ -65,7 +65,8 @@
   {#if data.board}
     <p class="stack-sm text-dim">Board: {data.boardSlug}</p>
   {:else}
-    <p class="stack-sm text-dim">Board: {data.boardSlug} (not found)</p>
+    <p class="stack-sm text-dim">Board: {data.boardSlug}</p>
+    <p class="stack-sm notice">Board not found.</p>
   {/if}
 
   {#if !data.capabilities?.bulk}
@@ -196,6 +197,9 @@
     display: flex;
     gap: 8px;
     flex-wrap: wrap;
+  }
+  .notice {
+    color: #ff6b6b;
   }
   .task-table {
     width: 100%;

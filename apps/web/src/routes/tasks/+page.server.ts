@@ -14,15 +14,26 @@ export const load: PageServerLoad = async ({ url }) => {
     process.env.KDI_BOARD
   );
   const { board, tasks } = loadTaskList(boardSlug);
+  const capabilities = {
+    bulk: isEnabled(FF_BULK_OPERATIONS),
+    schedule: isEnabled(FF_SCHEDULED_STATUS),
+  };
+  if (!board) {
+    return {
+      enabled: true,
+      board: null,
+      tasks: [],
+      boardSlug,
+      capabilities,
+      error: "Board not found",
+    };
+  }
   return {
     enabled: true,
     board,
     tasks,
     boardSlug,
-    capabilities: {
-      bulk: isEnabled(FF_BULK_OPERATIONS),
-      schedule: isEnabled(FF_SCHEDULED_STATUS),
-    },
+    capabilities,
   };
 };
 
