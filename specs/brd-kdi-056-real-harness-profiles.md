@@ -43,7 +43,7 @@ Choose option 1. It removes the exit-127 trap end to end: `bootstrap` repairs th
 registry, `doctor` validates it, the dispatcher refuses to spawn unvalidated
 profiles, and a single doc codifies the `$KDI_TASK_*` / `$KDI_RESULT_FILE` /
 template contract so real `opencode`/`pi` integrations are reproducible. The
-whole feature is additive and gated behind a new flag defaulting to `false`.
+whole feature is additive and gated behind `ff_real_harness_profiles`, which has been promoted to **Active** (default `true`).
 
 -------------------------------------------------------------------------------
 Current Behavior vs Desired Behavior
@@ -55,7 +55,7 @@ Current Behavior vs Desired Behavior
 | Built-in `opencode`/`pi` commands | Hardcoded, may not match installed CLI | Documented contract; `bootstrap` aligns registry to contract |
 | Pre-spawn validation | None | Dispatcher validates binary exists before claiming a task |
 | Harness env/template contract | Spread across `profiles.ts` + `dispatcher.ts` | One doc section lists every `KDI_*` env var and `{{template}}` |
-| Feature gating | N/A | `ff_real_harness_profiles` / `FF_REAL_HARNESS_PROFILES`, default `false` |
+| Feature gating | N/A | `ff_real_harness_profiles` / `FF_REAL_HARNESS_PROFILES`, **Active**, default `true` (set `FF_REAL_HARNESS_PROFILES=false` to roll back) |
 
 -------------------------------------------------------------------------------
 Functional Requirements
@@ -97,8 +97,9 @@ Functional Requirements
   (`.kdi-result.txt` in the workdir, read by `extractHarnessResult()`), plus the
   goal-verdict file convention (`.kdi-goal-verdict.json` in the workdir).
 - **FR-6 (flag registration):** Register `ff_real_harness_profiles` /
-  `FF_REAL_HARNESS_PROFILES` in `src/flags.ts` and `specs/feature-flags.md`,
-  default `false`, status `InDev`.
+  `FF_REAL_HARNESS_PROFILES` in `src/flags.ts` and `specs/feature-flags.md`;
+  promoted to **Active** with default `true` after real `opencode`/`pi` install
+  smoke passed.
 - **FR-7 (no regression):** When the flag is `false`, `profiles bootstrap`,
   `profiles doctor`, and the dispatcher tick behave byte-for-byte as today
   (`bootstrap`/`doctor` are rejected with a clear flag-disabled error; dispatcher
@@ -173,8 +174,7 @@ Risks and Mitigations
 -------------------------------------------------------------------------------
 Feature Flag
 -------------------------------------------------------------------------------
-- `ff_real_harness_profiles` / `FF_REAL_HARNESS_PROFILES`, default `false`,
-  status `InDev`.
+- `ff_real_harness_profiles` / `FF_REAL_HARNESS_PROFILES`, **Active**, default `true`.
 - **Status transitions:**
   - `Planned` → `InDev` when `profiles bootstrap`/`doctor` and the dispatcher
     guard are implemented.
@@ -183,3 +183,25 @@ Feature Flag
 - **Rollback / deactivation:** Set `FF_REAL_HARNESS_PROFILES=false` to reject
   `bootstrap`/`doctor` and disable the pre-dispatch guard.
 - **Deprecation plan:** N/A (additive).
+- **Rollout note:** Real `opencode` and `pi` binaries were verified at
+  `/opt/homebrew/bin/opencode` and `/opt/homebrew/bin/pi`; `bootstrap` repairs
+  stale profiles, `doctor` reports `ok`, and the dispatch guard skips missing
+  binaries.
+
+-------------------------------------------------------------------------------
+Rollout / Promotion
+-------------------------------------------------------------------------------
+Real `opencode` and `pi` binaries were installed at `/opt/homebrew/bin/opencode`
+and `/opt/homebrew/bin/pi`. A temp-`HOME`/`KDI_DB` user-loop smoke verified:
+
+- `kdi profiles bootstrap` repaired stale user profiles (e.g. `/tmp/mock-harness`)
+  and wrote known-good `opencode`/`pi` entries pointing to the real binaries.
+- `kdi profiles doctor` reported both profiles as `ok`.
+- `kdi dispatch --once` against a profile whose binary was missing (e.g.
+  `/tmp/nonexistent-harness`) left the task `ready` and recorded a
+  `profile_invalid` event naming the missing binary.
+- `kdi dispatch --once` against a resolvable binary (`/opt/homebrew/bin/opencode`
+  or `/opt/homebrew/bin/pi`, or a fake binary on `PATH`) reached `done`.
+
+This evidence promoted the flag from `InDev` to **Active** (default `true`) in
+`src/flags.ts` and `specs/feature-flags.md`.

@@ -68,7 +68,7 @@ shown by `kdi show <id>` and `kdi runs <id>`.
 
 ## 5. Pre-dispatch binary guard (KDI-056)
 
-With `FF_REAL_HARNESS_PROFILES=true`, the dispatcher resolves the profile's
+This guard is **Active** by default in KDI-056 (`FF_REAL_HARNESS_PROFILES=true`). When enabled, the dispatcher resolves the profile's
 leading binary token against `PATH` **before** claiming the task. If the
 binary is missing the task is **not** claimed, no worktree is created, a
 `profile_invalid` event is recorded (`{ profile, binary }`), and an

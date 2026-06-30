@@ -38,6 +38,11 @@ describe("dispatcher", () => {
     cleanupDb(testDbPath);
     initDb(testDbPath);
     setFlag("FF_ENABLE_KANBAN_DISPATCH", true);
+    // Keep the KDI-056 pre-claim binary guard off by default in this suite; the
+    // dedicated "FF_REAL_HARNESS_PROFILES pre-claim guard" describe block toggles
+    // it explicitly. Core dispatcher behavior tests use spawnHarness mocks and do
+    // not need real binaries to resolve.
+    setFlag(FF_REAL_HARNESS_PROFILES, false);
   });
 
   afterEach(() => {
@@ -1740,6 +1745,7 @@ describe("result summary extraction", () => {
     cleanupDb(testDbPath);
     initDb(testDbPath);
     setFlag("FF_ENABLE_KANBAN_DISPATCH", true);
+    setFlag(FF_REAL_HARNESS_PROFILES, false);
   });
 
   afterEach(() => {
@@ -1913,6 +1919,7 @@ describe("dispatcher goal mode", () => {
     initDb(testDbPath);
     setFlag("FF_ENABLE_KANBAN_DISPATCH", true);
     setFlag(FF_GOAL_MODE, true);
+    setFlag(FF_REAL_HARNESS_PROFILES, false);
   });
 
   afterEach(() => {
