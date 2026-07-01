@@ -102,7 +102,7 @@
   - Create tasks from workflow templates and advance/jump steps with reasons.
   - Acceptance: covers `workflows define`, `workflows list`, `create --workflow-template-id`, and `step`.
 
-- [ ] **KDI-UI-014: Goal mode UI**
+- [x] **KDI-UI-014: Goal mode UI** (spec written: `specs/sveltekit-ui/KDI-UI-014-goal-mode-ui.md`)
   - Create goal-mode tasks with max turns and judge profile.
   - Show remaining turns, judge profile, and goal continuation events.
   - Acceptance: disabled unless `FF_GOAL_MODE=true` and hidden behind the frontend flag.

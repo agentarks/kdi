@@ -61,6 +61,7 @@
   - `specs/sveltekit-ui/KDI-UI-011-triage-automation-ui.md`
   - `specs/sveltekit-ui/KDI-UI-012-swarm-builder.md`
   - `specs/sveltekit-ui/KDI-UI-013-workflow-templates-ui.md`
+  - `specs/sveltekit-ui/KDI-UI-014-goal-mode-ui.md`
   - `specs/sveltekit-ui/KDI-UI-015-accessibility-keyboard-baseline.md`
   - `specs/sveltekit-ui/KDI-UI-016-end-to-end-ui-smoke-loop.md`
 - [ ] Pending implementation: KDI-UI-001 (server-side data bridge), then P1 board/task UI, dispatch/observability, and UI smoke loop (KDI-UI-016). Specs drafted for P3/P4 items KDI-UI-013, KDI-UI-015, and KDI-UI-016 in PR #66.
@@ -127,6 +128,15 @@
 - [ ] Server-side validation mirrors the CLI; gated by `FF_WORKFLOW_TEMPLATES` and `FF_SVELTEKIT_FRONTEND`
 - [ ] UI smoke with temp HOME/KDI_DB defines templates, creates tasks from templates, and steps tasks; matches `kdi workflows list`/`kdi show`/`kdi step`
 - [ ] `bun run lint`, CLI build, `bun run check:web`, and `bun run build:web` pass with isolated `KDI_DB`
+
+## KDI-UI-014: Goal Mode UI — Spec
+- [x] BRD/spec drafted at `specs/sveltekit-ui/KDI-UI-014-goal-mode-ui.md`
+- [ ] Goal-mode indicator/badge on board view task cards when `FF_GOAL_MODE=true`
+- [ ] Dedicated goal-mode card on task detail panel showing max turns, remaining turns, and judge profile
+- [ ] Goal-turn event timeline rendering verdicts (`continue`, `done`, `exhausted`) and notes
+- [ ] "Create goal-mode task" shortcut linking to create form with goal mode pre-selected
+- [ ] Acceptance: UI is hidden when `FF_GOAL_MODE=false` and unavailable when `FF_SVELTEKIT_FRONTEND=false`
+- [ ] `bun run lint`, CLI build, `bun run check:web`, and `bun run build:web` pass
 
 ## KDI-UI-015: Accessibility and Keyboard Baseline — Spec
 - [x] BRD/spec drafted at `specs/sveltekit-ui/KDI-UI-015-accessibility-keyboard-baseline.md`
