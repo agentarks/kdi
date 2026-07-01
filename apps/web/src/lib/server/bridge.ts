@@ -18,7 +18,7 @@ const dev = process.env.NODE_ENV !== "production";
 // `bun:sqlite` types from the hoisted bun-types at the repo root).
 // Spec FR-1: models are imported via the `~/*` alias the CLI already uses.
 import type { Board, BoardMetadata, BoardWithTaskCounts, BoardStats } from "~/models/board";
-import type { Task, Task as TaskModel, InitialTaskStatus } from "~/models/task";
+import type { Task, Task as TaskModel, CreateTaskInput } from "~/models/task";
 import type { TaskEvent } from "~/models/taskEvent";
 import type { TaskRun } from "~/models/taskRun";
 import type { Comment } from "~/models/comment";
@@ -105,15 +105,12 @@ async function models(): Promise<Modules> {
 // FF_SVELTEKIT_FRONTEND is read straight from process.env to match the existing
 // apps/web/src/hooks.server.ts master gate. It is intentionally NOT routed
 // through src/flags.ts isEnabled (pre-existing: that flag is unregistered
-// there). ponytail: bridge and hook agree on the same env var; no new coupling.
-export function frontendEnabled(): boolean {
-  return process.env.FF_SVELTEKIT_FRONTEND === "true";
-}
-
+// there). ponytail: one inline env read here (single caller, gate()); no wrapper.
+//
 // Routes call gate() first; when the flag is off it returns the spec-defined
 // 503 { enabled:false } so feature-detect works without a redirect.
 export function gate(): Response | null {
-  if (!frontendEnabled()) {
+  if (process.env.FF_SVELTEKIT_FRONTEND !== "true") {
     return new Response(JSON.stringify({ enabled: false }), {
       status: 503,
       headers: { "content-type": "application/json" },
@@ -122,20 +119,10 @@ export function gate(): Response | null {
   return null;
 }
 
-// ---------------------------------------------------------------------------
-// DB bootstrap
-// ---------------------------------------------------------------------------
-
-// initDb() is idempotent and caches its singleton per path (see src/db.ts).
-// The bridge process owns that singleton for its lifetime. KDI_DB /
-// KDI_DB_PATH / default resolution is inherited from the env unchanged.
-// Open question from the BRD is resolved as: initialize on every bridge call.
-// initDb's own per-path cache makes this cheap (a returning match) so there is
-// no need for a second flag here — and not caching lets tests swap KDI_DB.
-export async function ensureDb(): Promise<void> {
-  const m = await models();
-  m.initDb();
-}
+// initDb() is called inside the bridge functions themselves (createBoardJson,
+// resolveBoard, subscriptionsJson) — idempotent and per-path cached in
+// src/db.ts, so KDI_DB / KDI_DB_PATH / default resolution is honored without a
+// separate bootstrap helper. ponytail: no ensureDb() wrapper; callers initDb().
 
 // ---------------------------------------------------------------------------
 // Error model
@@ -201,12 +188,8 @@ function toCamel<T>(input: T): CamelCase<T> {
   if (input === null || typeof input !== "object") return input as CamelCase<T>;
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(input as Record<string, unknown>)) {
-    const camelKey = key.includes("_")
-      ? key
-          .split("_")
-          .map((seg, i) => (i === 0 ? seg : seg.charAt(0).toUpperCase() + seg.slice(1)))
-          .join("")
-      : key;
+    // ponytail: one regex replaces the split/map/join; no _ means a no-op match.
+    const camelKey = key.replace(/_(.)/g, (_, c: string) => c.toUpperCase());
     out[camelKey] = toCamel(value);
   }
   return out as CamelCase<T>;
@@ -292,9 +275,9 @@ export async function showBoardJson(slug: string): Promise<{ board: CamelCase<Bo
 }
 
 export async function boardStatsJson(slug: string): Promise<{ stats: CamelCase<BoardStats> }> {
-  const m = await resolveBoard(slug).then((b) => b);
-  const mo = await models();
-  return { stats: toCamel(mo.getBoardStats(slug)) };
+  await resolveBoard(slug);
+  const m = await models();
+  return { stats: toCamel(m.getBoardStats(slug)) };
 }
 
 export async function assigneesJson(slug: string): Promise<{ assignees: Record<string, number> }> {
@@ -353,72 +336,32 @@ export async function listTasksJson(
   return { tasks: tasks.map(toTaskSummary) };
 }
 
-export interface CreateTaskBody {
-  title?: string;
-  body?: string;
-  assignee?: string;
-  priority?: number;
-  tenant?: string;
-  workspace?: string;
-  scheduled_at?: number;
-  created_by?: string;
-  skills?: string[];
-  model_override?: string;
-  max_runtime_seconds?: number;
-  max_retries?: number;
-  session_id?: string;
-  workflow_template_id?: string;
-  current_step_key?: string;
-  triage?: boolean;
-  initialStatus?: InitialTaskStatus;
-  idempotency_key?: string;
-  goal_mode?: boolean;
-  goal_max_turns?: number;
-  goal_judge_profile?: string;
-}
+// The bridge create-task body is the model's own CreateTaskInput minus board_id
+// (the slug in the URL supplies the board). ponytail: reuse the model type so a
+// new model field flows through the API without a manual bridge edit; this now
+// also exposes workspace_kind / branch / swarm_parent_id, which are valid
+// createTask inputs the manual list had silently dropped.
+export type CreateTaskBody = Omit<CreateTaskInput, "board_id">;
 
 export async function createTaskJson(slug: string, body: CreateTaskBody): Promise<{ task: TaskSummary }> {
+  // Trust-boundary guards run before the model call: required title, and reject
+  // `archived` (not a legal initial status). ponytail: never simplify away
+  // input validation at trust boundaries.
   if (typeof body.title !== "string" || body.title.trim() === "")
     throw new BridgeError("invalid_input", 400, "title is required");
-  const board = await resolveBoard(slug);
-  // Trust-boundary: reject "archived" (not a legal initial status) up front so
-  // an API caller cannot set a terminal status at create time. ponytail: never
-  // simplify away input validation at trust boundaries.
   if ((body.initialStatus as string) === "archived")
     throw new BridgeError("invalid_input", 400, "initialStatus 'archived' is not allowed.");
-  // createTask returns the full Task object (not an id) and already emits the
-  // "created" event, mirroring the CLI side effects. No extra read needed.
+  // createTask returns the full Task and already emits the "created" event,
+  // mirroring the CLI side effects. Spread the body and set board_id — ponytail:
+  // one spread instead of re-listing 23 fields (drift-proof).
+  const board = await resolveBoard(slug);
   const m = await models();
-  let task: TaskModel;
   try {
-    task = m.createTask({
-      board_id: board.id,
-      title: body.title,
-      body: body.body,
-      assignee: body.assignee,
-      priority: body.priority,
-      tenant: body.tenant,
-      workspace: body.workspace,
-      scheduled_at: body.scheduled_at,
-      created_by: body.created_by,
-      skills: body.skills,
-      model_override: body.model_override,
-      max_runtime_seconds: body.max_runtime_seconds,
-      max_retries: body.max_retries,
-      session_id: body.session_id,
-      workflow_template_id: body.workflow_template_id,
-      current_step_key: body.current_step_key,
-      triage: body.triage,
-      initialStatus: body.initialStatus,
-      idempotency_key: body.idempotency_key,
-      goal_mode: body.goal_mode,
-      goal_max_turns: body.goal_max_turns,
-      goal_judge_profile: body.goal_judge_profile,
-    });
+    const task = m.createTask({ ...body, board_id: board.id });
+    return { task: toTaskSummary(task) };
   } catch (err) {
     throw wrap(err);
   }
-  return { task: toTaskSummary(task) };
 }
 
 export async function showTaskJson(slug: string, id: number): Promise<{ task: CamelCase<TaskModel> }> {
@@ -513,7 +456,7 @@ export async function boardEventsJson(
   slug: string,
   params: URLSearchParams,
 ): Promise<{ events: CamelCase<TaskEvent>[] }> {
-  const board = await resolveBoard(slug);
+  await resolveBoard(slug);
   const m = await models();
   const assignee = params.get("assignee") ?? undefined;
   const tenant = params.get("tenant") ?? undefined;
@@ -522,9 +465,6 @@ export async function boardEventsJson(
   const since = params.get("since");
   const limit = params.get("limit") ? Number(params.get("limit")) : 50;
   const events = since !== null ? m.getEventsAfter(Number(since), filters) : m.getRecentEvents(limit, filters);
-  // Guard against an unused `board` reference tripping the linter — the board
-  // resolution above already validated the slug exists.
-  void board;
   return { events: toCamel(events) };
 }
 

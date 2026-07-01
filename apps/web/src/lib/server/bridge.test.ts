@@ -12,7 +12,6 @@ import { rmSync, mkdirSync, existsSync, readFileSync, readdirSync, statSync } fr
 import { join } from "node:path";
 
 import {
-  ensureDb,
   listBoardsJson,
   showBoardJson,
   createBoardJson,
@@ -57,7 +56,7 @@ function cleanup(): void {
 
 async function freshBoard(slug = "smoke"): Promise<string> {
   isolate();
-  await ensureDb();
+  // createBoardJson calls initDb() itself, so no separate bootstrap needed.
   await createBoardJson({ slug, workdir: tmpHome });
   return slug;
 }

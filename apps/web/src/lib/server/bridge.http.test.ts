@@ -24,19 +24,16 @@ import { initDb } from "~/db";
 
 const WORKTREE_ROOT = join(import.meta.dirname, "..", "..", "..", ".."); // repo root
 const PORT = "5191";
+const BASE_URL = `http://localhost:${PORT}`;
 
 let proc: ReturnType<typeof Bun.spawn> | null = null;
 let tmpHome: string;
-
-function baseUrl() {
-  return `http://localhost:${PORT}`;
-}
 
 async function waitAlive(timeoutMs = 30000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
-      const r = await fetch(`${baseUrl()}/`);
+      const r = await fetch(`${BASE_URL}/`);
       if (r.ok || r.status === 307 || r.status === 303 || r.status === 404) return;
     } catch {
       // not up yet
@@ -46,9 +43,21 @@ async function waitAlive(timeoutMs = 30000): Promise<void> {
   throw new Error(`dev server did not come alive on :${PORT} within ${timeoutMs}ms`);
 }
 
-async function startServer(): Promise<void> {
-  tmpHome = `/tmp/kdi-ui001-http-${process.pid}-${Math.random().toString(36).slice(2)}`;
-  mkdirSync(tmpHome, { recursive: true });
+// Start (or restart) the dev server with the given flag and isolated HOME/KDI_DB.
+// ponytail: one helper for the two spawn sites (flag on/off), not two copies.
+async function startServer(enabled: boolean): Promise<void> {
+  if (proc) {
+    try {
+      proc.kill();
+    } catch {
+      /* already gone */
+    }
+    proc = null;
+  }
+  if (!tmpHome) {
+    tmpHome = `/tmp/kdi-ui001-http-${process.pid}-${Math.random().toString(36).slice(2)}`;
+    mkdirSync(tmpHome, { recursive: true });
+  }
   proc = Bun.spawn({
     cmd: ["bun", "run", "dev:web", "--port", PORT],
     cwd: WORKTREE_ROOT,
@@ -56,7 +65,7 @@ async function startServer(): Promise<void> {
       ...process.env,
       HOME: tmpHome,
       KDI_DB: join(tmpHome, "kdi.sqlite"),
-      FF_SVELTEKIT_FRONTEND: "true",
+      FF_SVELTEKIT_FRONTEND: enabled ? "true" : "false",
       NODE_ENV: "development",
     },
     stdout: "ignore",
@@ -79,10 +88,10 @@ afterAll(() => {
 
 describe("KDI-UI-001 HTTP smoke (dev server, isolated HOME/KDI_DB)", () => {
   it("POST/GET boards + tasks over HTTP, flag-off disables writes, logs 501", async () => {
-    await startServer();
+    await startServer(true);
 
     // POST /api/boards
-    const r1 = await fetch(`${baseUrl()}/api/boards`, {
+    const r1 = await fetch(`${BASE_URL}/api/boards`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ slug: "smoke", workdir: tmpHome }),
@@ -93,7 +102,7 @@ describe("KDI-UI-001 HTTP smoke (dev server, isolated HOME/KDI_DB)", () => {
     for (const k of Object.keys(b1.board)) expect(k.includes("_")).toBe(false);
 
     // POST /api/boards/smoke/tasks
-    const r2 = await fetch(`${baseUrl()}/api/boards/smoke/tasks`, {
+    const r2 = await fetch(`${BASE_URL}/api/boards/smoke/tasks`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ title: "HTTP task", body: "hello", assignee: "ralph", priority: 3 }),
@@ -105,13 +114,13 @@ describe("KDI-UI-001 HTTP smoke (dev server, isolated HOME/KDI_DB)", () => {
     const taskId = t1.task.id as number;
 
     // GET /api/boards/smoke/tasks
-    const r3 = await fetch(`${baseUrl()}/api/boards/smoke/tasks`);
+    const r3 = await fetch(`${BASE_URL}/api/boards/smoke/tasks`);
     expect(r3.status).toBe(200);
     const listed = (await r3.json()) as { tasks: Array<Record<string, unknown>> };
     expect(listed.tasks.some((t) => t.id === taskId)).toBe(true);
 
     // GET /api/boards/smoke/tasks/<id>
-    const r4 = await fetch(`${baseUrl()}/api/boards/smoke/tasks/${taskId}`);
+    const r4 = await fetch(`${BASE_URL}/api/boards/smoke/tasks/${taskId}`);
     expect(r4.status).toBe(200);
     const shown = (await r4.json()) as { task: Record<string, unknown> };
     expect(shown.task.title).toBe("HTTP task");
@@ -129,36 +138,15 @@ describe("KDI-UI-001 HTTP smoke (dev server, isolated HOME/KDI_DB)", () => {
     expect(truth.priority).toBe(3);
 
     // logs route is the spec's prescribed model-gap escape hatch -> 501.
-    const r5 = await fetch(`${baseUrl()}/api/boards/smoke/tasks/${taskId}/logs`);
+    const r5 = await fetch(`${BASE_URL}/api/boards/smoke/tasks/${taskId}/logs`);
     expect(r5.status).toBe(501);
     const logs = (await r5.json()) as { error: string; reason?: string };
     expect(logs.error).toBe("not_implemented");
 
-    // Construct a fresh server with the flag OFF: writes must be refused (503)
-    // and must NOT have mutated state. (Kills the flag-on server first.)
-    if (proc) {
-      try {
-        proc.kill();
-      } catch {
-        /* noop */
-      }
-      proc = null;
-    }
-    proc = Bun.spawn({
-      cmd: ["bun", "run", "dev:web", "--port", PORT],
-      cwd: WORKTREE_ROOT,
-      env: {
-        ...process.env,
-        HOME: tmpHome,
-        KDI_DB: join(tmpHome, "kdi.sqlite"),
-        FF_SVELTEKIT_FRONTEND: "false",
-        NODE_ENV: "development",
-      },
-      stdout: "ignore",
-      stderr: "ignore",
-    });
-    await waitAlive();
-    const r6 = await fetch(`${baseUrl()}/api/boards`, {
+    // Restart with the flag OFF: writes must be refused (503) and must NOT
+    // have mutated state.
+    await startServer(false);
+    const r6 = await fetch(`${BASE_URL}/api/boards`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ slug: "should-not-exist", workdir: tmpHome }),
