@@ -20,7 +20,7 @@
   - Add feature flag handling for `FF_SVELTEKIT_FRONTEND` and `VITE_FF_SVELTEKIT_FRONTEND`.
   - Acceptance: `bun run lint`, CLI build, and SvelteKit build/dev command all work with isolated `KDI_DB`.
 
-- [x] **KDI-UI-001: Server-side data bridge** (spec written: `specs/sveltekit-ui/KDI-UI-001-server-data-bridge.md`)
+- [x] **KDI-UI-001: Server-side data bridge** (spec: `specs/sveltekit-ui/KDI-UI-001-server-data-bridge.md`; implemented in `apps/web/src/lib/server/bridge.ts` + `apps/web/src/routes/api/**/+server.ts`, merged PR #69)
   - Add SvelteKit server routes or load functions that call existing KDI models for boards, tasks, events, runs, logs, stats, diagnostics, workflows, and notifications.
   - Keep SQLite access server-side only.
   - Return small JSON shapes designed for UI screens, not raw CLI text.
