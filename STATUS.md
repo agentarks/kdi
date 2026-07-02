@@ -16,13 +16,19 @@
 - [x] Added bridge unit tests for the Kanban task shape and `/api/profiles`; extended HTTP smoke test to fetch `/boards/[slug]` and assert the rendered HTML contains the task ID, title, and board name
 - [x] Acceptance: UI reproduces `kdi list` filtered/sorted views against a temp `HOME`/`KDI_DB`; all builds pass (`bun run lint`, `bun run build`, `bun run check:web`, `bun run build:web`, `bun test`)
 
-## KDI-UI-004: Task Create/Edit UI — Spec
+## KDI-UI-004: Task Create/Edit UI — Implemented
 - [x] BRD/spec drafted at `specs/sveltekit-ui/KDI-UI-004-task-create-edit-ui.md`
-- [ ] Create form supports title, body, assignee, status, schedule time, priority, tenant, created-by, skills, model override, runtime, retries, workspace, session, workflow template + step key, goal mode, and parent dependencies
-- [ ] Edit form supports only `body` (the only field `editTask` currently supports)
-- [ ] Every optional field gated by the same CLI feature flag; no new flags
-- [ ] Acceptance: created task displays correctly in board view (KDI-UI-003) and `kdi show`
-- [ ] `bun run lint`, CLI build, SvelteKit build pass
+- [x] Create form supports title, body, assignee, status, schedule time, priority, tenant, created-by, skills, model override, runtime, retries, workspace, session, workflow template + step key, goal mode, and parent dependencies
+- [x] Edit form supports only `body` (the only field `editTask` currently supports)
+- [x] Every optional field gated by the same CLI feature flag; no new flags
+- [x] All UI mutations gated behind `FF_SVELTEKIT_FRONTEND` (server hook redirect + server action re-check)
+- [x] Standalone routes: `boards/[slug]/tasks/new` and `boards/[slug]/tasks/[id]/edit`; no dependency on KDI-UI-003 board view
+- [x] Server actions consume only the KDI-UI-001 bridge; no `bun:sqlite` or `~/models/*` imports in route/client files
+- [x] Added bridge helpers: `editTaskJson`, `createTaskJson` parent linking, `taskFlags`, `getWorkflowTemplateJson`, `validateStepKeyBridge`, `profilesJson`, `parseDurationBridge`
+- [x] Added bridge unit tests in `apps/web/src/lib/server/createEditTask.test.ts`
+- [x] Added HTTP smoke tests in `apps/web/src/lib/server/createEditTask.http.test.ts` and updated `apps/web/src/lib/server/bridge.http.test.ts` to close the dev server before the CLI cross-check (fixes cross-process SQLite lock flakiness)
+- [x] Full verification with isolated `HOME=/tmp/kdi-home-test` and `KDI_DB=/tmp/kdi-home-test/kdi-test.sqlite`: `bun install`, `bun run lint`, `bun run build`, `bun run check:web`, `bun run build:web`, `bun test` → **984 pass / 0 fail**
+- [ ] Acceptance: created task displays correctly in board view (KDI-UI-003) and `kdi show` (blocked on KDI-UI-003 board view; forms verified against `kdi show` CLI source of truth and `showTask` model in smoke tests)
 
 ## KDI-UI-005: Task Detail Panel — Spec
 - [x] BRD/spec drafted at `specs/sveltekit-ui/KDI-UI-005-task-detail-panel.md`
