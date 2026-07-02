@@ -64,9 +64,9 @@
   - `specs/sveltekit-ui/KDI-UI-014-goal-mode-ui.md`
   - `specs/sveltekit-ui/KDI-UI-015-accessibility-keyboard-baseline.md`
   - `specs/sveltekit-ui/KDI-UI-016-end-to-end-ui-smoke-loop.md`
-- [ ] Pending implementation: KDI-UI-001 (server-side data bridge), then P1 board/task UI, dispatch/observability, and UI smoke loop (KDI-UI-016). Specs drafted for P3/P4 items KDI-UI-013, KDI-UI-015, and KDI-UI-016 in PR #66.
+- [ ] Next implementation: P1 board/task UI (KDI-UI-002/003/004) consuming the merged KDI-UI-001 bridge, then dispatch/observability and UI smoke loop (KDI-UI-016). Specs drafted for P3/P4 items KDI-UI-013, KDI-UI-015, and KDI-UI-016 in PR #66.
 
-## KDI-UI-001: Server-Side Data Bridge — InDev
+## KDI-UI-001: Server-Side Data Bridge — Implemented (PR #69)
 - [x] BRD drafted at `specs/sveltekit-ui/KDI-UI-001-server-data-bridge.md`
 - [x] SvelteKit server routes call existing `src/models/*` for boards, tasks, events, runs, context, comments, attachments, diagnostics, workflows, notifications (read) and board/task create (write) — `apps/web/src/routes/api/**/+server.ts` backing a single choke point `apps/web/src/lib/server/bridge.ts`. No new model/SQL created; models imported read-only.
 - [x] Bridge imports models via the `~/*` alias the CLI already uses (spec FR-1), wired once via `kit.alias` in `apps/web/svelte.config.js` (`~ -> ../../src`); SvelteKit auto-generates the matching vite + tsconfig aliases (no manual tsconfig `paths`, which would clash with the generated one). Confirmed green under svelte-check, `bun test` (root tsconfig `~/*->src/*`), and the adapter-node build.
