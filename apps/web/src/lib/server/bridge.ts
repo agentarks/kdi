@@ -102,15 +102,15 @@ async function models(): Promise<Modules> {
 // Feature-flag gate
 // ---------------------------------------------------------------------------
 
-// FF_SVELTEKIT_FRONTEND is read straight from process.env to match the existing
-// apps/web/src/hooks.server.ts master gate. It is intentionally NOT routed
-// through src/flags.ts isEnabled (pre-existing: that flag is unregistered
-// there). ponytail: one inline env read here (single caller, gate()); no wrapper.
-//
+// Spec FR: gate the whole bridge behind FF_SVELTEKIT_FRONTEND. Using the
+// shared flag registry so the UI honors the same env/registry overrides as
+// every other KDI feature.
+import { isEnabled, FF_SVELTEKIT_FRONTEND } from "~/flags";
+
 // Routes call gate() first; when the flag is off it returns the spec-defined
 // 503 { enabled:false } so feature-detect works without a redirect.
 export function gate(): Response | null {
-  if (process.env.FF_SVELTEKIT_FRONTEND !== "true") {
+  if (!isEnabled(FF_SVELTEKIT_FRONTEND)) {
     return new Response(JSON.stringify({ enabled: false }), {
       status: 503,
       headers: { "content-type": "application/json" },

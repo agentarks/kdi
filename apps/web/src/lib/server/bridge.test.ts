@@ -37,6 +37,7 @@ import {
 // repo root resolves `~/*` via the root tsconfig the CLI already uses.
 import { showTask } from "~/models/task";
 import { showBoard as showBoardModel } from "~/models/board";
+import { clearOverrides } from "~/flags";
 
 const SRC_ROOT = join(import.meta.dirname, "..", ".."); // apps/web/src
 
@@ -174,11 +175,13 @@ describe("KDI-UI-001 server data bridge", () => {
 
   it("gate() returns 503 {enabled:false} when flag off, null when on", async () => {
     process.env.FF_SVELTEKIT_FRONTEND = "false";
+    clearOverrides();
     const off = gate();
     expect(off).toBeInstanceOf(Response);
     expect(off!.status).toBe(503);
     expect((await off!.json()).enabled).toBe(false);
     process.env.FF_SVELTEKIT_FRONTEND = "true";
+    clearOverrides();
     expect(gate()).toBeNull();
   });
 
