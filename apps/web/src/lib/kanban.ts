@@ -8,7 +8,7 @@ export interface KanbanFilterState {
   mine: boolean;
   tenant: string | null;
   createdBy: string | null;
-  sessionId: string | null;
+  session: string | null;
   archived: boolean;
   workflowTemplateId: string | null;
   stepKey: string | null;

@@ -40,7 +40,7 @@ export const load: PageServerLoad = async ({ params, url }) => {
     mine: search.get("mine") === "true",
     tenant: search.get("tenant"),
     createdBy: search.get("createdBy"),
-    sessionId: search.get("sessionId"),
+    session: search.get("session"),
     archived: search.get("archived") === "true",
     workflowTemplateId: search.get("workflowTemplateId"),
     stepKey: search.get("stepKey"),
@@ -63,7 +63,7 @@ export const load: PageServerLoad = async ({ params, url }) => {
     if (filters.mine) query.set("mine", "true");
     if (filters.tenant) query.set("tenant", filters.tenant);
     if (filters.createdBy) query.set("createdBy", filters.createdBy);
-    if (filters.sessionId) query.set("sessionId", filters.sessionId);
+    if (filters.session) query.set("session", filters.session);
     if (filters.archived) query.set("archived", "true");
     if (filters.workflowTemplateId) query.set("workflowTemplateId", filters.workflowTemplateId);
     if (filters.stepKey) query.set("stepKey", filters.stepKey);

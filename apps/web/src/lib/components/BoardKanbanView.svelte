@@ -23,6 +23,13 @@
   }
 
   let { board, tasks, filters, assignees, profiles, templates, currentProfile, capabilities }: Props = $props();
+
+  const displayBoard = $derived({
+    ...board,
+    taskCounts: filters.archived
+      ? board.taskCounts
+      : { ...board.taskCounts, archived: 0 },
+  });
 </script>
 
 <div class="board-view">
@@ -43,7 +50,7 @@
     {capabilities}
   />
 
-  <KanbanBoard {tasks} {board} {capabilities} />
+  <KanbanBoard {tasks} board={displayBoard} {capabilities} />
 </div>
 
 <style>

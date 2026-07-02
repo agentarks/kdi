@@ -384,7 +384,7 @@ export async function listTasksJson(
   const assignee = params.get("assignee");
   const tenant = params.get("tenant");
   const createdBy = params.get("createdBy");
-  const sessionId = params.get("sessionId");
+  const sessionId = params.get("session");
   const workflowTemplateId = params.get("workflowTemplateId");
   const stepKey = params.get("stepKey");
   const sort = params.get("sort") ?? undefined;

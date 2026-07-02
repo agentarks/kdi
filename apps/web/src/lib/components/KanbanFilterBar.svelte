@@ -77,7 +77,7 @@
   {#if capabilities.listFiltersSort}
     <label class="filter-field">
       <span>Session</span>
-      <input type="text" name="sessionId" value={filters.sessionId ?? ""} placeholder="session id" />
+      <input type="text" name="session" value={filters.session ?? ""} placeholder="session id" />
     </label>
   {/if}
 
