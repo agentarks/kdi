@@ -31,6 +31,7 @@ import {
   boardStatsJson,
   gate,
   BridgeError,
+  listProfilesJson,
 } from "./bridge";
 // Direct model import is the CLI source of truth used to validate the bridge
 // wrapped it faithfully. Uses the `~/*` alias (spec FR-1); `bun test` from the
@@ -130,6 +131,43 @@ describe("KDI-UI-001 server data bridge", () => {
     const shown = await showTaskJson(slug, created.task.id);
     expect(((shown.task as unknown) as Record<string, unknown>).goalMode).toBe(false);
     for (const k of Object.keys(shown.task)) expect(k.includes("_")).toBe(false);
+  });
+
+  it("POST /api/boards/[slug]/tasks returns the full Kanban task shape", async () => {
+    const slug = await freshBoard("kanban");
+    const created = await createTaskJson(slug, {
+      title: "Kanban card",
+      body: "body",
+      assignee: "ralph",
+      priority: 5,
+      tenant: "backend",
+      sessionId: "session-1",
+      createdBy: "alice",
+    });
+    const task = created.task;
+    expect(task.id).toBeGreaterThan(0);
+    expect(task.title).toBe("Kanban card");
+    expect(task.assignee).toBe("ralph");
+    expect(task.priority).toBe(5);
+    expect(task.tenant).toBe("backend");
+    expect(task.sessionId).toBe("session-1");
+    expect(task.createdBy).toBe("alice");
+    expect(task.createdAt).toBeGreaterThan(0);
+    expect(task.updatedAt).toBeGreaterThan(0);
+    expect(task.status).toBe("todo");
+    expect(task.blockReason).toBeNull();
+    expect(task.rateLimitedUntil).toBeNull();
+
+    const listed = await listTasksJson(slug, new URLSearchParams());
+    expect(listed.tasks.length).toBe(1);
+    expect(listed.tasks[0].id).toBe(task.id);
+    expect(listed.tasks[0].tenant).toBe("backend");
+  });
+
+  it("GET /api/profiles returns known profile names", async () => {
+    const profiles = await listProfilesJson();
+    expect(profiles.profiles).toContain("opencode");
+    expect(profiles.profiles).toContain("pi");
   });
 
   it("createTask rejects missing title (400 invalid_input)", async () => {

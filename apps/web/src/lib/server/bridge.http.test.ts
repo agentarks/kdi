@@ -119,6 +119,14 @@ describe("KDI-UI-001 HTTP smoke (dev server, isolated HOME/KDI_DB)", () => {
     const listed = (await r3.json()) as { tasks: Array<Record<string, unknown>> };
     expect(listed.tasks.some((t) => t.id === taskId)).toBe(true);
 
+    // GET /boards/smoke renders the Kanban board view with the task card
+    const rBoard = await fetch(`${BASE_URL}/boards/smoke`, { signal: AbortSignal.timeout(10000) });
+    expect(rBoard.status).toBe(200);
+    const boardHtml = await rBoard.text();
+    expect(boardHtml.includes(String(taskId))).toBe(true);
+    expect(boardHtml.includes("HTTP task")).toBe(true);
+    expect(boardHtml.includes("Board: smoke")).toBe(true);
+
     // GET /api/boards/smoke/tasks/<id>
     const r4 = await fetch(`${BASE_URL}/api/boards/smoke/tasks/${taskId}`);
     expect(r4.status).toBe(200);
@@ -144,8 +152,10 @@ describe("KDI-UI-001 HTTP smoke (dev server, isolated HOME/KDI_DB)", () => {
     expect(logs.error).toBe("not_implemented");
 
     // Restart with the flag OFF: writes must be refused (503) and must NOT
-    // have mutated state.
+    // have mutated state; the Kanban UI redirects to /disabled.
     await startServer(false);
+    const rBoardOff = await fetch(`${BASE_URL}/boards/smoke`, { redirect: "manual" });
+    expect(rBoardOff.status).toBe(307);
     const r6 = await fetch(`${BASE_URL}/api/boards`, {
       method: "POST",
       headers: { "content-type": "application/json" },
