@@ -128,10 +128,12 @@ not patched here.
   on; `default_workdir` renders only when `FF_DEFAULT_WORKDIR` is on and
   non-null. When a flag is off, those fields are omitted (not shown as empty) —
   matching CLI `show`.
-- **FR-10** The bare `boards` route (no slug) resolves the current board via
-  `readCurrentBoard()` → `"default"` fallback and renders that board's detail.
-  The browser has no `--board` / `KDI_BOARD` surface, so it uses this UI subset
-  of `resolveBoard`'s chain; documented as intentional, not a divergence claim.
+- **FR-10** The `/boards` route is the board list; the detail view lives at
+  `/boards/[slug]`. The list highlights the board whose slug equals
+  `readCurrentBoard()` with a "Current" badge. When the current file is missing
+  or names a missing board, no row is badged and no error is thrown. (The
+  browser has no `--board` / `KDI_BOARD` surface, so this is the UI subset of
+  `resolveBoard`'s chain; documented as intentional, not a divergence claim.)
 
 ### 6.3 Create form
 
@@ -309,9 +311,11 @@ Out of scope (explicitly):
   `taskCounts`; an archived board renders with "(archived)" (not 404); a missing
   slug renders `Board "..." not found.`; metadata/default-workdir fields render
   exactly when their flags (`FF_BOARD_METADATA`/`FF_DEFAULT_WORKDIR`) are on.
-- **AC-04 (show current)** The bare `boards` route resolves current via
-  `readCurrentBoard()` → `"default"` and renders that board's detail; if neither
-  resolves to a real board, the `Board "..." not found.` message is shown.
+- **AC-04 (show current)** The `/boards` list route highlights the board whose
+  slug equals `readCurrentBoard()` with a "Current" badge; no badge is shown when
+  the current file is missing or names a missing board, and no error is thrown.
+  The detail route `/boards/[slug]` renders the requested board; a missing slug
+  renders `Board "..." not found.`.
 - **AC-05 (create)** `boards/new` creates via `createBoard`; invalid slug →
   `assertValidBoardSlug` text; duplicate → `Board with slug "..." already
   exists`; empty metadata → `validateMetadataField` text; form stays mounted
