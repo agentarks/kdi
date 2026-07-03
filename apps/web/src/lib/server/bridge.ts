@@ -395,7 +395,12 @@ export async function listTasksJson(
   if (assignee !== null && !isEnabled(FF_ASSIGNEES_LISTING)) {
     throw new BridgeError("feature_disabled", 400, "Assignees listing feature is not enabled.");
   }
-  if (tenant !== null) requireTenantNamespace();
+  if (tenant !== null) {
+    if (tenant.trim() === "") {
+      throw new BridgeError("invalid_input", 400, "Tenant cannot be empty.");
+    }
+    requireTenantNamespace();
+  }
   if (createdBy !== null) requireCreatedBy();
   if (workflowTemplateId !== null || stepKey !== null) requireWorkflowTemplates();
   if (status === "archived" && !archived) {

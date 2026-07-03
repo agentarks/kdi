@@ -1,4 +1,3 @@
-
 <script lang="ts">
   import BoardKanbanView from "$lib/components/BoardKanbanView.svelte";
   import type { PageData } from "./$types";

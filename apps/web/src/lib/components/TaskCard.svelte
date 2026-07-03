@@ -37,13 +37,16 @@
     <span class="badge created-by" title="Created by">@{task.createdBy}</span>
   {/if}
   {#if task.blockReason && task.status === "blocked"}
-    <span class="badge reason" title={task.blockReason}>🚫 blocked</span>
+    <span class="badge reason" title={task.blockReason}><span aria-hidden="true">🚫</span> blocked</span>
   {/if}
   {#if task.scheduleReason && task.status === "scheduled"}
-    <span class="badge reason" title={task.scheduleReason}>⏳ scheduled {task.scheduledAt !== null ? formatRemaining(task.scheduledAt) : ""}</span>
+    <span class="badge reason" title={task.scheduleReason}>
+      <span aria-hidden="true">⏳</span>
+      {task.scheduledAt !== null ? `scheduled ${formatRemaining(task.scheduledAt)}` : "scheduled"}
+    </span>
   {/if}
   {#if task.reviewReason && task.status === "review"}
-    <span class="badge reason" title={task.reviewReason}>👁 review</span>
+    <span class="badge reason" title={task.reviewReason}><span aria-hidden="true">👁</span> review</span>
   {/if}
   {#if stale()}
     <span class="badge stale">stale</span>

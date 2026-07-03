@@ -1,4 +1,3 @@
-
 <script lang="ts">
   import KanbanColumn from "$lib/components/KanbanColumn.svelte";
   import { STATUSES, statusLabel, type KanbanTask, type KanbanCapabilities } from "$lib/kanban";

@@ -160,7 +160,7 @@ Out of scope (explicitly):
   - **Archived** — toggle that maps to `includeArchived`.
   - **Workflow template** — select of templates defined for the board.
   - **Step key** — select of steps belonging to the chosen template.
-  - **Sort** — select of the eight valid sort keys; default `updated`.
+  - **Sort** — select of the eight valid sort keys; default `created-desc`.
 - **FR-13** `--mine` and `--assignee` are mutually exclusive, matching the CLI:
   enabling `Mine` clears the assignee select; selecting an assignee clears `Mine`.
 - **FR-14** The filter bar applies filters server-side by converting the form
@@ -312,8 +312,8 @@ extension is a KDI-UI-001 concern, not a KDI-UI-003 concern.
 | `stepKey` | `current_step_key` | `--step-key` | `FF_WORKFLOW_TEMPLATES` |
 | `sort` | `sort` | `--sort` | `FF_LIST_FILTERS_SORT` |
 
-If `mine` is set, `assignee` must be ignored; the server load enforces the
-mutual exclusivity.
+If both `mine` and `assignee` are submitted, the bridge rejects the request
+with the same error the CLI uses.
 
 ## 9. Feature Flags
 

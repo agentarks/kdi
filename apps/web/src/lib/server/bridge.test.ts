@@ -289,6 +289,14 @@ describe("KDI-UI-003 filter gating", () => {
     await expectBridgeError(listTasksJson(slug, new URLSearchParams({ assignee: "ralph" })), "feature_disabled", 400);
   });
 
+  it("rejects empty tenant string", async () => {
+    process.env.FF_TENANT_NAMESPACE = "true";
+    clearOverrides();
+    const { slug } = await freshBoardWithTask();
+    await expectBridgeError(listTasksJson(slug, new URLSearchParams({ tenant: "" })), "invalid_input", 400);
+    await expectBridgeError(listTasksJson(slug, new URLSearchParams({ tenant: "   " })), "invalid_input", 400);
+  });
+
   it("rejects tenant without FF_TENANT_NAMESPACE", async () => {
     process.env.FF_TENANT_NAMESPACE = "false";
     clearOverrides();
