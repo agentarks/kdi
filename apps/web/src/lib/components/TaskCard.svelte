@@ -40,7 +40,7 @@
     <span class="badge reason" title={task.blockReason}>🚫 blocked</span>
   {/if}
   {#if task.scheduleReason && task.status === "scheduled"}
-    <span class="badge reason" title={task.scheduleReason}>⏳ scheduled</span>
+    <span class="badge reason" title={task.scheduleReason}>⏳ scheduled {task.scheduledAt !== null ? formatRemaining(task.scheduledAt) : ""}</span>
   {/if}
   {#if task.reviewReason && task.status === "review"}
     <span class="badge reason" title={task.reviewReason}>👁 review</span>

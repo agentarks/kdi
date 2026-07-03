@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { KanbanFilterState, KanbanCapabilities, KanbanTemplate } from "$lib/kanban";
-  import { STATUSES, VALID_SORT_KEYS } from "$lib/kanban";
+  import { STATUSES, VALID_SORT_KEYS, statusLabel } from "$lib/kanban";
 
   interface Props {
     filters: KanbanFilterState;
@@ -19,20 +19,40 @@
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }
 
-  function selectedTemplate(): KanbanTemplate | null {
-    return templates.find((t) => t.templateId === filters.workflowTemplateId) ?? null;
-  }
-
-  function statusLabel(status: string): string {
-    return status.charAt(0).toUpperCase() + status.slice(1);
+  function selectedTemplate(id: string | null): KanbanTemplate | null {
+    return templates.find((t) => t.templateId === id) ?? null;
   }
 
   function sortLabel(key: string): string {
     return key;
   }
+
+  function prepareForm(event: SubmitEvent): void {
+    const form = event.currentTarget as HTMLFormElement;
+    const data = new FormData(form);
+    const mine = data.get("mine") === "true";
+    const assigneeValue = (data.get("assignee") as string | null) ?? "";
+
+    // Trim free-text inputs before submission so empty-looking values become
+    // empty and the server load does not have to fight leading whitespace.
+    for (const name of ["tenant", "createdBy", "session"]) {
+      const el = form.elements.namedItem(name) as HTMLInputElement | null;
+      if (el) el.value = el.value.trim();
+    }
+
+    // Enforce mine/assignee mutual exclusivity on the client before submit.
+    if (mine) {
+      const el = form.elements.namedItem("assignee") as HTMLSelectElement | null;
+      if (el) el.value = "";
+    }
+    if (assigneeValue) {
+      const el = form.elements.namedItem("mine") as HTMLInputElement | null;
+      if (el) el.checked = false;
+    }
+  }
 </script>
 
-<form class="filter-bar" method="get" action="?">
+<form class="filter-bar" method="get" action="?" onsubmit={prepareForm}>
   <label class="filter-field">
     <span>Status</span>
     <select name="status" value={filters.status ?? ""}>
@@ -43,15 +63,17 @@
     </select>
   </label>
 
-  <label class="filter-field">
-    <span>Assignee</span>
-    <select name="assignee" value={filters.assignee ?? ""} disabled={filters.mine}>
-      <option value="">Any</option>
-      {#each assigneeOptions() as name}
-        <option value={name}>{name}</option>
-      {/each}
-    </select>
-  </label>
+  {#if capabilities.assigneesListing}
+    <label class="filter-field">
+      <span>Assignee</span>
+      <select name="assignee" value={filters.assignee ?? ""} disabled={filters.mine}>
+        <option value="">Any</option>
+        {#each assigneeOptions() as name}
+          <option value={name}>{name}</option>
+        {/each}
+      </select>
+    </label>
+  {/if}
 
   {#if capabilities.listFiltersSort}
     <label class="filter-field inline">
@@ -101,9 +123,9 @@
 
     <label class="filter-field">
       <span>Step</span>
-      <select name="stepKey" value={filters.stepKey ?? ""} disabled={!selectedTemplate()}>
+      <select name="stepKey" value={filters.stepKey ?? ""} disabled={!selectedTemplate(filters.workflowTemplateId)}>
         <option value="">Any</option>
-        {#each selectedTemplate()?.steps ?? [] as step}
+        {#each selectedTemplate(filters.workflowTemplateId)?.steps ?? [] as step}
           <option value={step}>{step}</option>
         {/each}
       </select>

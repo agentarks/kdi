@@ -38,13 +38,13 @@ export const load: PageServerLoad = async ({ params, url }) => {
     status: search.get("status"),
     assignee: search.get("assignee"),
     mine: search.get("mine") === "true",
-    tenant: search.get("tenant"),
-    createdBy: search.get("createdBy"),
-    session: search.get("session"),
+    tenant: search.get("tenant")?.trim() || null,
+    createdBy: search.get("createdBy")?.trim() || null,
+    session: search.get("session")?.trim() || null,
     archived: search.get("archived") === "true",
     workflowTemplateId: search.get("workflowTemplateId"),
     stepKey: search.get("stepKey"),
-    sort: search.get("sort") || "updated",
+    sort: search.get("sort") || "created-desc",
   };
 
   if (filters.status === "archived" && !filters.archived) {

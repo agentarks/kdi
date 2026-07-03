@@ -252,6 +252,75 @@ describe("KDI-UI-001 server data bridge", () => {
   });
 });
 
+// KDI-UI-003: bridge-level filter gating. The server load is the primary
+// defense; these tests ensure the bridge rejects disabled filters with the same
+// error text the CLI uses, so a direct client bypass cannot mutate state.
+describe("KDI-UI-003 filter gating", () => {
+  async function freshBoardWithTask(slug = "gate"): Promise<{ slug: string; taskId: number }> {
+    const boardSlug = await freshBoard(slug);
+    const { task } = await createTaskJson(boardSlug, { title: "gate task", assignee: "ralph", tenant: "t1", sessionId: "s1" });
+    return { slug: boardSlug, taskId: task.id };
+  }
+
+  it("status filter does not require FF_LIST_FILTERS_SORT", async () => {
+    process.env.FF_LIST_FILTERS_SORT = "false";
+    clearOverrides();
+    const { slug } = await freshBoardWithTask();
+    const { tasks } = await listTasksJson(slug, new URLSearchParams({ status: "todo" }));
+    expect(tasks.length).toBe(1);
+  });
+
+  it("rejects sort/archived/mine/session/workflow/step without FF_LIST_FILTERS_SORT", async () => {
+    process.env.FF_LIST_FILTERS_SORT = "false";
+    clearOverrides();
+    const { slug } = await freshBoardWithTask();
+    await expectBridgeError(listTasksJson(slug, new URLSearchParams({ sort: "updated" })), "feature_disabled", 400);
+    await expectBridgeError(listTasksJson(slug, new URLSearchParams({ archived: "true" })), "feature_disabled", 400);
+    await expectBridgeError(listTasksJson(slug, new URLSearchParams({ mine: "true" })), "feature_disabled", 400);
+    await expectBridgeError(listTasksJson(slug, new URLSearchParams({ session: "s1" })), "feature_disabled", 400);
+    await expectBridgeError(listTasksJson(slug, new URLSearchParams({ workflowTemplateId: "x" })), "feature_disabled", 400);
+    await expectBridgeError(listTasksJson(slug, new URLSearchParams({ stepKey: "x" })), "feature_disabled", 400);
+  });
+
+  it("rejects assignee without FF_ASSIGNEES_LISTING", async () => {
+    process.env.FF_ASSIGNEES_LISTING = "false";
+    clearOverrides();
+    const { slug } = await freshBoardWithTask();
+    await expectBridgeError(listTasksJson(slug, new URLSearchParams({ assignee: "ralph" })), "feature_disabled", 400);
+  });
+
+  it("rejects tenant without FF_TENANT_NAMESPACE", async () => {
+    process.env.FF_TENANT_NAMESPACE = "false";
+    clearOverrides();
+    const { slug } = await freshBoardWithTask();
+    await expectBridgeError(listTasksJson(slug, new URLSearchParams({ tenant: "t1" })), "feature_disabled", 400);
+  });
+
+  it("rejects createdBy without FF_CREATED_BY", async () => {
+    process.env.FF_CREATED_BY = "false";
+    clearOverrides();
+    const { slug } = await freshBoardWithTask();
+    await expectBridgeError(listTasksJson(slug, new URLSearchParams({ createdBy: "alice" })), "feature_disabled", 400);
+  });
+
+  it("rejects workflow template/step without FF_WORKFLOW_TEMPLATES", async () => {
+    process.env.FF_LIST_FILTERS_SORT = "true";
+    process.env.FF_WORKFLOW_TEMPLATES = "false";
+    clearOverrides();
+    const { slug } = await freshBoardWithTask();
+    await expectBridgeError(listTasksJson(slug, new URLSearchParams({ workflowTemplateId: "x" })), "feature_disabled", 400);
+    await expectBridgeError(listTasksJson(slug, new URLSearchParams({ stepKey: "x" })), "feature_disabled", 400);
+  });
+
+  it("rejects mine and assignee together", async () => {
+    process.env.FF_LIST_FILTERS_SORT = "true";
+    process.env.FF_ASSIGNEES_LISTING = "true";
+    clearOverrides();
+    const { slug } = await freshBoardWithTask();
+    await expectBridgeError(listTasksJson(slug, new URLSearchParams({ mine: "true", assignee: "ralph" })), "invalid_input", 400);
+  });
+});
+
 function walkTs(dir: string): string[] {
   const out: string[] = [];
   for (const name of readdirSync(dir)) {

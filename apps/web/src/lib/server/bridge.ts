@@ -389,8 +389,11 @@ export async function listTasksJson(
   const stepKey = params.get("stepKey");
   const sort = params.get("sort") ?? undefined;
 
-  if (status || sort !== undefined || archived || mine || sessionId || workflowTemplateId || stepKey) {
+  if (sort !== undefined || archived || mine || sessionId || workflowTemplateId || stepKey) {
     requireListFiltersSort();
+  }
+  if (assignee !== null && !isEnabled(FF_ASSIGNEES_LISTING)) {
+    throw new BridgeError("feature_disabled", 400, "Assignees listing feature is not enabled.");
   }
   if (tenant !== null) requireTenantNamespace();
   if (createdBy !== null) requireCreatedBy();
