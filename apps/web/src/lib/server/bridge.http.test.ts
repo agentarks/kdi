@@ -57,6 +57,9 @@ async function stopServer(): Promise<void> {
     }
     proc = null;
   }
+  // Give the OS and Vite's file watchers a moment to release the port and
+  // clean up child processes before the next dev server starts on a new port.
+  await new Promise((res) => setTimeout(res, 500));
 }
 
 // Start (or restart) the dev server with the given flag and isolated HOME/KDI_DB.
@@ -107,6 +110,7 @@ describe("KDI-UI-001 HTTP smoke (dev server, isolated HOME/KDI_DB)", () => {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ slug: "smoke", workdir: tmpHome }),
+      signal: AbortSignal.timeout(10000),
     });
     expect(r1.status).toBe(201);
     const b1 = (await r1.json()) as { board: Record<string, unknown> };
@@ -118,6 +122,7 @@ describe("KDI-UI-001 HTTP smoke (dev server, isolated HOME/KDI_DB)", () => {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ title: "HTTP task", body: "hello", assignee: "ralph", priority: 3 }),
+      signal: AbortSignal.timeout(10000),
     });
     expect(r2.status).toBe(201);
     const t1 = (await r2.json()) as { task: Record<string, unknown> };
@@ -126,7 +131,7 @@ describe("KDI-UI-001 HTTP smoke (dev server, isolated HOME/KDI_DB)", () => {
     const taskId = t1.task.id as number;
 
     // GET /api/boards/smoke/tasks
-    const r3 = await fetch(`${baseUrl}/api/boards/smoke/tasks`);
+    const r3 = await fetch(`${baseUrl}/api/boards/smoke/tasks`, { signal: AbortSignal.timeout(10000) });
     expect(r3.status).toBe(200);
     const listed = (await r3.json()) as { tasks: Array<Record<string, unknown>> };
     expect(listed.tasks.some((t) => t.id === taskId)).toBe(true);
@@ -140,13 +145,13 @@ describe("KDI-UI-001 HTTP smoke (dev server, isolated HOME/KDI_DB)", () => {
     expect(boardHtml.includes("Board: smoke")).toBe(true);
 
     // GET /api/boards/smoke/tasks/<id>
-    const r4 = await fetch(`${baseUrl}/api/boards/smoke/tasks/${taskId}`);
+    const r4 = await fetch(`${baseUrl}/api/boards/smoke/tasks/${taskId}`, { signal: AbortSignal.timeout(10000) });
     expect(r4.status).toBe(200);
     const shown = (await r4.json()) as { task: Record<string, unknown> };
     expect(shown.task.title).toBe("HTTP task");
 
     // logs route is the spec's prescribed model-gap escape hatch -> 501.
-    const r5 = await fetch(`${baseUrl}/api/boards/smoke/tasks/${taskId}/logs`);
+    const r5 = await fetch(`${baseUrl}/api/boards/smoke/tasks/${taskId}/logs`, { signal: AbortSignal.timeout(10000) });
     expect(r5.status).toBe(501);
     const logs = (await r5.json()) as { error: string; reason?: string };
     expect(logs.error).toBe("not_implemented");
@@ -174,12 +179,13 @@ describe("KDI-UI-001 HTTP smoke (dev server, isolated HOME/KDI_DB)", () => {
     // Restart with the flag OFF: writes must be refused (503) and must NOT
     // have mutated state; the Kanban UI redirects to /disabled.
     await startServer(false);
-    const rBoardOff = await fetch(`${baseUrl}/boards/smoke`, { redirect: "manual" });
+    const rBoardOff = await fetch(`${baseUrl}/boards/smoke`, { redirect: "manual", signal: AbortSignal.timeout(10000) });
     expect(rBoardOff.status).toBe(307);
     const r6 = await fetch(`${baseUrl}/api/boards`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ slug: "should-not-exist", workdir: tmpHome }),
+      signal: AbortSignal.timeout(10000),
     });
     expect(r6.status).toBe(503);
     const off = (await r6.json()) as { enabled: boolean };
