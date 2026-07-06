@@ -18,6 +18,8 @@ const dev = process.env.NODE_ENV !== "production";
 // `bun:sqlite` types from the hoisted bun-types at the repo root).
 // Spec FR-1: models are imported via the `~/*` alias the CLI already uses.
 import type { Board, BoardMetadata, BoardWithTaskCounts, BoardStats } from "~/models/board";
+import type { BoardListRow, BoardFlags } from "$lib/types";
+
 import type { Task, Task as TaskModel, CreateTaskInput } from "~/models/task";
 import type { TaskEvent } from "~/models/taskEvent";
 import type { TaskRun } from "~/models/taskRun";
@@ -42,6 +44,11 @@ type Modules = {
   showBoard: typeof import("~/models/board")["showBoard"];
   createBoard: typeof import("~/models/board")["createBoard"];
   getBoardStats: typeof import("~/models/board")["getBoardStats"];
+  updateBoardMetadata: typeof import("~/models/board")["updateBoardMetadata"];
+  setDefaultWorkdir: typeof import("~/models/board")["setDefaultWorkdir"];
+  renameBoardSlug: typeof import("~/models/board")["renameBoardSlug"];
+  archiveBoard: typeof import("~/models/board")["archiveBoard"];
+  removeBoard: typeof import("~/models/board")["removeBoard"];
   listTasks: typeof import("~/models/task")["listTasks"];
   showTask: typeof import("~/models/task")["showTask"];
   createTask: typeof import("~/models/task")["createTask"];
@@ -90,6 +97,11 @@ async function models(): Promise<Modules> {
           import("~/models/dependency"),
           import("~/profiles"),
         ]);
+      // Eagerly initialize the DB singleton as soon as the server-side model
+      // modules are loaded. Bridge functions also call initDb(), but this guards
+      // against any model code path that may run before an explicit initDb() in
+      // a server process (e.g., during Vite SSR preloading).
+      db.initDb();
       return {
         ...db,
         ...board,
@@ -117,7 +129,7 @@ async function models(): Promise<Modules> {
 // Spec FR: gate the whole bridge behind FF_SVELTEKIT_FRONTEND. Using the
 // shared flag registry so the UI honors the same env/registry overrides as
 // every other KDI feature.
-import { isEnabled, FF_SVELTEKIT_FRONTEND, FF_LIST_FILTERS_SORT, FF_TENANT_NAMESPACE, FF_CREATED_BY, FF_WORKFLOW_TEMPLATES, FF_RATE_LIMIT_EXIT_CODE, FF_HEARTBEAT } from "~/flags";
+import { isEnabled, FF_SVELTEKIT_FRONTEND, FF_LIST_FILTERS_SORT, FF_TENANT_NAMESPACE, FF_CREATED_BY, FF_WORKFLOW_TEMPLATES, FF_RATE_LIMIT_EXIT_CODE, FF_HEARTBEAT, FF_BOARD_METADATA, FF_BOARD_CREATE_SWITCH, FF_DEFAULT_WORKDIR, FF_BOARD_SWITCH, FF_BOARD_RENAME_HERMES, FF_BOARD_RENAME, FF_BOARD_RM_DELETE } from "~/flags";
 import {
   FF_SCHEDULED_STATUS,
   FF_PRIORITY_INTEGER,
@@ -125,7 +137,6 @@ import {
   FF_MODEL_OVERRIDE,
   FF_MAX_RUNTIME,
   FF_MAX_RETRIES,
-  FF_DEFAULT_WORKDIR,
   FF_GOAL_MODE,
   FF_CREATE_PARENT,
 } from "~/flags";
@@ -337,8 +348,11 @@ export async function createBoardJson(input: CreateBoardInput): Promise<{ board:
   return { board: await withCounts(full) };
 }
 
-export async function showBoardJson(slug: string): Promise<{ board: CamelCase<BoardWithTaskCounts> }> {
-  const board = await resolveBoard(slug);
+export async function showBoardJson(slug: string, includeArchived = false): Promise<{ board: CamelCase<BoardWithTaskCounts> }> {
+  const m = await models();
+  m.initDb();
+  const board = m.showBoard(slug, includeArchived);
+  if (!board) throw new BridgeError("board_not_found", 404, `Board "${slug}" not found.`);
   return { board: toCamel(board) };
 }
 
@@ -346,6 +360,173 @@ export async function boardStatsJson(slug: string): Promise<{ stats: CamelCase<B
   await resolveBoard(slug);
   const m = await models();
   return { stats: toCamel(m.getBoardStats(slug)) };
+}
+
+// ---------------------------------------------------------------------------
+export function bridgeError(err: unknown): BridgeError {
+  return err instanceof BridgeError ? err : new BridgeError("internal", 500, String(err));
+}
+
+// Board-management UI helpers (KDI-UI-002)
+// ---------------------------------------------------------------------------
+
+function boardListRowFromBoard(b: Board, m: Awaited<ReturnType<typeof models>>): BoardListRow {
+  // Archived boards have no live stats; avoid querying getBoardStats because it
+  // resolves only active boards. The archived row still shows zero counts.
+  const stats = b.archived_at !== null ? { status_counts: {} } : m.getBoardStats(b.slug);
+  return {
+    id: b.id,
+    slug: b.slug,
+    name: b.name,
+    icon: b.icon,
+    color: b.color,
+    description: b.description,
+    workdir: b.workdir,
+    defaultWorkdir: b.default_workdir,
+    baseRef: b.base_ref,
+    archived: b.archived_at !== null,
+    createdAt: b.created_at,
+    statusCounts: stats.status_counts,
+  };
+}
+
+export async function listBoardsUiJson(params: URLSearchParams): Promise<{ boards: BoardListRow[] }> {
+  const m = await models();
+  m.initDb();
+  const includeArchived = params.get("includeArchived") === "true";
+  const boards = m.listBoards(includeArchived).map((b) => boardListRowFromBoard(b, m));
+  return { boards };
+}
+
+export async function readCurrentBoardJson(): Promise<string | null> {
+  const { readCurrentBoard } = await import("~/resolveBoard");
+  return readCurrentBoard();
+}
+
+export interface UpdateMetadataInput {
+  slug: string;
+  name?: string;
+  icon?: string;
+  color?: string;
+  description?: string;
+}
+
+export async function updateBoardMetadataJson(input: UpdateMetadataInput): Promise<{ board: BoardListRow }> {
+  const m = await models();
+  m.initDb();
+  const metadata: BoardMetadata = {};
+  if (input.name !== undefined) metadata.name = input.name;
+  if (input.icon !== undefined) metadata.icon = input.icon;
+  if (input.color !== undefined) metadata.color = input.color;
+  if (input.description !== undefined) metadata.description = input.description;
+  try {
+    m.updateBoardMetadata(input.slug, metadata);
+  } catch (err) {
+    throw wrap(err);
+  }
+  const full = m.showBoard(input.slug, false)!;
+  return { board: boardListRowFromBoard(full, m) };
+}
+
+export interface SetDefaultWorkdirInput {
+  slug: string;
+  workdir: string | null;
+}
+
+export async function setDefaultWorkdirJson(input: SetDefaultWorkdirInput): Promise<{ board: BoardListRow }> {
+  const m = await models();
+  m.initDb();
+  try {
+    m.setDefaultWorkdir(input.slug, input.workdir);
+  } catch (err) {
+    throw wrap(err);
+  }
+  const full = m.showBoard(input.slug, false)!;
+  return { board: boardListRowFromBoard(full, m) };
+}
+
+export async function switchBoardJson(slug: string): Promise<{ currentSlug: string }> {
+  const m = await models();
+  m.initDb();
+  const board = m.showBoard(slug, true);
+  if (!board) throw new BridgeError("board_not_found", 404, `Board "${slug}" not found.`);
+  const { writeCurrentBoard } = await import("~/resolveBoard");
+  writeCurrentBoard(slug);
+  return { currentSlug: slug };
+}
+
+export interface RenameBoardInput {
+  slug: string;
+  name: string;
+}
+
+export async function renameBoardJson(input: RenameBoardInput): Promise<{ board: BoardListRow }> {
+  const m = await models();
+  m.initDb();
+  try {
+    m.updateBoardMetadata(input.slug, { name: input.name });
+  } catch (err) {
+    throw wrap(err);
+  }
+  const full = m.showBoard(input.slug, false)!;
+  return { board: boardListRowFromBoard(full, m) };
+}
+
+export interface RenameSlugInput {
+  oldSlug: string;
+  newSlug: string;
+}
+
+export async function renameBoardSlugJson(input: RenameSlugInput): Promise<{ board: BoardListRow; currentRewritten: boolean }> {
+  const m = await models();
+  m.initDb();
+  try {
+    m.renameBoardSlug(input.oldSlug, input.newSlug);
+  } catch (err) {
+    throw wrap(err);
+  }
+  const { readCurrentBoard, writeCurrentBoard } = await import("~/resolveBoard");
+  const currentRewritten = readCurrentBoard() === input.oldSlug;
+  if (currentRewritten) writeCurrentBoard(input.newSlug);
+  const full = m.showBoard(input.newSlug, false)!;
+  return { board: boardListRowFromBoard(full, m), currentRewritten };
+}
+
+export async function archiveBoardJson(slug: string): Promise<{ board: BoardListRow }> {
+  const m = await models();
+  m.initDb();
+  try {
+    m.archiveBoard(slug);
+  } catch (err) {
+    throw wrap(err);
+  }
+  const full = m.showBoard(slug, true)!;
+  return { board: boardListRowFromBoard(full, m) };
+}
+
+export async function removeBoardJson(slug: string): Promise<{ removed: true }> {
+  const m = await models();
+  m.initDb();
+  const board = m.showBoard(slug, true);
+  if (!board) throw new BridgeError("board_not_found", 404, `Board "${slug}" not found.`);
+  try {
+    m.removeBoard(slug, true);
+  } catch (err) {
+    throw wrap(err);
+  }
+  return { removed: true };
+}
+
+export function boardUiFlags(): BoardFlags {
+  return {
+    boardMetadata: isEnabled(FF_BOARD_METADATA),
+    boardCreateSwitch: isEnabled(FF_BOARD_CREATE_SWITCH),
+    defaultWorkdir: isEnabled(FF_DEFAULT_WORKDIR),
+    boardSwitch: isEnabled(FF_BOARD_SWITCH),
+    boardRenameHermes: isEnabled(FF_BOARD_RENAME_HERMES),
+    boardRename: isEnabled(FF_BOARD_RENAME),
+    boardRmDelete: isEnabled(FF_BOARD_RM_DELETE),
+  };
 }
 
 export async function assigneesJson(slug: string): Promise<{ assignees: Record<string, number> }> {

@@ -88,6 +88,15 @@
 - [x] `bun run lint` (CLI tsc --noEmit clean), `bun run build` (CLI 122 modules), `bun run check:web` (svelte-check 0/0), `bun run build:web` (adapter-node, `bun:sqlite` emitted external), and `bun test` (970 pass / 0 fail) all pass with isolated `KDI_DB`. `src/` unchanged except `src/flags.ts` (registered `FF_SVELTEKIT_FRONTEND`).
 - [x] **Follow-up cleanup (PR #71):** `FF_SVELTEKIT_FRONTEND` is now registered in `src/flags.ts` (default `false`, status `InDev`); the server hook and bridge gate both use `isEnabled(FF_SVELTEKIT_FRONTEND)` instead of ad-hoc `process.env` reads, so the UI honors the same env/registry override contract as every other KDI feature.
 
+## KDI-UI-002: Board Management UI — Implemented
+- [x] BRD/spec drafted at `specs/sveltekit-ui/KDI-UI-002-board-management.md` and reconciled: `/boards` is the list route, `/boards/[slug]` is the detail route, and the current board is highlighted in the list (AC-04 updated to match implemented route structure).
+- [x] SvelteKit routes implemented: `/boards` (list + archived toggle + current badge), `/boards/[slug]` (detail + actions), `/boards/new` (create), `/boards/[slug]/edit` (metadata + default workdir).
+- [x] Board actions implemented: switch, rename display name, rename slug, archive, hard-delete (flag-gated) via SvelteKit form actions on `/boards/[slug]` and `/boards/[slug]/edit`.
+- [x] Flag gating: `FF_SVELTEKIT_FRONTEND` gates the whole UI; per-action flags (`FF_BOARD_METADATA`, `FF_BOARD_CREATE_SWITCH`, `FF_BOARD_SWITCH`, `FF_BOARD_RENAME_HERMES`, `FF_BOARD_RENAME`, `FF_DEFAULT_WORKDIR`, `FF_BOARD_RM_DELETE`) re-checked server-side and reflected client-side.
+- [x] Bug fix: edit-form metadata/default-workdir action URLs corrected to `/boards/[slug]/edit?/...` and the metadata action now skips empty optional fields so unchanged icon/color inputs do not cause empty-string rejections.
+- [x] AC-21 UI smoke test added at `apps/web/src/lib/server/board-management.http.test.ts`: spawns the real `bun run dev:web` server against a temp `HOME` + `KDI_DB`, runs `init → create board via UI form → show detail → switch → edit → set/clear default workdir → rename display name → rename slug → archive → hard-delete with wrong-then-right typed slug`, and cross-checks every mutation with the CLI on the same DB.
+- [x] `bun run lint`, CLI `bun run build`, `bun run check:web`, `bun run build:web`, and the full `bun test` suite pass with isolated `KDI_DB`.
+
 ## KDI-UI-011: Triage Automation UI — Spec
 - [x] BRD drafted at `specs/sveltekit-ui/KDI-UI-011-triage-automation-ui.md`
 - [ ] `/triage` route lists triage tasks with Specify, Specify manually, and Decompose actions
