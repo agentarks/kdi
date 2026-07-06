@@ -105,7 +105,7 @@ async function models(): Promise<Modules> {
 // Spec FR: gate the whole bridge behind FF_SVELTEKIT_FRONTEND. Using the
 // shared flag registry so the UI honors the same env/registry overrides as
 // every other KDI feature.
-import { isEnabled, FF_SVELTEKIT_FRONTEND, FF_LIST_FILTERS_SORT, FF_TENANT_NAMESPACE, FF_CREATED_BY, FF_ASSIGNEES_LISTING, FF_WORKFLOW_TEMPLATES, FF_RATE_LIMIT_EXIT_CODE, FF_HEARTBEAT } from "~/flags";
+import { isEnabled, FF_SVELTEKIT_FRONTEND, FF_LIST_FILTERS_SORT, FF_TENANT_NAMESPACE, FF_CREATED_BY, FF_WORKFLOW_TEMPLATES, FF_RATE_LIMIT_EXIT_CODE, FF_HEARTBEAT } from "~/flags";
 import { loadProfiles } from "~/profiles";
 
 // Routes call gate() first; when the flag is off it returns the spec-defined
@@ -391,9 +391,6 @@ export async function listTasksJson(
 
   if (sort !== undefined || archived || mine || sessionId || workflowTemplateId || stepKey) {
     requireListFiltersSort();
-  }
-  if (assignee !== null && !isEnabled(FF_ASSIGNEES_LISTING)) {
-    throw new BridgeError("feature_disabled", 400, "Assignees listing feature is not enabled.");
   }
   if (tenant !== null) {
     if (tenant.trim() === "") {

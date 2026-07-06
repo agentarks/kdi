@@ -7,7 +7,7 @@
 // ponytail: test the bridge functions, not SvelteKit RequestEvent plumbing —
 // the route adapters are ~5 lines of Request->bridge mapping and add no logic.
 
-import { describe, it, expect, beforeEach, afterAll } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach, afterAll } from "bun:test";
 import { rmSync, mkdirSync, existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
@@ -38,11 +38,23 @@ import {
 // repo root resolves `~/*` via the root tsconfig the CLI already uses.
 import { showTask } from "~/models/task";
 import { showBoard as showBoardModel } from "~/models/board";
+import { closeDb } from "~/db";
 import { clearOverrides } from "~/flags";
 
 const SRC_ROOT = join(import.meta.dirname, "..", ".."); // apps/web/src
 
+const FF_KEYS = [
+  "FF_SVELTEKIT_FRONTEND",
+  "FF_LIST_FILTERS_SORT",
+  "FF_TENANT_NAMESPACE",
+  "FF_CREATED_BY",
+  "FF_WORKFLOW_TEMPLATES",
+  "FF_RATE_LIMIT_EXIT_CODE",
+  "FF_HEARTBEAT",
+];
+
 let tmpHome: string;
+const envSnapshot: Record<string, string | undefined> = {};
 
 function isolate(): void {
   tmpHome = `/tmp/kdi-ui001-${process.pid}-${Math.random().toString(36).slice(2)}`;
@@ -50,14 +62,39 @@ function isolate(): void {
   process.env.HOME = tmpHome;
   process.env.KDI_DB = join(tmpHome, "kdi.sqlite");
   process.env.FF_SVELTEKIT_FRONTEND = "true";
+  // Leave other FF_* flags at their defaults by removing any stale test overrides.
+  for (const key of FF_KEYS) {
+    if (key !== "FF_SVELTEKIT_FRONTEND") delete process.env[key];
+  }
 }
 
 function cleanup(): void {
   if (tmpHome && existsSync(tmpHome)) rmSync(tmpHome, { recursive: true, force: true });
 }
 
-async function freshBoard(slug = "smoke"): Promise<string> {
+beforeEach(() => {
+  for (const key of FF_KEYS) envSnapshot[key] = process.env[key];
   isolate();
+  clearOverrides();
+});
+
+afterEach(() => {
+  for (const key of FF_KEYS) {
+    const value = envSnapshot[key];
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+  clearOverrides();
+  closeDb();
+  cleanup();
+});
+
+afterAll(() => {
+  // afterEach handles per-test cleanup; this is a safety net.
+  cleanup();
+});
+
+async function freshBoard(slug = "smoke"): Promise<string> {
   // createBoardJson calls initDb() itself, so no separate bootstrap needed.
   await createBoardJson({ slug, workdir: tmpHome });
   return slug;
@@ -77,9 +114,6 @@ async function expectBridgeError(p: Promise<unknown>, code: string, status: numb
   }
   if (!threw) throw new Error(`expected promise to reject with ${code}/${status}, but it resolved`);
 }
-
-beforeEach(isolate);
-afterAll(cleanup);
 
 describe("KDI-UI-001 server data bridge", () => {
   it("POST/GET /api/boards — create + list + show with camelCase keys", async () => {
@@ -282,11 +316,13 @@ describe("KDI-UI-003 filter gating", () => {
     await expectBridgeError(listTasksJson(slug, new URLSearchParams({ stepKey: "x" })), "feature_disabled", 400);
   });
 
-  it("rejects assignee without FF_ASSIGNEES_LISTING", async () => {
+  it("assignee filter works without FF_ASSIGNEES_LISTING (dropdown only is gated)", async () => {
     process.env.FF_ASSIGNEES_LISTING = "false";
     clearOverrides();
     const { slug } = await freshBoardWithTask();
-    await expectBridgeError(listTasksJson(slug, new URLSearchParams({ assignee: "ralph" })), "feature_disabled", 400);
+    const { tasks } = await listTasksJson(slug, new URLSearchParams({ assignee: "ralph" }));
+    expect(tasks.length).toBe(1);
+    expect(tasks[0].assignee).toBe("ralph");
   });
 
   it("rejects empty tenant string", async () => {
