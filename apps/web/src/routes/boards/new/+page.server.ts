@@ -54,7 +54,7 @@ export const actions: Actions = {
     const metadataInput = isEnabled(FF_BOARD_METADATA) ? metadata : {};
 
     try {
-      await createBoardJson({ slug, workdir, baseRef, metadata: metadataInput as any });
+      await createBoardJson({ slug, workdir, baseRef, metadata: metadataInput });
     } catch (err) {
       const be = bridgeError(err);
       return fail(be.status, { error: be.message, values });

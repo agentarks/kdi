@@ -28,6 +28,10 @@
   {#if form?.error && !form?.slug}
     <p class="error">{form.error}</p>
   {/if}
+
+  {#if data.error}
+    <p class="error">{data.error}</p>
+  {/if}
 </div>
 
 <div class="stack-sm">

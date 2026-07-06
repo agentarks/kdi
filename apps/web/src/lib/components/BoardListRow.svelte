@@ -20,12 +20,15 @@
     {#if current}
       <span class="badge">Current</span>
     {/if}
+    {#if board.archived}
+      <span class="badge archived-tag">Archived</span>
+    {/if}
   </td>
   <td><code>{board.slug}</code></td>
   <td>{board.icon ?? "—"}</td>
   <td>
     {#if board.color}
-      <span class="color-swatch" style:background-color={board.color} title={board.color}></span>
+      <span class="color-swatch" role="img" aria-label="Board color {board.color}" style:background-color={board.color} title={board.color}></span>
     {:else}
       —
     {/if}
@@ -50,3 +53,10 @@
     <BoardActions {board} {current} {flags} {form} />
   </td>
 </tr>
+
+<style>
+  .badge.archived-tag {
+    background: #ff6b6b;
+    color: #0b1220;
+  }
+</style>
