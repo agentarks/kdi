@@ -94,6 +94,13 @@
       </div>
     </dl>
 
+    <h2 class="stack-sm">Task counts</h2>
+    <div class="status-counts">
+      {#each Object.entries(data.board.taskCounts) as [status, count]}
+        <span class="status-count">{status}: {count}</span>
+      {/each}
+    </div>
+
     <!-- KDI-UI-003: Kanban board view as the main content of the board page. -->
     <BoardKanbanView {...data} />
   </div>
