@@ -394,7 +394,7 @@ describe("KDI-UI-002 board management bridge", () => {
     expect(b1.statusCounts).toBeDefined();
     expect(b1.statusCounts.triage).toBe(0);
 
-    const { currentSlug } = await readCurrentBoardJson();
+    const currentSlug = await readCurrentBoardJson();
     expect(currentSlug).toBe("b1");
   });
 
@@ -426,26 +426,24 @@ describe("KDI-UI-002 board management bridge", () => {
     await switchBoardJson("old");
 
     await renameBoardJson({ slug: "old", name: "Old Name" });
-    const { currentSlug } = await readCurrentBoardJson();
+    const currentSlug = await readCurrentBoardJson();
     expect(currentSlug).toBe("old");
 
     const result = await renameBoardSlugJson({ oldSlug: "old", newSlug: "new" });
     expect(result.board.slug).toBe("new");
     expect(result.currentRewritten).toBe(true);
-    expect((await readCurrentBoardJson()).currentSlug).toBe("new");
+    expect(await readCurrentBoardJson()).toBe("new");
   });
 
   it("removeBoardJson permanently deletes a board and its data dir", async () => {
     await createBoardJson({ slug: "b1", workdir: tmpHome });
-    await removeBoardJson({ slug: "b1", confirmedSlug: "b1" });
+    await removeBoardJson("b1");
     await expectBridgeError(showBoardJson("b1", true), "board_not_found", 404);
   });
 
-  it("removeBoardJson rejects a mismatched confirmed slug", async () => {
+  it("removeBoardJson action layer enforces confirmed slug (bridge takes slug only)", async () => {
     await createBoardJson({ slug: "b1", workdir: tmpHome });
-    // The action layer (not the bridge) enforces the confirmed-slug match; the
-    // bridge just performs the deletion when the inputs match.
-    await removeBoardJson({ slug: "b1", confirmedSlug: "b1" });
+    await removeBoardJson("b1");
     await expectBridgeError(showBoardJson("b1", true), "board_not_found", 404);
   });
 });

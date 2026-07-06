@@ -11,7 +11,6 @@
   let { board, current, flags, form }: Props = $props();
 
   const displayName = $derived(board.name || board.slug);
-  const description = $derived(board.description ?? undefined);
 </script>
 
 <tr class="board-row" class:archived={board.archived}>
@@ -33,9 +32,9 @@
       —
     {/if}
   </td>
-  <td title={description}>
-    {#if description}
-      {description.length > 60 ? description.slice(0, 60) + "…" : description}
+  <td title={board.description ?? undefined}>
+    {#if board.description}
+      {board.description.length > 60 ? board.description.slice(0, 60) + "…" : board.description}
     {:else}
       —
     {/if}
@@ -53,10 +52,3 @@
     <BoardActions {board} {current} {flags} {form} />
   </td>
 </tr>
-
-<style>
-  .badge.archived-tag {
-    background: #ff6b6b;
-    color: #0b1220;
-  }
-</style>

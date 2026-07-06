@@ -15,6 +15,7 @@ import {
   renameBoardSlugJson,
   removeBoardJson,
   BridgeError,
+  bridgeError,
 } from "$lib/server/bridge";
 import {
   isEnabled,
@@ -42,8 +43,7 @@ export const load: PageServerLoad = async ({ params, url }) => {
   try {
     const boardResult = await showBoardJson(slug, true);
     board = boardResult.board;
-    const currentResult = await readCurrentBoardJson();
-    currentSlug = currentResult.currentSlug;
+    currentSlug = await readCurrentBoardJson();
     flags = boardUiFlags();
   } catch (err) {
     if (err instanceof BridgeError && err.code === "board_not_found") {
@@ -79,10 +79,14 @@ export const load: PageServerLoad = async ({ params, url }) => {
     filters.archived = true;
   }
 
-  let tasks: KanbanTask[] = [];
-  let assignees: Record<string, number> = {};
-  let profiles: string[] = [];
-  let templates: KanbanTemplate[] = [];
+  const basePayload = {
+    board,
+    currentSlug,
+    flags,
+    filters,
+    currentProfile: resolveCurrentProfile(),
+    capabilities,
+  };
 
   try {
     const query = new URLSearchParams();
@@ -101,47 +105,29 @@ export const load: PageServerLoad = async ({ params, url }) => {
       listTasksJson(slug, query),
       assigneesJson(slug),
       listProfilesJson(),
-      capabilities.workflowTemplates ? workflowsJson(slug) : Promise.resolve({ templates: [] }),
+      capabilities.workflowTemplates ? workflowsJson(slug) : Promise.resolve({ templates: [] as KanbanTemplate[] }),
     ]);
-    tasks = tasksResult.tasks;
-    assignees = assigneesResult.assignees;
-    profiles = profilesResult.profiles;
-    templates = templatesResult.templates;
+
+    return {
+      ...basePayload,
+      tasks: tasksResult.tasks,
+      assignees: assigneesResult.assignees,
+      profiles: profilesResult.profiles,
+      templates: templatesResult.templates,
+    };
   } catch (err) {
     // Surface bridge errors inline; the page shows the error and still renders
     // the board shell so the operator is not stranded.
     return {
-      board,
-      currentSlug,
-      flags,
+      ...basePayload,
       error: err instanceof Error ? err.message : String(err),
-      tasks: [],
-      filters,
+      tasks: [] as KanbanTask[],
       assignees: {},
       profiles: [],
       templates: [],
-      currentProfile: resolveCurrentProfile(),
-      capabilities,
     };
   }
-
-  return {
-    board,
-    currentSlug,
-    flags,
-    tasks,
-    filters,
-    assignees,
-    profiles,
-    templates,
-    currentProfile: resolveCurrentProfile(),
-    capabilities,
-  };
 };
-
-function bridgeError(err: unknown): BridgeError {
-  return err instanceof BridgeError ? err : new BridgeError("internal", 500, String(err));
-}
 
 export const actions: Actions = {
   switch: async ({ params }) => {
@@ -249,7 +235,7 @@ export const actions: Actions = {
       });
     }
     try {
-      await removeBoardJson({ slug: params.slug, confirmedSlug });
+      await removeBoardJson(params.slug);
     } catch (err) {
       const be = bridgeError(err);
       return fail(be.status, { intent: "delete", slug: params.slug, error: be.message });

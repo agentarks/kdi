@@ -1,15 +1,18 @@
 import { fail, redirect } from "@sveltejs/kit";
 import { isEnabled, FF_BOARD_METADATA, FF_BOARD_CREATE_SWITCH } from "~/flags";
-import { createBoardJson, switchBoardJson, boardUiFlags, BridgeError } from "$lib/server/bridge";
+import { createBoardJson, switchBoardJson, boardUiFlags, bridgeError } from "$lib/server/bridge";
 import type { PageServerLoad, Actions } from "./$types";
 
 export const load: PageServerLoad = async () => {
   return { flags: boardUiFlags() };
 };
 
-function bridgeError(err: unknown): BridgeError {
-  return err instanceof BridgeError ? err : new BridgeError("internal", 500, String(err));
-}
+const LABELS: Record<string, string> = {
+  name: "Name",
+  icon: "Icon",
+  color: "Color",
+  description: "Description",
+};
 
 function valuesFromForm(data: FormData): Record<string, unknown> {
   const values: Record<string, unknown> = {};
@@ -34,14 +37,11 @@ export const actions: Actions = {
       if (raw === undefined) continue;
       if (raw.trim() === "") {
         if (raw.length > 0) {
-          return fail(400, {
-            error: `${key[0].toUpperCase() + key.slice(1)} cannot be empty.`,
-            values,
-          });
+          return fail(400, { error: `${LABELS[key]} cannot be empty.`, values });
         }
         continue;
       }
-      (metadata as Record<string, string>)[key] = raw.trim();
+      metadata[key] = raw.trim();
     }
 
     if (!isEnabled(FF_BOARD_METADATA) && Object.keys(metadata).length > 0) {
@@ -51,10 +51,8 @@ export const actions: Actions = {
       return fail(400, { error: "Board create --switch feature is not enabled.", values });
     }
 
-    const metadataInput = isEnabled(FF_BOARD_METADATA) ? metadata : {};
-
     try {
-      await createBoardJson({ slug, workdir, baseRef, metadata: metadataInput });
+      await createBoardJson({ slug, workdir, baseRef, metadata });
     } catch (err) {
       const be = bridgeError(err);
       return fail(be.status, { error: be.message, values });

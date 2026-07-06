@@ -297,12 +297,17 @@ export async function boardStatsJson(slug: string): Promise<{ stats: CamelCase<B
 }
 
 // ---------------------------------------------------------------------------
+export function bridgeError(err: unknown): BridgeError {
+  return err instanceof BridgeError ? err : new BridgeError("internal", 500, String(err));
+}
+
 // Board-management UI helpers (KDI-UI-002)
 // ---------------------------------------------------------------------------
 
-function boardListRowFromBoard(b: BoardWithTaskCounts, m: Awaited<ReturnType<typeof models>>): BoardListRow {
-  // ponytail: N+1 stats per board; acceptable at expected board counts.
-  const stats = m.getBoardStats(b.slug);
+function boardListRowFromBoard(b: Board, m: Awaited<ReturnType<typeof models>>): BoardListRow {
+  // Archived boards have no live stats; avoid querying getBoardStats because it
+  // resolves only active boards. The archived row still shows zero counts.
+  const stats = b.archived_at !== null ? { status_counts: {} } : m.getBoardStats(b.slug);
   return {
     id: b.id,
     slug: b.slug,
@@ -323,13 +328,13 @@ export async function listBoardsUiJson(params: URLSearchParams): Promise<{ board
   const m = await models();
   m.initDb();
   const includeArchived = params.get("includeArchived") === "true";
-  const boards = m.listBoards(includeArchived).map((b) => boardListRowFromBoard(m.showBoard(b.slug, true)!, m));
+  const boards = m.listBoards(includeArchived).map((b) => boardListRowFromBoard(b, m));
   return { boards };
 }
 
-export async function readCurrentBoardJson(): Promise<{ currentSlug: string | null }> {
+export async function readCurrentBoardJson(): Promise<string | null> {
   const { readCurrentBoard } = await import("~/resolveBoard");
-  return { currentSlug: readCurrentBoard() };
+  return readCurrentBoard();
 }
 
 export interface UpdateMetadataInput {
@@ -430,36 +435,16 @@ export async function archiveBoardJson(slug: string): Promise<{ board: BoardList
     throw wrap(err);
   }
   const full = m.showBoard(slug, true)!;
-  return {
-    board: {
-      id: full.id,
-      slug: full.slug,
-      name: full.name,
-      icon: full.icon,
-      color: full.color,
-      description: full.description,
-      workdir: full.workdir,
-      defaultWorkdir: full.default_workdir,
-      baseRef: full.base_ref,
-      archived: full.archived_at !== null,
-      createdAt: full.created_at,
-      statusCounts: {},
-    },
-  };
+  return { board: boardListRowFromBoard(full, m) };
 }
 
-export interface RemoveBoardInput {
-  slug: string;
-  confirmedSlug: string;
-}
-
-export async function removeBoardJson(input: RemoveBoardInput): Promise<{ removed: true }> {
+export async function removeBoardJson(slug: string): Promise<{ removed: true }> {
   const m = await models();
   m.initDb();
-  const board = m.showBoard(input.slug, true);
-  if (!board) throw new BridgeError("board_not_found", 404, `Board "${input.slug}" not found.`);
+  const board = m.showBoard(slug, true);
+  if (!board) throw new BridgeError("board_not_found", 404, `Board "${slug}" not found.`);
   try {
-    m.removeBoard(input.slug, true);
+    m.removeBoard(slug, true);
   } catch (err) {
     throw wrap(err);
   }

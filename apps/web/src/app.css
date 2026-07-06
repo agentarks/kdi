@@ -274,6 +274,10 @@ textarea {
   color: #0b1220;
   margin-left: 6px;
 }
+.badge.archived-tag {
+  background: #ff6b6b;
+  color: #0b1220;
+}
 .status-counts {
   display: flex;
   flex-wrap: wrap;

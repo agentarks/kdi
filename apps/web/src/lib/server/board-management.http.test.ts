@@ -22,9 +22,6 @@ import { createBoardJson } from "./bridge";
 
 const REPO_ROOT = process.cwd(); // tests run from repo root
 
-let port = String(50000 + Math.floor(Math.random() * 15000));
-let baseUrl = `http://localhost:${port}`;
-
 let proc: ReturnType<typeof Bun.spawn> | null = null;
 let tmpHome: string;
 
@@ -42,7 +39,7 @@ const kdiEnv = (): Record<string, string> => ({
   FF_BOARD_RM_DELETE: "true",
 });
 
-async function waitAlive(timeoutMs = 30000): Promise<void> {
+async function waitAlive(baseUrl: string, timeoutMs = 30000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
@@ -53,10 +50,10 @@ async function waitAlive(timeoutMs = 30000): Promise<void> {
     }
     await new Promise((res) => setTimeout(res, 300));
   }
-  throw new Error(`dev server did not come alive on :${port} within ${timeoutMs}ms`);
+  throw new Error(`dev server did not come alive on ${baseUrl} within ${timeoutMs}ms`);
 }
 
-async function startServer(): Promise<void> {
+async function startServer(): Promise<string> {
   if (proc) {
     try {
       proc.kill(9);
@@ -69,8 +66,8 @@ async function startServer(): Promise<void> {
   if (!tmpHome) {
     tmpHome = mkdtempSync(join(tmpdir(), "kdi-ui002-http-"));
   }
-  port = String(50000 + Math.floor(Math.random() * 15000));
-  baseUrl = `http://localhost:${port}`;
+  const port = String(50000 + Math.floor(Math.random() * 15000));
+  const baseUrl = `http://localhost:${port}`;
   proc = Bun.spawn({
     cmd: ["bun", "run", "dev:web", "--port", port],
     cwd: REPO_ROOT,
@@ -78,7 +75,8 @@ async function startServer(): Promise<void> {
     stdout: "ignore",
     stderr: "ignore",
   });
-  await waitAlive();
+  await waitAlive(baseUrl);
+  return baseUrl;
 }
 
 function runKdi(args: string): string {
@@ -90,7 +88,7 @@ function runKdi(args: string): string {
   return output.trim();
 }
 
-async function postForm(path: string, body: Record<string, string>): Promise<Response> {
+async function postForm(baseUrl: string, path: string, body: Record<string, string>): Promise<Response> {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(body)) {
     params.set(key, value);
@@ -114,8 +112,8 @@ interface FormResult {
   body: string;
 }
 
-async function submitForm(path: string, body: Record<string, string>): Promise<FormResult> {
-  const res = await postForm(path, body);
+async function submitForm(baseUrl: string, path: string, body: Record<string, string>): Promise<FormResult> {
+  const res = await postForm(baseUrl, path, body);
   const text = await res.text();
   if (res.status === 303) return { status: 303, body: text };
   if (res.status === 200) {
@@ -134,7 +132,7 @@ async function submitForm(path: string, body: Record<string, string>): Promise<F
   return { status: res.status, body: text };
 }
 
-async function getPage(path: string): Promise<string> {
+async function getPage(baseUrl: string, path: string): Promise<string> {
   const res = await fetch(`${baseUrl}${path}`);
   return res.text();
 }
@@ -176,8 +174,8 @@ describe("KDI-UI-002 board management UI smoke (AC-21)", () => {
     await createBoardJson({ slug: "default", workdir: defaultWorkdir });
 
     // 2. create a board through the UI form (with metadata + base ref + switch)
-    await startServer();
-    const create = await submitForm("/boards/new", {
+    const baseUrl = await startServer();
+    const create = await submitForm(baseUrl, "/boards/new", {
       slug: "ui-smoke",
       workdir: tmpHome,
       baseRef: "origin/main",
@@ -191,7 +189,7 @@ describe("KDI-UI-002 board management UI smoke (AC-21)", () => {
     expect(currentBoardFromShow()).toBe("ui-smoke");
 
     // 4. show detail and verify counts match kdi boards show
-    const detailHtml = await getPage("/boards/ui-smoke");
+    const detailHtml = await getPage(baseUrl, "/boards/ui-smoke");
     expect(detailHtml).toContain("UI Smoke Board");
     expect(detailHtml).toContain("Created via UI form");
     const showOutput = runKdi("boards show ui-smoke");
@@ -202,17 +200,17 @@ describe("KDI-UI-002 board management UI smoke (AC-21)", () => {
 
     // 5. create another board via CLI and switch to it via UI
     runKdi('boards create other-board --workdir "' + tmpHome + '"');
-    const switch1 = await submitForm("/boards/other-board?/switch", {});
+    const switch1 = await submitForm(baseUrl, "/boards/other-board?/switch", {});
     expect(switch1.status).toBe(303);
     expect(currentBoardFromShow()).toBe("other-board");
 
     // 6. switch back to ui-smoke so it is the current board for the rename-slug test
-    const switch2 = await submitForm("/boards/ui-smoke?/switch", {});
+    const switch2 = await submitForm(baseUrl, "/boards/ui-smoke?/switch", {});
     expect(switch2.status).toBe(303);
     expect(currentBoardFromShow()).toBe("ui-smoke");
 
     // 7. edit name + description
-    const edit = await submitForm("/boards/ui-smoke/edit?/metadata", {
+    const edit = await submitForm(baseUrl, "/boards/ui-smoke/edit?/metadata", {
       name: "Renamed UI Smoke",
       description: "Updated description",
       icon: "",
@@ -224,31 +222,31 @@ describe("KDI-UI-002 board management UI smoke (AC-21)", () => {
     expect(updatedShow).toContain("Updated description");
 
     // 8. set then clear default workdir
-    const setWorkdir = await submitForm("/boards/ui-smoke/edit?/defaultWorkdir", { workdir: join(tmpHome, "default") });
+    const setWorkdir = await submitForm(baseUrl, "/boards/ui-smoke/edit?/defaultWorkdir", { workdir: join(tmpHome, "default") });
     expect(setWorkdir.status).toBe(303);
     const withWorkdir = runKdi("boards show ui-smoke");
     expect(withWorkdir).toContain(join(tmpHome, "default"));
 
-    const clearWorkdir = await submitForm("/boards/ui-smoke/edit?/defaultWorkdir", { workdir: "" });
+    const clearWorkdir = await submitForm(baseUrl, "/boards/ui-smoke/edit?/defaultWorkdir", { workdir: "" });
     expect(clearWorkdir.status).toBe(303);
     const clearedWorkdir = runKdi("boards show ui-smoke");
     expect(clearedWorkdir).not.toContain("Default workdir");
 
     // 9. rename display name
-    const rename = await submitForm("/boards/ui-smoke?/rename", { name: "Display Name Rename" });
+    const rename = await submitForm(baseUrl, "/boards/ui-smoke?/rename", { name: "Display Name Rename" });
     expect(rename.status).toBe(303);
     const renamed = runKdi("boards show ui-smoke");
     expect(renamed).toContain("Display Name Rename");
 
     // 10. rename slug of the current board and verify current moved
-    const renameSlug = await submitForm("/boards/ui-smoke?/renameSlug", { newSlug: "new-slug" });
+    const renameSlug = await submitForm(baseUrl, "/boards/ui-smoke?/renameSlug", { newSlug: "new-slug" });
     expect(renameSlug.status).toBe(303);
     expect(renameSlug.location).toContain("/boards/new-slug");
     expect(currentBoardFromShow()).toBe("new-slug");
     expect(runKdi("boards show new-slug")).toContain("Display Name Rename");
 
     // 11. archive a board
-    const archive = await submitForm("/boards/other-board?/archive", { confirm: "true" });
+    const archive = await submitForm(baseUrl, "/boards/other-board?/archive", { confirm: "true" });
     expect(archive.status).toBe(303);
     const listAll = runKdi("boards list --all");
     expect(listAll).toContain("other-board");
@@ -258,17 +256,17 @@ describe("KDI-UI-002 board management UI smoke (AC-21)", () => {
 
     // 12. hard-delete another board with a wrong-then-right typed slug
     runKdi('boards create delete-me --workdir "' + tmpHome + '"');
-    const wrongDelete = await submitForm("/boards/delete-me?/delete", { confirmedSlug: "wrong-slug" });
+    const wrongDelete = await submitForm(baseUrl, "/boards/delete-me?/delete", { confirmedSlug: "wrong-slug" });
     expect(wrongDelete.status).toBe(400);
     expect(runKdi("boards list --all")).toContain("delete-me");
 
-    const rightDelete = await submitForm("/boards/delete-me?/delete", { confirmedSlug: "delete-me" });
+    const rightDelete = await submitForm(baseUrl, "/boards/delete-me?/delete", { confirmedSlug: "delete-me" });
     expect(rightDelete.status).toBe(303);
     const finalList = runKdi("boards list --all");
     expect(finalList).not.toContain("delete-me");
 
     // 13. board detail page for deleted board renders not-found UI
-    const deletedHtml = await getPage("/boards/delete-me");
+    const deletedHtml = await getPage(baseUrl, "/boards/delete-me");
     expect(deletedHtml).toContain("Board not found");
   }, 120000);
 });

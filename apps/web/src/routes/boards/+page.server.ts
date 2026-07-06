@@ -3,23 +3,19 @@
 // the current board's detail, but a list is a more useful landing page and is required
 // by AC-01/AC-02. The current board is highlighted with a "Current" badge in the list;
 // detail is served by `/boards/[slug]`. See specs/sveltekit-ui/KDI-UI-002-board-management.md.
-import { listBoardsUiJson, readCurrentBoardJson, boardUiFlags, BridgeError } from "$lib/server/bridge";
+import { listBoardsUiJson, readCurrentBoardJson, boardUiFlags, bridgeError } from "$lib/server/bridge";
 import type { PageServerLoad } from "./$types";
-
-function bridgeError(err: unknown): BridgeError {
-  return err instanceof BridgeError ? err : new BridgeError("internal", 500, String(err));
-}
 
 export const load: PageServerLoad = async ({ url }) => {
   const includeArchived = url.searchParams.get("includeArchived") === "true";
   const searchParams = new URLSearchParams();
   if (includeArchived) searchParams.set("includeArchived", "true");
   try {
-    const [{ boards }, { currentSlug }] = await Promise.all([
+    const [boards, currentSlug] = await Promise.all([
       listBoardsUiJson(searchParams),
       readCurrentBoardJson(),
     ]);
-    return { boards, includeArchived, currentSlug, flags: boardUiFlags() };
+    return { ...boards, includeArchived, currentSlug, flags: boardUiFlags() };
   } catch (err) {
     const be = bridgeError(err);
     return { boards: [], includeArchived, currentSlug: null, flags: boardUiFlags(), error: be.message };

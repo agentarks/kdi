@@ -6,6 +6,7 @@ import {
   updateBoardMetadataJson,
   setDefaultWorkdirJson,
   BridgeError,
+  bridgeError,
 } from "$lib/server/bridge";
 import type { PageServerLoad, Actions } from "./$types";
 
@@ -20,10 +21,6 @@ export const load: PageServerLoad = async ({ params }) => {
     throw err;
   }
 };
-
-function bridgeError(err: unknown): BridgeError {
-  return err instanceof BridgeError ? err : new BridgeError("internal", 500, String(err));
-}
 
 export const actions: Actions = {
   metadata: async ({ request, params }) => {
