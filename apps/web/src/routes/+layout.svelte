@@ -7,7 +7,7 @@
   let { children } = $props();
 
   const nav = [
-    { href: "/boards/default", label: "Board" },
+    { href: "/boards", label: "Board" },
     { href: "/tasks", label: "Tasks" },
     { href: "/dispatch", label: "Dispatch" },
     { href: "/activity", label: "Activity" },

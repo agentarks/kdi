@@ -232,3 +232,138 @@ textarea {
   padding: 12px;
   text-align: left;
 }
+
+/* KDI-UI-002 board management */
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.table th,
+.table td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+.table th {
+  color: var(--text-dim);
+  font-weight: 500;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.board-row.archived {
+  opacity: 0.6;
+}
+.color-swatch {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  vertical-align: middle;
+}
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+  background: var(--ok);
+  color: #0b1220;
+  margin-left: 6px;
+}
+.badge.archived-tag {
+  background: #ff6b6b;
+  color: #0b1220;
+}
+.status-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.status-count {
+  display: inline-block;
+  font-size: 12px;
+  background: var(--panel-2);
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-transform: lowercase;
+}
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 16px;
+  max-width: 520px;
+}
+.form-group label {
+  color: var(--text-dim);
+  font-size: 13px;
+}
+.form-group input,
+.form-group textarea,
+.form-group select {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 6px 10px;
+  color: var(--text);
+}
+.form-group input:disabled,
+.form-group textarea:disabled,
+.form-group select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.form-group input[type="checkbox"]:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.error {
+  color: #ff6b6b;
+}
+.success {
+  color: var(--ok);
+}
+.text-dim {
+  color: var(--text-dim);
+  font-size: 13px;
+}
+.inline-form {
+  display: inline;
+}
+.board-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.board-actions .error {
+  flex-basis: 100%;
+  margin: 0;
+}
+.dialog {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--text);
+  padding: 0;
+  max-width: 520px;
+}
+.dialog::backdrop {
+  background: rgba(0, 0, 0, 0.5);
+}
+.dialog-content {
+  padding: 16px;
+}
+.dialog-content h3 {
+  margin-top: 0;
+}
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}

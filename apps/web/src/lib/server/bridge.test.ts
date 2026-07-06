@@ -15,6 +15,15 @@ import {
   listBoardsJson,
   showBoardJson,
   createBoardJson,
+  listBoardsUiJson,
+  readCurrentBoardJson,
+  updateBoardMetadataJson,
+  setDefaultWorkdirJson,
+  switchBoardJson,
+  renameBoardJson,
+  renameBoardSlugJson,
+  archiveBoardJson,
+  removeBoardJson,
   listTasksJson,
   createTaskJson,
   showTaskJson,
@@ -55,10 +64,12 @@ const FF_KEYS = [
 
 let tmpHome: string;
 const envSnapshot: Record<string, string | undefined> = {};
+const tmpDirs: string[] = [];
 
 function isolate(): void {
   tmpHome = `/tmp/kdi-ui001-${process.pid}-${Math.random().toString(36).slice(2)}`;
   mkdirSync(tmpHome, { recursive: true });
+  tmpDirs.push(tmpHome);
   process.env.HOME = tmpHome;
   process.env.KDI_DB = join(tmpHome, "kdi.sqlite");
   process.env.FF_SVELTEKIT_FRONTEND = "true";
@@ -69,7 +80,10 @@ function isolate(): void {
 }
 
 function cleanup(): void {
-  if (tmpHome && existsSync(tmpHome)) rmSync(tmpHome, { recursive: true, force: true });
+  for (const dir of tmpDirs) {
+    if (existsSync(dir)) rmSync(dir, { recursive: true, force: true });
+  }
+  tmpDirs.length = 0;
 }
 
 beforeEach(() => {
@@ -114,6 +128,7 @@ async function expectBridgeError(p: Promise<unknown>, code: string, status: numb
   }
   if (!threw) throw new Error(`expected promise to reject with ${code}/${status}, but it resolved`);
 }
+
 
 describe("KDI-UI-001 server data bridge", () => {
   it("POST/GET /api/boards — create + list + show with camelCase keys", async () => {
@@ -362,6 +377,74 @@ describe("KDI-UI-003 filter gating", () => {
     clearOverrides();
     const { slug } = await freshBoardWithTask();
     await expectBridgeError(listTasksJson(slug, new URLSearchParams({ mine: "true", assignee: "ralph" })), "invalid_input", 400);
+  });
+});
+
+// KDI-UI-002: board-management bridge helpers used by the SvelteKit UI routes.
+describe("KDI-UI-002 board management bridge", () => {
+  it("listBoardsUiJson returns boards with statusCounts and current slug", async () => {
+    await createBoardJson({ slug: "b1", workdir: tmpHome, metadata: { name: "Board One" } });
+    await createBoardJson({ slug: "b2", workdir: tmpHome });
+    await switchBoardJson("b1");
+
+    const { boards } = await listBoardsUiJson(new URLSearchParams());
+    expect(boards.length).toBe(2);
+    const b1 = boards.find((b) => b.slug === "b1")!;
+    expect(b1.name).toBe("Board One");
+    expect(b1.statusCounts).toBeDefined();
+    expect(b1.statusCounts.triage).toBe(0);
+
+    const currentSlug = await readCurrentBoardJson();
+    expect(currentSlug).toBe("b1");
+  });
+
+  it("showBoardJson includes archived boards when requested", async () => {
+    await createBoardJson({ slug: "b1", workdir: tmpHome });
+    await archiveBoardJson("b1");
+
+    const shown = await showBoardJson("b1", true);
+    expect(shown.board.archivedAt).not.toBeNull();
+
+    await expectBridgeError(showBoardJson("b1", false), "board_not_found", 404);
+  });
+
+  it("updateBoardMetadataJson edits metadata, setDefaultWorkdirJson sets/clears default", async () => {
+    await createBoardJson({ slug: "b1", workdir: tmpHome, metadata: { name: "One" } });
+
+    const renamed = await updateBoardMetadataJson({ slug: "b1", name: "One Renamed" });
+    expect(renamed.board.name).toBe("One Renamed");
+
+    const withDir = await setDefaultWorkdirJson({ slug: "b1", workdir: "/tmp/default" });
+    expect(withDir.board.defaultWorkdir).toBe("/tmp/default");
+
+    const cleared = await setDefaultWorkdirJson({ slug: "b1", workdir: null });
+    expect(cleared.board.defaultWorkdir).toBeNull();
+  });
+
+  it("renameBoardJson changes display name; renameBoardSlugJson changes slug and current", async () => {
+    await createBoardJson({ slug: "old", workdir: tmpHome });
+    await switchBoardJson("old");
+
+    await renameBoardJson({ slug: "old", name: "Old Name" });
+    const currentSlug = await readCurrentBoardJson();
+    expect(currentSlug).toBe("old");
+
+    const result = await renameBoardSlugJson({ oldSlug: "old", newSlug: "new" });
+    expect(result.board.slug).toBe("new");
+    expect(result.currentRewritten).toBe(true);
+    expect(await readCurrentBoardJson()).toBe("new");
+  });
+
+  it("removeBoardJson permanently deletes a board and its data dir", async () => {
+    await createBoardJson({ slug: "b1", workdir: tmpHome });
+    await removeBoardJson("b1");
+    await expectBridgeError(showBoardJson("b1", true), "board_not_found", 404);
+  });
+
+  it("removeBoardJson action layer enforces confirmed slug (bridge takes slug only)", async () => {
+    await createBoardJson({ slug: "b1", workdir: tmpHome });
+    await removeBoardJson("b1");
+    await expectBridgeError(showBoardJson("b1", true), "board_not_found", 404);
   });
 });
 
