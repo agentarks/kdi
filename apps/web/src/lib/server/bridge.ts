@@ -105,7 +105,8 @@ async function models(): Promise<Modules> {
 // Spec FR: gate the whole bridge behind FF_SVELTEKIT_FRONTEND. Using the
 // shared flag registry so the UI honors the same env/registry overrides as
 // every other KDI feature.
-import { isEnabled, FF_SVELTEKIT_FRONTEND } from "~/flags";
+import { isEnabled, FF_SVELTEKIT_FRONTEND, FF_LIST_FILTERS_SORT, FF_TENANT_NAMESPACE, FF_CREATED_BY, FF_WORKFLOW_TEMPLATES, FF_RATE_LIMIT_EXIT_CODE, FF_HEARTBEAT } from "~/flags";
+import { loadProfiles } from "~/profiles";
 
 // Routes call gate() first; when the flag is off it returns the spec-defined
 // 503 { enabled:false } so feature-detect works without a redirect.
@@ -290,18 +291,29 @@ export async function assigneesJson(slug: string): Promise<{ assignees: Record<s
 // Tasks
 // ---------------------------------------------------------------------------
 
-export interface TaskSummary {
+export interface KanbanTask {
   id: number;
   title: string;
   status: string;
   assignee: string | null;
   priority: number;
   tenant: string | null;
+  createdBy: string | null;
+  createdAt: number;
   updatedAt: number;
+  scheduledAt: number | null;
+  lastHeartbeatAt: number | null;
+  blockReason: string | null;
+  scheduleReason: string | null;
+  reviewReason: string | null;
+  rateLimitedUntil: number | null;
+  workflowTemplateId: string | null;
+  currentStepKey: string | null;
+  sessionId: string | null;
   archivedAt: number | null;
 }
 
-function toTaskSummary(t: TaskModel): TaskSummary {
+function toKanbanTask(t: TaskModel): KanbanTask {
   return {
     id: t.id,
     title: t.title,
@@ -309,41 +321,177 @@ function toTaskSummary(t: TaskModel): TaskSummary {
     assignee: t.assignee,
     priority: t.priority,
     tenant: t.tenant,
+    createdBy: t.created_by,
+    createdAt: t.created_at,
     updatedAt: t.updated_at,
+    scheduledAt: t.scheduled_at,
+    lastHeartbeatAt: t.last_heartbeat_at,
+    blockReason: t.block_reason,
+    scheduleReason: t.schedule_reason,
+    reviewReason: t.review_reason,
+    rateLimitedUntil: t.rate_limited_until,
+    workflowTemplateId: t.workflow_template_id,
+    currentStepKey: t.current_step_key,
+    sessionId: t.session_id,
     archivedAt: t.archived_at,
   };
+}
+
+export function resolveCurrentProfile(): string {
+  return (Bun.env.KDI_PROFILE || Bun.env.HERMES_PROFILE || "user").trim() || "user";
+}
+
+export async function listProfilesJson(): Promise<{ profiles: string[] }> {
+  // loadProfiles reads from ~/.config/kdi/profiles.yaml and merges builtins.
+  // ponytail: reuse the CLI helper rather than re-implementing profile discovery.
+  const profiles = loadProfiles();
+  return { profiles: profiles.map((p) => p.name) };
+}
+function requireListFiltersSort(): void {
+  if (!isEnabled(FF_LIST_FILTERS_SORT)) {
+    throw new BridgeError("feature_disabled", 400, "List filters and sort feature is not enabled.");
+  }
+}
+
+function requireTenantNamespace(): void {
+  if (!isEnabled(FF_TENANT_NAMESPACE)) {
+    throw new BridgeError("feature_disabled", 400, "Tenant namespace feature is not enabled.");
+  }
+}
+
+function requireCreatedBy(): void {
+  if (!isEnabled(FF_CREATED_BY)) {
+    throw new BridgeError("feature_disabled", 400, "Created-by tracking is not enabled.");
+  }
+}
+
+function requireWorkflowTemplates(): void {
+  if (!isEnabled(FF_WORKFLOW_TEMPLATES)) {
+    throw new BridgeError("feature_disabled", 400, "Workflow templates feature is not enabled.");
+  }
 }
 
 export async function listTasksJson(
   slug: string,
   params: URLSearchParams,
-): Promise<{ tasks: TaskSummary[] }> {
+): Promise<{ tasks: KanbanTask[] }> {
   const board = await resolveBoard(slug);
   const m = await models();
+
+  const status = params.get("status") as Task["status"] | null;
+  const archived = params.get("archived") === "true";
+  const mine = params.get("mine") === "true";
+  const assignee = params.get("assignee");
+  const tenant = params.get("tenant");
+  const createdBy = params.get("createdBy");
+  const sessionId = params.get("session");
+  const workflowTemplateId = params.get("workflowTemplateId");
+  const stepKey = params.get("stepKey");
+  const sort = params.get("sort") ?? undefined;
+
+  if (sort !== undefined || archived || mine || sessionId || workflowTemplateId || stepKey) {
+    requireListFiltersSort();
+  }
+  if (tenant !== null) {
+    if (tenant.trim() === "") {
+      throw new BridgeError("invalid_input", 400, "Tenant cannot be empty.");
+    }
+    requireTenantNamespace();
+  }
+  if (createdBy !== null) requireCreatedBy();
+  if (workflowTemplateId !== null || stepKey !== null) requireWorkflowTemplates();
+  if (status === "archived" && !archived) {
+    throw new BridgeError("invalid_input", 400, "Use archived=true to filter archived tasks.");
+  }
+  if (sort !== undefined) {
+    const VALID_SORT_KEYS = ["assignee", "created", "created-desc", "priority", "priority-desc", "status", "title", "updated"];
+    if (!VALID_SORT_KEYS.includes(sort)) {
+      throw new BridgeError("invalid_input", 400, `Invalid sort key "${sort}". Valid: ${VALID_SORT_KEYS.join(", ")}.`);
+    }
+  }
+  if (mine && assignee) {
+    throw new BridgeError("invalid_input", 400, "Mine and assignee cannot be used together.");
+  }
+
+  const effectiveAssignee = mine ? resolveCurrentProfile() : (assignee ?? undefined);
+
   const tasks = m.listTasks(
     {
       board_id: board.id,
-      status: (params.get("status") as Task["status"] | null) ?? undefined,
-      assignee: params.get("assignee") ?? undefined,
-      tenant: params.get("tenant") ?? undefined,
-      includeArchived: params.get("includeArchived") === "true",
-      session_id: params.get("sessionId") ?? undefined,
-      workflow_template_id: params.get("workflowTemplateId") ?? undefined,
-      current_step_key: params.get("currentStepKey") ?? undefined,
+      status: status ?? undefined,
+      assignee: effectiveAssignee,
+      tenant: tenant ?? undefined,
+      created_by: createdBy ?? undefined,
+      includeArchived: archived,
+      session_id: sessionId ?? undefined,
+      workflow_template_id: workflowTemplateId ?? undefined,
+      current_step_key: stepKey ?? undefined,
     },
-    params.get("sort") ?? undefined,
+    sort,
   );
-  return { tasks: tasks.map(toTaskSummary) };
+  return { tasks: tasks.map(toKanbanTask) };
 }
 
-// The bridge create-task body is the model's own CreateTaskInput minus board_id
-// (the slug in the URL supplies the board). ponytail: reuse the model type so a
-// new model field flows through the API without a manual bridge edit; this now
-// also exposes workspace_kind / branch / swarm_parent_id, which are valid
-// createTask inputs the manual list had silently dropped.
-export type CreateTaskBody = Omit<CreateTaskInput, "board_id">;
+// The bridge create-task body is camelCase for the UI. It is mapped to the
+// model's mixed-case CreateTaskInput so the same model function can be reused.
+// ponytail: one explicit mapping table; no silent field loss for snake_case keys.
+export interface CreateTaskBody {
+  title: string;
+  body?: string;
+  assignee?: string;
+  priority?: number;
+  triage?: boolean;
+  initialStatus?: CreateTaskInput["initialStatus"];
+  idempotencyKey?: string;
+  scheduledAt?: number;
+  maxRuntimeSeconds?: number;
+  maxRetries?: number;
+  tenant?: string;
+  skills?: string[];
+  createdBy?: string;
+  modelOverride?: string;
+  workspace?: string;
+  workspaceKind?: CreateTaskInput["workspace_kind"];
+  branch?: string;
+  sessionId?: string;
+  workflowTemplateId?: string;
+  stepKey?: string;
+  swarmParentId?: number;
+  goalMode?: boolean;
+  goalMaxTurns?: number;
+  goalJudgeProfile?: string;
+}
 
-export async function createTaskJson(slug: string, body: CreateTaskBody): Promise<{ task: TaskSummary }> {
+function mapCreateTaskBody(body: CreateTaskBody): Omit<CreateTaskInput, "board_id"> {
+  return {
+    title: body.title,
+    body: body.body,
+    assignee: body.assignee,
+    priority: body.priority,
+    triage: body.triage,
+    initialStatus: body.initialStatus,
+    idempotency_key: body.idempotencyKey,
+    scheduled_at: body.scheduledAt,
+    max_runtime_seconds: body.maxRuntimeSeconds,
+    max_retries: body.maxRetries,
+    tenant: body.tenant,
+    skills: body.skills,
+    created_by: body.createdBy,
+    model_override: body.modelOverride,
+    workspace: body.workspace,
+    workspace_kind: body.workspaceKind,
+    branch: body.branch,
+    session_id: body.sessionId,
+    workflow_template_id: body.workflowTemplateId,
+    current_step_key: body.stepKey,
+    swarm_parent_id: body.swarmParentId,
+    goal_mode: body.goalMode,
+    goal_max_turns: body.goalMaxTurns,
+    goal_judge_profile: body.goalJudgeProfile,
+  };
+}
+
+export async function createTaskJson(slug: string, body: CreateTaskBody): Promise<{ task: KanbanTask }> {
   // Trust-boundary guards run before the model call: required title, and reject
   // `archived` (not a legal initial status). ponytail: never simplify away
   // input validation at trust boundaries.
@@ -351,14 +499,11 @@ export async function createTaskJson(slug: string, body: CreateTaskBody): Promis
     throw new BridgeError("invalid_input", 400, "title is required");
   if ((body.initialStatus as string) === "archived")
     throw new BridgeError("invalid_input", 400, "initialStatus 'archived' is not allowed.");
-  // createTask returns the full Task and already emits the "created" event,
-  // mirroring the CLI side effects. Spread the body and set board_id — ponytail:
-  // one spread instead of re-listing 23 fields (drift-proof).
   const board = await resolveBoard(slug);
   const m = await models();
   try {
-    const task = m.createTask({ ...body, board_id: board.id });
-    return { task: toTaskSummary(task) };
+    const task = m.createTask({ ...mapCreateTaskBody(body), board_id: board.id });
+    return { task: toKanbanTask(task) };
   } catch (err) {
     throw wrap(err);
   }

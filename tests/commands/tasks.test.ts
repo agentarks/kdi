@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, mock } from "bun:test";
 import { mkdtempSync, writeFileSync, existsSync, rmSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { initDb, closeDb, getBoardDataDir } from "../../src/db";
 import { cleanupDb } from "../cleanupDb";
 import { createBoard } from "../../src/models/board";
@@ -1303,27 +1303,26 @@ describe("goal mode create command", () => {
       const task = createTask({ board_id: 1, title: "Tail task" });
       addEvent(task.id, "promoted");
 
-      // Race the follow loop against a short timeout; we just want to confirm
-      // it printed existing events and did not exit immediately.
-      const mod = await import("../../src/commands/tasks?ts=" + Date.now() + Math.random());
-      const cmd = (mod as any).tailTaskCommand as typeof tailTaskCommand;
-      const logs: string[] = [];
-      const originalLog = console.log;
-      console.log = (...a: unknown[]) => { logs.push(a.map(String).join(" ")); };
-      try {
-        await Promise.race([
-          cmd.parseAsync([String(task.id)], { from: "user" }),
-          new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 150)),
-        ]);
-        // Should not reach here; if it does, the follow loop exited unexpectedly.
-        expect(true).toBe(false);
-      } catch (err: any) {
-        expect(err.message).toBe("timeout");
-      } finally {
-        console.log = originalLog;
-      }
+      // Run the default tail command in a subprocess so the follow loop is
+      // killed cleanly and cannot leak timers into the test process.
+      const repoRoot = resolve(import.meta.dirname, "../..");
+      const proc = Bun.spawn({
+        cmd: ["bun", "src/index.ts", "tail", String(task.id)],
+        cwd: repoRoot,
+        env: { ...process.env, KDI_DB: process.env.KDI_DB, HOME: process.env.HOME },
+        stdout: "pipe",
+        stderr: "pipe",
+      });
 
-      expect(logs.some((l) => l.includes("promoted"))).toBe(true);
+      // Give it enough time to print existing events and enter the follow loop.
+      await new Promise((resolve) => setTimeout(resolve, 600));
+      proc.kill(9);
+      await proc.exited;
+
+      const out = await new Response(proc.stdout).text();
+      const err = await new Response(proc.stderr).text();
+      expect(out).toContain("promoted");
+      expect(err).toBe("");
     });
   });
 });

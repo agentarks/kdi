@@ -5,13 +5,16 @@
 - [x] Linked frontend backlog from `specs/hermes-kanban-backlog.md`.
 - [x] Registered planned `ff_sveltekit_frontend` / `FF_SVELTEKIT_FRONTEND` / `VITE_FF_SVELTEKIT_FRONTEND` in `specs/feature-flags.md`, default `false`.
 
-## KDI-UI-003: Kanban Board View — Spec
+## KDI-UI-003: Kanban Board View — Implemented
 - [x] BRD/spec drafted at `specs/sveltekit-ui/KDI-UI-003-kanban-board-view.md`
-- [ ] Kanban board view renders nine status columns with counts, assignee, priority, tenant, age, status reasons, and stale/rate-limited markers
-- [ ] Filter bar reproduces `kdi list` filters: status, assignee, tenant, created-by, mine, session, archived, workflow template, step key, sort
-- [ ] Consumes board shell from KDI-UI-002 and data bridge endpoints from KDI-UI-001
-- [ ] Gated by `FF_SVELTEKIT_FRONTEND`; reuses CLI flags
-- [ ] Acceptance: UI reproduces `kdi list` filtered/sorted views against a temp `HOME`/`KDI_DB`; all builds pass
+- [x] Kanban board view renders nine status columns with counts, assignee, priority, tenant, age, status reasons, and stale/rate-limited markers
+- [x] Filter bar reproduces `kdi list` filters: status, assignee, tenant, created-by, mine, session, archived, workflow template, step key, sort
+- [x] Created `/boards/[slug]` route with a minimal board shell (header, archived tag, metadata) since KDI-UI-002 is not yet merged; consumes KDI-UI-001 data bridge endpoints
+- [x] Extended KDI-UI-001 bridge: `/api/boards/[slug]/tasks` now returns the full `KanbanTask` camelCase shape (id, title, status, assignee, priority, tenant, createdBy, createdAt, updatedAt, scheduledAt, lastHeartbeatAt, blockReason, scheduleReason, reviewReason, rateLimitedUntil, workflowTemplateId, currentStepKey, sessionId, archivedAt); added `/api/profiles` endpoint for assignee dropdown population
+- [x] Gated by `FF_SVELTEKIT_FRONTEND`; reuses CLI flags (`FF_LIST_FILTERS_SORT`, `FF_TENANT_NAMESPACE`, `FF_CREATED_BY`, `FF_ASSIGNEES_LISTING`, `FF_WORKFLOW_TEMPLATES`, `FF_RATE_LIMIT_EXIT_CODE`, `FF_HEARTBEAT`)
+- [x] Root `/` redirects to `/boards/default` for a working default landing page
+- [x] Added bridge unit tests for the Kanban task shape and `/api/profiles`; extended HTTP smoke test to fetch `/boards/[slug]` and assert the rendered HTML contains the task ID, title, and board name
+- [x] Acceptance: UI reproduces `kdi list` filtered/sorted views against a temp `HOME`/`KDI_DB`; all builds pass (`bun run lint`, `bun run build`, `bun run check:web`, `bun run build:web`, `bun test`)
 
 ## KDI-UI-004: Task Create/Edit UI — Spec
 - [x] BRD/spec drafted at `specs/sveltekit-ui/KDI-UI-004-task-create-edit-ui.md`

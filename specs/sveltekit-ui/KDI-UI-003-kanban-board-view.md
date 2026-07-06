@@ -50,10 +50,12 @@ semantics and reviewers can verify that the UI reproduces `kdi list` behavior.
   archived tag, switch/delete affordances). The Kanban view is mounted inside
   that shell.
 
-KDI-UI-003 adds **only** the Kanban task grid, filter bar, and supporting
-components. It must not modify `src/models/*`, `src/commands/*`, `src/db.ts`,
-`src/flags.ts`, or the KDI-UI-001/002 routes. If a required JSON shape is
-missing from the bridge, the gap is raised against KDI-UI-001, not patched here.
+KDI-UI-003 adds the Kanban task grid, filter bar, and supporting components. To
+render cards correctly it also extends the KDI-UI-001 bridge task list shape to
+the richer `KanbanTask` and exposes a profile list endpoint for the assignee
+dropdown. It must not modify `src/models/*`, `src/commands/*`, `src/db.ts`,
+`src/flags.ts`, or `src/resolveBoard.ts`. If a required JSON shape is missing
+from the bridge, the gap is raised against KDI-UI-001, not patched here.
 
 ## 4. Scope
 
@@ -116,7 +118,8 @@ Out of scope (explicitly):
 - **FR-5** Within a column, tasks are sorted by the selected sort key. The sort
   keys and their SQL equivalents are identical to `VALID_SORT_KEYS` in
   `src/models/task.ts`: `assignee`, `created`, `created-desc`, `priority`,
-  `priority-desc`, `status`, `title`, `updated`. The default sort is `updated`.
+  `priority-desc`, `status`, `title`, `updated`. The default sort is `created-desc`,
+  matching the unqualified `kdi list` order.
 - **FR-6** The board view is horizontally scrollable on narrow viewports; on
   wide viewports the columns share the available width evenly. No drag-and-drop
   is required for v1.
@@ -157,7 +160,7 @@ Out of scope (explicitly):
   - **Archived** — toggle that maps to `includeArchived`.
   - **Workflow template** — select of templates defined for the board.
   - **Step key** — select of steps belonging to the chosen template.
-  - **Sort** — select of the eight valid sort keys; default `updated`.
+  - **Sort** — select of the eight valid sort keys; default `created-desc`.
 - **FR-13** `--mine` and `--assignee` are mutually exclusive, matching the CLI:
   enabling `Mine` clears the assignee select; selecting an assignee clears `Mine`.
 - **FR-14** The filter bar applies filters server-side by converting the form
@@ -197,8 +200,11 @@ Out of scope (explicitly):
 
 ## 7. UI Routes / Components
 
-This slice consumes the following routes and components from prerequisites and
-adds the components listed below.
+This slice consumes the following routes from prerequisites and adds the
+components listed below. Because KDI-UI-002 had not landed when this slice was
+implemented, a minimal board shell (header, archived tag, and meta) is included
+here; once KDI-UI-002 merges, the shell should be replaced by the shared
+`/boards/[slug]` route.
 
 ### Routes consumed from KDI-UI-002
 - `/boards/[slug]` — the board detail route. KDI-UI-003 mounts the Kanban view
@@ -271,19 +277,19 @@ interface KanbanTask {
   assignee: string | null;
   priority: number;
   tenant: string | null;
-  created_by: string | null;
-  created_at: number;
-  updated_at: number;
-  scheduled_at: number | null;
-  last_heartbeat_at: number | null;
-  block_reason: string | null;
-  schedule_reason: string | null;
-  review_reason: string | null;
-  rate_limited_until: number | null;
-  workflow_template_id: string | null;
-  current_step_key: string | null;
-  session_id: string | null;
-  archived_at: number | null;
+  createdBy: string | null;
+  createdAt: number;
+  updatedAt: number;
+  scheduledAt: number | null;
+  lastHeartbeatAt: number | null;
+  blockReason: string | null;
+  scheduleReason: string | null;
+  reviewReason: string | null;
+  rateLimitedUntil: number | null;
+  workflowTemplateId: string | null;
+  currentStepKey: string | null;
+  sessionId: string | null;
+  archivedAt: number | null;
 }
 ```
 
@@ -306,8 +312,8 @@ extension is a KDI-UI-001 concern, not a KDI-UI-003 concern.
 | `stepKey` | `current_step_key` | `--step-key` | `FF_WORKFLOW_TEMPLATES` |
 | `sort` | `sort` | `--sort` | `FF_LIST_FILTERS_SORT` |
 
-If `mine` is set, `assignee` must be ignored; the server load enforces the
-mutual exclusivity.
+If both `mine` and `assignee` are submitted, the bridge rejects the request
+with the same error the CLI uses.
 
 ## 9. Feature Flags
 
@@ -339,7 +345,7 @@ mutual exclusivity.
   reasons when the task is `blocked`, `scheduled`, or `review`.
 - **AC-05 (sort)** Selecting a sort key reorders tasks within each column using
   the same ordering as `resolveSortOrder` in `src/models/task.ts`. The default
-  sort matches the default `kdi list` order (`updated`).
+  sort matches the default `kdi list` order (`created-desc`).
 - **AC-06 (status filter)** Selecting a status filters the cards to that status
   and updates the URL; the server load calls `listTasks({ board_id, status })`.
 - **AC-07 (assignee filter)** The assignee dropdown is populated from the union
@@ -372,7 +378,9 @@ mutual exclusivity.
   CLI uses.
 - **AC-15 (no backend churn)** No file under `src/models`, `src/commands`,
   `src/db.ts`, `src/flags.ts`, or `src/resolveBoard.ts` is modified by this
-  slice; only SvelteKit components and possibly a page-load wrapper are added.
+  slice; SvelteKit components, a `/boards/[slug]` page-load wrapper, and the
+  minimal bridge extensions required for the Kanban task shape and profile list
+  are added in `apps/web/src/lib/server/bridge.ts`.
 - **AC-16 (build)** `bun run lint`, CLI `bun run build`, and the SvelteKit build
   pass with an isolated `KDI_DB`.
 
@@ -380,9 +388,9 @@ mutual exclusivity.
 
 - **Risk: Task list endpoint shape.** KDI-UI-001 currently defines a minimal
   `TaskSummary`. The Kanban view needs richer fields (reasons, timestamps,
-  workflow/session fields). If the bridge endpoint is not extended, this slice
-  cannot render cards correctly. **Mitigation:** the data contract in §8 is
-  explicit; the extension is filed as a KDI-UI-001 follow-up, not a local patch.
+  workflow/session fields). This PR extends the bridge task list endpoint to
+  return `KanbanTask` and adds a profile list endpoint for the assignee dropdown.
+  No CLI model, command, or flag is modified.
 - **Risk: Large boards.** Rendering hundreds of cards per column could be slow
   in the browser. **Mitigation:** v1 renders all tasks returned by the bridge;
   virtualization or pagination is a follow-up if profiling shows it is needed.

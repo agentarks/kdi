@@ -17,7 +17,7 @@
     "dev:web": "bun --bun run --cwd apps/web dev",
     "preview:web": "bun --bun run --cwd apps/web preview",
     "check:web": "bun run --cwd apps/web check",
-    "test": "bun test",
+    "test": "bun run --cwd apps/web svelte-kit sync && bun test",
     "lint": "tsc --noEmit"
   },
   "devDependencies": {

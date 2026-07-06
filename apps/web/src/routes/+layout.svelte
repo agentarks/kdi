@@ -2,24 +2,33 @@
   import "../app.css";
   import FlagBadge from "$lib/components/FlagBadge.svelte";
   import { page } from "$app/state";
+  import { goto } from "$app/navigation";
 
   let { children } = $props();
 
   const nav = [
-    { href: "/", label: "Board" },
+    { href: "/boards/default", label: "Board" },
     { href: "/tasks", label: "Tasks" },
     { href: "/dispatch", label: "Dispatch" },
     { href: "/activity", label: "Activity" },
     { href: "/stats", label: "Stats" },
   ];
 
-  // ponytail: placeholder boards until KDI-UI-001/002 wires real data in.
+  // ponytail: placeholder boards until KDI-UI-002 wires real data in.
   const boards = ["default", "myproj"];
-  const boardSlug = $derived(page.url.searchParams.get("board") ?? "default");
+  const boardSlug = $derived(
+    page.url.pathname.match(/^\/boards\/([^/]+)/)?.[1] ??
+      page.url.searchParams.get("board") ??
+      "default"
+  );
 
   function isActive(href: string): boolean {
-    if (href === "/") return page.url.pathname === "/";
     return page.url.pathname.startsWith(href);
+  }
+
+  function switchBoard(event: Event) {
+    const target = event.target as HTMLSelectElement;
+    goto(`/boards/${target.value}${window.location.search}`);
   }
 </script>
 
@@ -28,9 +37,9 @@
     <span class="brand">kdi</span>
     <span class="board-switcher">
       <label for="board-select" class="sr-only">Board</label>
-      <select id="board-select" name="board">
+      <select id="board-select" name="board" value={boardSlug} onchange={switchBoard}>
         {#each boards as b}
-          <option value={b} selected={b === boardSlug}>{b}</option>
+          <option value={b}>{b}</option>
         {/each}
       </select>
     </span>

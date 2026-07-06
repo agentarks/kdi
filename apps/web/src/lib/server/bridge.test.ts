@@ -7,7 +7,7 @@
 // ponytail: test the bridge functions, not SvelteKit RequestEvent plumbing —
 // the route adapters are ~5 lines of Request->bridge mapping and add no logic.
 
-import { describe, it, expect, beforeEach, afterAll } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach, afterAll } from "bun:test";
 import { rmSync, mkdirSync, existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
@@ -31,17 +31,30 @@ import {
   boardStatsJson,
   gate,
   BridgeError,
+  listProfilesJson,
 } from "./bridge";
 // Direct model import is the CLI source of truth used to validate the bridge
 // wrapped it faithfully. Uses the `~/*` alias (spec FR-1); `bun test` from the
 // repo root resolves `~/*` via the root tsconfig the CLI already uses.
 import { showTask } from "~/models/task";
 import { showBoard as showBoardModel } from "~/models/board";
+import { closeDb } from "~/db";
 import { clearOverrides } from "~/flags";
 
 const SRC_ROOT = join(import.meta.dirname, "..", ".."); // apps/web/src
 
+const FF_KEYS = [
+  "FF_SVELTEKIT_FRONTEND",
+  "FF_LIST_FILTERS_SORT",
+  "FF_TENANT_NAMESPACE",
+  "FF_CREATED_BY",
+  "FF_WORKFLOW_TEMPLATES",
+  "FF_RATE_LIMIT_EXIT_CODE",
+  "FF_HEARTBEAT",
+];
+
 let tmpHome: string;
+const envSnapshot: Record<string, string | undefined> = {};
 
 function isolate(): void {
   tmpHome = `/tmp/kdi-ui001-${process.pid}-${Math.random().toString(36).slice(2)}`;
@@ -49,14 +62,39 @@ function isolate(): void {
   process.env.HOME = tmpHome;
   process.env.KDI_DB = join(tmpHome, "kdi.sqlite");
   process.env.FF_SVELTEKIT_FRONTEND = "true";
+  // Leave other FF_* flags at their defaults by removing any stale test overrides.
+  for (const key of FF_KEYS) {
+    if (key !== "FF_SVELTEKIT_FRONTEND") delete process.env[key];
+  }
 }
 
 function cleanup(): void {
   if (tmpHome && existsSync(tmpHome)) rmSync(tmpHome, { recursive: true, force: true });
 }
 
-async function freshBoard(slug = "smoke"): Promise<string> {
+beforeEach(() => {
+  for (const key of FF_KEYS) envSnapshot[key] = process.env[key];
   isolate();
+  clearOverrides();
+});
+
+afterEach(() => {
+  for (const key of FF_KEYS) {
+    const value = envSnapshot[key];
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
+  clearOverrides();
+  closeDb();
+  cleanup();
+});
+
+afterAll(() => {
+  // afterEach handles per-test cleanup; this is a safety net.
+  cleanup();
+});
+
+async function freshBoard(slug = "smoke"): Promise<string> {
   // createBoardJson calls initDb() itself, so no separate bootstrap needed.
   await createBoardJson({ slug, workdir: tmpHome });
   return slug;
@@ -76,9 +114,6 @@ async function expectBridgeError(p: Promise<unknown>, code: string, status: numb
   }
   if (!threw) throw new Error(`expected promise to reject with ${code}/${status}, but it resolved`);
 }
-
-beforeEach(isolate);
-afterAll(cleanup);
 
 describe("KDI-UI-001 server data bridge", () => {
   it("POST/GET /api/boards — create + list + show with camelCase keys", async () => {
@@ -130,6 +165,43 @@ describe("KDI-UI-001 server data bridge", () => {
     const shown = await showTaskJson(slug, created.task.id);
     expect(((shown.task as unknown) as Record<string, unknown>).goalMode).toBe(false);
     for (const k of Object.keys(shown.task)) expect(k.includes("_")).toBe(false);
+  });
+
+  it("POST /api/boards/[slug]/tasks returns the full Kanban task shape", async () => {
+    const slug = await freshBoard("kanban");
+    const created = await createTaskJson(slug, {
+      title: "Kanban card",
+      body: "body",
+      assignee: "ralph",
+      priority: 5,
+      tenant: "backend",
+      sessionId: "session-1",
+      createdBy: "alice",
+    });
+    const task = created.task;
+    expect(task.id).toBeGreaterThan(0);
+    expect(task.title).toBe("Kanban card");
+    expect(task.assignee).toBe("ralph");
+    expect(task.priority).toBe(5);
+    expect(task.tenant).toBe("backend");
+    expect(task.sessionId).toBe("session-1");
+    expect(task.createdBy).toBe("alice");
+    expect(task.createdAt).toBeGreaterThan(0);
+    expect(task.updatedAt).toBeGreaterThan(0);
+    expect(task.status).toBe("todo");
+    expect(task.blockReason).toBeNull();
+    expect(task.rateLimitedUntil).toBeNull();
+
+    const listed = await listTasksJson(slug, new URLSearchParams());
+    expect(listed.tasks.length).toBe(1);
+    expect(listed.tasks[0].id).toBe(task.id);
+    expect(listed.tasks[0].tenant).toBe("backend");
+  });
+
+  it("GET /api/profiles returns known profile names", async () => {
+    const profiles = await listProfilesJson();
+    expect(profiles.profiles).toContain("opencode");
+    expect(profiles.profiles).toContain("pi");
   });
 
   it("createTask rejects missing title (400 invalid_input)", async () => {
@@ -211,6 +283,85 @@ describe("KDI-UI-001 server data bridge", () => {
     // cross-checks HTTP results against the CLI model source of truth), so it
     // is allowed to import ~/models/* just like bridge.test.ts.
     expect(violations).toBe(0);
+  });
+});
+
+// KDI-UI-003: bridge-level filter gating. The server load is the primary
+// defense; these tests ensure the bridge rejects disabled filters with the same
+// error text the CLI uses, so a direct client bypass cannot mutate state.
+describe("KDI-UI-003 filter gating", () => {
+  async function freshBoardWithTask(slug = "gate"): Promise<{ slug: string; taskId: number }> {
+    const boardSlug = await freshBoard(slug);
+    const { task } = await createTaskJson(boardSlug, { title: "gate task", assignee: "ralph", tenant: "t1", sessionId: "s1" });
+    return { slug: boardSlug, taskId: task.id };
+  }
+
+  it("status filter does not require FF_LIST_FILTERS_SORT", async () => {
+    process.env.FF_LIST_FILTERS_SORT = "false";
+    clearOverrides();
+    const { slug } = await freshBoardWithTask();
+    const { tasks } = await listTasksJson(slug, new URLSearchParams({ status: "todo" }));
+    expect(tasks.length).toBe(1);
+  });
+
+  it("rejects sort/archived/mine/session/workflow/step without FF_LIST_FILTERS_SORT", async () => {
+    process.env.FF_LIST_FILTERS_SORT = "false";
+    clearOverrides();
+    const { slug } = await freshBoardWithTask();
+    await expectBridgeError(listTasksJson(slug, new URLSearchParams({ sort: "updated" })), "feature_disabled", 400);
+    await expectBridgeError(listTasksJson(slug, new URLSearchParams({ archived: "true" })), "feature_disabled", 400);
+    await expectBridgeError(listTasksJson(slug, new URLSearchParams({ mine: "true" })), "feature_disabled", 400);
+    await expectBridgeError(listTasksJson(slug, new URLSearchParams({ session: "s1" })), "feature_disabled", 400);
+    await expectBridgeError(listTasksJson(slug, new URLSearchParams({ workflowTemplateId: "x" })), "feature_disabled", 400);
+    await expectBridgeError(listTasksJson(slug, new URLSearchParams({ stepKey: "x" })), "feature_disabled", 400);
+  });
+
+  it("assignee filter works without FF_ASSIGNEES_LISTING (dropdown only is gated)", async () => {
+    process.env.FF_ASSIGNEES_LISTING = "false";
+    clearOverrides();
+    const { slug } = await freshBoardWithTask();
+    const { tasks } = await listTasksJson(slug, new URLSearchParams({ assignee: "ralph" }));
+    expect(tasks.length).toBe(1);
+    expect(tasks[0].assignee).toBe("ralph");
+  });
+
+  it("rejects empty tenant string", async () => {
+    process.env.FF_TENANT_NAMESPACE = "true";
+    clearOverrides();
+    const { slug } = await freshBoardWithTask();
+    await expectBridgeError(listTasksJson(slug, new URLSearchParams({ tenant: "" })), "invalid_input", 400);
+    await expectBridgeError(listTasksJson(slug, new URLSearchParams({ tenant: "   " })), "invalid_input", 400);
+  });
+
+  it("rejects tenant without FF_TENANT_NAMESPACE", async () => {
+    process.env.FF_TENANT_NAMESPACE = "false";
+    clearOverrides();
+    const { slug } = await freshBoardWithTask();
+    await expectBridgeError(listTasksJson(slug, new URLSearchParams({ tenant: "t1" })), "feature_disabled", 400);
+  });
+
+  it("rejects createdBy without FF_CREATED_BY", async () => {
+    process.env.FF_CREATED_BY = "false";
+    clearOverrides();
+    const { slug } = await freshBoardWithTask();
+    await expectBridgeError(listTasksJson(slug, new URLSearchParams({ createdBy: "alice" })), "feature_disabled", 400);
+  });
+
+  it("rejects workflow template/step without FF_WORKFLOW_TEMPLATES", async () => {
+    process.env.FF_LIST_FILTERS_SORT = "true";
+    process.env.FF_WORKFLOW_TEMPLATES = "false";
+    clearOverrides();
+    const { slug } = await freshBoardWithTask();
+    await expectBridgeError(listTasksJson(slug, new URLSearchParams({ workflowTemplateId: "x" })), "feature_disabled", 400);
+    await expectBridgeError(listTasksJson(slug, new URLSearchParams({ stepKey: "x" })), "feature_disabled", 400);
+  });
+
+  it("rejects mine and assignee together", async () => {
+    process.env.FF_LIST_FILTERS_SORT = "true";
+    process.env.FF_ASSIGNEES_LISTING = "true";
+    clearOverrides();
+    const { slug } = await freshBoardWithTask();
+    await expectBridgeError(listTasksJson(slug, new URLSearchParams({ mine: "true", assignee: "ralph" })), "invalid_input", 400);
   });
 });
 
