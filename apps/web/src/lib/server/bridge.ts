@@ -29,6 +29,7 @@ import type { TaskContext } from "~/models/context";
 import type { WorkflowTemplate } from "~/models/workflowTemplate";
 import type { NotifySub } from "~/models/notifySub";
 import type { DiagnosticFinding, DiagnosticSeverity } from "~/models/diagnostic";
+import type { Profile } from "~/profiles";
 
 // Runtime model import is DYNAMIC (string-literal) and cached. This keeps
 // `bun:sqlite` (pulled transitively by the CLI models via ../db) out of the
@@ -64,7 +65,14 @@ type Modules = {
   buildTaskContext: typeof import("~/models/context")["buildTaskContext"];
   runDiagnostics: typeof import("~/models/diagnostic")["runDiagnostics"];
   listWorkflowTemplates: typeof import("~/models/workflowTemplate")["listWorkflowTemplates"];
+  getWorkflowTemplate: typeof import("~/models/workflowTemplate")["getWorkflowTemplate"];
+  validateStepKey: typeof import("~/models/workflowTemplate")["validateStepKey"];
   listSubscriptions: typeof import("~/models/notifySub")["listSubscriptions"];
+  addDependency: typeof import("~/models/dependency")["addDependency"];
+  loadProfiles: typeof import("~/profiles")["loadProfiles"];
+  getProfile: typeof import("~/profiles")["getProfile"];
+  editTask: typeof import("~/models/task")["editTask"];
+  parseDuration: typeof import("~/models/task")["parseDuration"];
 };
 let _models: Promise<Modules> | null = null;
 async function models(): Promise<Modules> {
@@ -73,7 +81,7 @@ async function models(): Promise<Modules> {
       // Dynamic string-literal imports via the `~/*` alias (spec FR-1). Kept
       // dynamic so bun:sqlite (pulled transitively via ~/db) stays out of the
       // build-time Node module graph; vite resolves the alias at build time.
-      const [db, board, task, taskEvent, taskRun, comment, taskAttachment, context, diagnostic, workflowTemplate, notifySub] =
+      const [db, board, task, taskEvent, taskRun, comment, taskAttachment, context, diagnostic, workflowTemplate, notifySub, dependency, profiles] =
         await Promise.all([
           import("~/db"),
           import("~/models/board"),
@@ -86,6 +94,8 @@ async function models(): Promise<Modules> {
           import("~/models/diagnostic"),
           import("~/models/workflowTemplate"),
           import("~/models/notifySub"),
+          import("~/models/dependency"),
+          import("~/profiles"),
         ]);
       // Eagerly initialize the DB singleton as soon as the server-side model
       // modules are loaded. Bridge functions also call initDb(), but this guards
@@ -104,6 +114,8 @@ async function models(): Promise<Modules> {
         ...diagnostic,
         ...workflowTemplate,
         ...notifySub,
+        ...dependency,
+        ...profiles,
       } as Modules;
     })();
   }
@@ -118,6 +130,16 @@ async function models(): Promise<Modules> {
 // shared flag registry so the UI honors the same env/registry overrides as
 // every other KDI feature.
 import { isEnabled, FF_SVELTEKIT_FRONTEND, FF_LIST_FILTERS_SORT, FF_TENANT_NAMESPACE, FF_CREATED_BY, FF_WORKFLOW_TEMPLATES, FF_RATE_LIMIT_EXIT_CODE, FF_HEARTBEAT, FF_BOARD_METADATA, FF_BOARD_CREATE_SWITCH, FF_DEFAULT_WORKDIR, FF_BOARD_SWITCH, FF_BOARD_RENAME_HERMES, FF_BOARD_RENAME, FF_BOARD_RM_DELETE } from "~/flags";
+import {
+  FF_SCHEDULED_STATUS,
+  FF_PRIORITY_INTEGER,
+  FF_SKILLS_ARRAY,
+  FF_MODEL_OVERRIDE,
+  FF_MAX_RUNTIME,
+  FF_MAX_RETRIES,
+  FF_GOAL_MODE,
+  FF_CREATE_PARENT,
+} from "~/flags";
 import { loadProfiles } from "~/profiles";
 
 // Routes call gate() first; when the flag is off it returns the spec-defined
@@ -130,6 +152,50 @@ export function gate(): Response | null {
     });
   }
   return null;
+}
+
+// ---------------------------------------------------------------------------
+// Task create/edit UI feature flags
+// ---------------------------------------------------------------------------
+
+export interface TaskFlags {
+  sveltekitFrontend: boolean;
+  scheduledStatus: boolean;
+  priorityInteger: boolean;
+  tenantNamespace: boolean;
+  createdBy: boolean;
+  skillsArray: boolean;
+  modelOverride: boolean;
+  maxRuntime: boolean;
+  maxRetries: boolean;
+  defaultWorkdir: boolean;
+  listFiltersSort: boolean;
+  workflowTemplates: boolean;
+  goalMode: boolean;
+  createParent: boolean;
+}
+
+export function taskFlags(): TaskFlags {
+  return {
+    sveltekitFrontend: isEnabled(FF_SVELTEKIT_FRONTEND),
+    scheduledStatus: isEnabled(FF_SCHEDULED_STATUS),
+    priorityInteger: isEnabled(FF_PRIORITY_INTEGER),
+    tenantNamespace: isEnabled(FF_TENANT_NAMESPACE),
+    createdBy: isEnabled(FF_CREATED_BY),
+    skillsArray: isEnabled(FF_SKILLS_ARRAY),
+    modelOverride: isEnabled(FF_MODEL_OVERRIDE),
+    maxRuntime: isEnabled(FF_MAX_RUNTIME),
+    maxRetries: isEnabled(FF_MAX_RETRIES),
+    defaultWorkdir: isEnabled(FF_DEFAULT_WORKDIR),
+    listFiltersSort: isEnabled(FF_LIST_FILTERS_SORT),
+    workflowTemplates: isEnabled(FF_WORKFLOW_TEMPLATES),
+    goalMode: isEnabled(FF_GOAL_MODE),
+    createParent: isEnabled(FF_CREATE_PARENT),
+  };
+}
+
+export function isSvelteKitEnabled(): boolean {
+  return isEnabled(FF_SVELTEKIT_FRONTEND);
 }
 
 // initDb() is called inside the bridge functions themselves (createBoardJson,
@@ -160,7 +226,7 @@ function wrap(err: unknown): BridgeError {
   if (/Invalid .*slug.*Slugs may only contain/.test(message)) return new BridgeError("invalid_slug", 400, message);
   if (/already exists/.test(message)) return new BridgeError("board_exists", 409, message);
   if (/not found or is archived/.test(message)) return new BridgeError("board_not_found", 404, message);
-  if (/cannot be empty|must be 255|requires scheduled_at|A board id is required|title is required/.test(message))
+  if (/cannot be empty|must be 255|requires scheduled_at|A board id is required|Title is required/.test(message))
     return new BridgeError("invalid_input", 400, message);
   if (/Database not initialized/.test(message)) return new BridgeError("db_not_initialized", 500, message);
   return new BridgeError("internal", 500, message);
@@ -673,21 +739,96 @@ function mapCreateTaskBody(body: CreateTaskBody): Omit<CreateTaskInput, "board_i
   };
 }
 
-export async function createTaskJson(slug: string, body: CreateTaskBody): Promise<{ task: KanbanTask }> {
+export async function createTaskJson(slug: string, body: CreateTaskBody, parentIds?: number[]): Promise<{ task: KanbanTask }> {
   // Trust-boundary guards run before the model call: required title, and reject
   // `archived` (not a legal initial status). ponytail: never simplify away
   // input validation at trust boundaries.
   if (typeof body.title !== "string" || body.title.trim() === "")
-    throw new BridgeError("invalid_input", 400, "title is required");
+    throw new BridgeError("invalid_input", 400, "Title is required.");
   if ((body.initialStatus as string) === "archived")
     throw new BridgeError("invalid_input", 400, "initialStatus 'archived' is not allowed.");
   const board = await resolveBoard(slug);
   const m = await models();
   try {
     const task = m.createTask({ ...mapCreateTaskBody(body), board_id: board.id });
+    if (parentIds && parentIds.length > 0) {
+      for (const parentId of parentIds) {
+        try {
+          m.addDependency(parentId, task.id);
+        } catch (err: any) {
+          // Idempotent: ignore duplicate parent→child links.
+          if (!/UNIQUE constraint failed: dependencies\.parent_id, dependencies\.child_id/.test(err?.message ?? "")) {
+            throw err;
+          }
+        }
+      }
+    }
     return { task: toKanbanTask(task) };
   } catch (err) {
     throw wrap(err);
+  }
+}
+
+export async function editTaskJson(slug: string, id: number, body: string): Promise<{ task: KanbanTask }> {
+  if (typeof body !== "string" || body.trim() === "")
+    throw new BridgeError("invalid_input", 400, "Body is required.");
+  await assertTaskOnBoard(slug, id);
+  const m = await models();
+  try {
+    const task = m.editTask(id, body);
+    return { task: toKanbanTask(task) };
+  } catch (err) {
+    throw wrap(err);
+  }
+}
+
+export async function getWorkflowTemplateJson(
+  slug: string,
+  templateId: string,
+): Promise<{ template: CamelCase<WorkflowTemplate> | null }> {
+  const board = await resolveBoard(slug);
+  const m = await models();
+  const template = m.getWorkflowTemplate(board.id, templateId);
+  return { template: template ? (toCamel(template) as CamelCase<WorkflowTemplate>) : null };
+}
+
+export async function validateStepKeyBridge(
+  slug: string,
+  templateId: string,
+  key: string,
+): Promise<void> {
+  const board = await resolveBoard(slug);
+  const m = await models();
+  const template = m.getWorkflowTemplate(board.id, templateId);
+  if (!template) {
+    throw new BridgeError(
+      "invalid_input",
+      400,
+      `Workflow template "${templateId}" not found for board "${slug}".`,
+    );
+  }
+  try {
+    m.validateStepKey(template, key);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new BridgeError("invalid_input", 400, message);
+  }
+}
+
+export async function profilesJson(): Promise<{ profiles: Profile[] }> {
+  const m = await models();
+  return { profiles: m.loadProfiles() };
+}
+
+// Re-export the model's parseDuration so the UI action can surface the same
+// errors without importing the model directly.
+export async function parseDurationBridge(value: string): Promise<number> {
+  const m = await models();
+  try {
+    return m.parseDuration(value);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new BridgeError("invalid_input", 400, message);
   }
 }
 
