@@ -105,28 +105,31 @@ export const actions: Actions = {
     const goalJudgeProfileRaw = getString(data, "goal_judge_profile");
     const parentIdsRaw = getString(data, "parent_ids");
 
-    const values = {
-      title: title ?? "",
-      body: body ?? "",
-      assignee: assignee ?? "",
-      status: statusRaw,
-      scheduledAt: scheduledAtRaw ?? "",
-      priority: priorityRaw ?? "",
-      tenant: tenantRaw ?? "",
-      createdBy: createdByRaw ?? "",
-      skills: skillsRaw ?? "",
-      modelOverride: modelOverrideRaw ?? "",
-      maxRuntime: maxRuntimeRaw ?? "",
-      maxRetries: maxRetriesRaw ?? "",
-      workspace: workspaceRaw ?? "",
-      sessionId: sessionIdRaw ?? "",
-      workflowTemplateId: workflowTemplateIdRaw ?? "",
-      stepKey: stepKeyRaw ?? "",
-      goalMode: goalMode ? "on" : "",
-      goalMaxTurns: goalMaxTurnsRaw ?? "",
-      goalJudgeProfile: goalJudgeProfileRaw ?? "",
-      parentIds: parentIdsRaw ?? "",
-    };
+    const values = Object.fromEntries(
+      [
+        "title",
+        "body",
+        "assignee",
+        "scheduled_at",
+        "priority",
+        "tenant",
+        "created_by",
+        "skills",
+        "model_override",
+        "max_runtime",
+        "max_retries",
+        "workspace",
+        "session_id",
+        "workflow_template_id",
+        "step_key",
+        "goal_max_turns",
+        "goal_judge_profile",
+        "parent_ids",
+      ].map((name) => [name, getString(data, name) ?? ""]),
+    ) as Record<string, string>;
+
+    values.status = statusRaw;
+    values.goal_mode = goalMode ? "on" : "";
 
     try {
       if (!title) {

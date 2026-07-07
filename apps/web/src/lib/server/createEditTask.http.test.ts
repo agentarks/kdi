@@ -83,13 +83,6 @@ async function createBoardApi(slug: string): Promise<void> {
   expect(r.status).toBe(201);
 }
 
-function createBoardModel(slug: string): void {
-  process.env.HOME = tmpHome;
-  process.env.KDI_DB = join(tmpHome, "kdi.sqlite");
-  initDb();
-  createBoard(slug, tmpHome, "origin/main", {});
-}
-
 afterAll(() => {
   if (proc) {
     try {

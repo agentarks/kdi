@@ -16,60 +16,38 @@
     body: "",
     assignee: "",
     status: "todo",
-    scheduledAt: "",
+    scheduled_at: "",
     priority: "",
     tenant: "",
-    createdBy: "",
+    created_by: "",
     skills: "",
-    modelOverride: "",
-    maxRuntime: "",
-    maxRetries: "",
+    model_override: "",
+    max_runtime: "",
+    max_retries: "",
     workspace: "",
-    sessionId: "",
-    workflowTemplateId: "",
-    stepKey: "",
-    goalMode: false,
-    goalMaxTurns: "",
-    goalJudgeProfile: "",
-    parentIds: "",
+    session_id: "",
+    workflow_template_id: "",
+    step_key: "",
+    goal_mode: false,
+    goal_max_turns: "",
+    goal_judge_profile: "",
+    parent_ids: "",
   });
 
   $effect(() => {
     if (form?.values) {
-      values = {
-        title: form.values.title ?? "",
-        body: form.values.body ?? "",
-        assignee: form.values.assignee ?? "",
-        status: form.values.status ?? "todo",
-        scheduledAt: form.values.scheduledAt ?? "",
-        priority: form.values.priority ?? "",
-        tenant: form.values.tenant ?? "",
-        createdBy: form.values.createdBy ?? "",
-        skills: form.values.skills ?? "",
-        modelOverride: form.values.modelOverride ?? "",
-        maxRuntime: form.values.maxRuntime ?? "",
-        maxRetries: form.values.maxRetries ?? "",
-        workspace: form.values.workspace ?? "",
-        sessionId: form.values.sessionId ?? "",
-        workflowTemplateId: form.values.workflowTemplateId ?? "",
-        stepKey: form.values.stepKey ?? "",
-        goalMode: form.values.goalMode === "on",
-        goalMaxTurns: form.values.goalMaxTurns ?? "",
-        goalJudgeProfile: form.values.goalJudgeProfile ?? "",
-        parentIds: form.values.parentIds ?? "",
-      };
+      values = Object.fromEntries(
+        Object.entries(form.values).map(([k, v]) => [
+          k,
+          k === "goal_mode" ? v === "on" : (v ?? ""),
+        ]),
+      ) as typeof values;
     }
   });
 
   let selectedTemplate = $derived(
-    data.templates.find((t) => t.templateId === values.workflowTemplateId),
+    data.templates.find((t) => t.templateId === values.workflow_template_id),
   );
-
-  let goalOpen = $derived(values.goalMode);
-
-  function disabled(flag: boolean): boolean {
-    return !flag;
-  }
 </script>
 
 <svelte:head>
@@ -125,8 +103,8 @@
         id="scheduled_at"
         name="scheduled_at"
         type="datetime-local"
-        disabled={disabled(data.flags.scheduledStatus)}
-        bind:value={values.scheduledAt}
+        disabled={!data.flags.scheduledStatus}
+        bind:value={values.scheduled_at}
       />
       {#if !data.flags.scheduledStatus}
         <span class="text-dim">Requires FF_SCHEDULED_STATUS</span>
@@ -139,7 +117,7 @@
         id="priority"
         name="priority"
         type="number"
-        disabled={disabled(data.flags.priorityInteger)}
+        disabled={!data.flags.priorityInteger}
         bind:value={values.priority}
       />
       {#if !data.flags.priorityInteger}
@@ -153,7 +131,7 @@
         id="tenant"
         name="tenant"
         type="text"
-        disabled={disabled(data.flags.tenantNamespace)}
+        disabled={!data.flags.tenantNamespace}
         bind:value={values.tenant}
       />
       {#if !data.flags.tenantNamespace}
@@ -167,8 +145,8 @@
         id="created_by"
         name="created_by"
         type="text"
-        disabled={disabled(data.flags.createdBy)}
-        bind:value={values.createdBy}
+        disabled={!data.flags.createdBy}
+        bind:value={values.created_by}
       />
       {#if !data.flags.createdBy}
         <span class="text-dim">Requires FF_CREATED_BY</span>
@@ -181,7 +159,7 @@
         id="skills"
         name="skills"
         type="text"
-        disabled={disabled(data.flags.skillsArray)}
+        disabled={!data.flags.skillsArray}
         bind:value={values.skills}
       />
       {#if !data.flags.skillsArray}
@@ -195,8 +173,8 @@
         id="model_override"
         name="model_override"
         type="text"
-        disabled={disabled(data.flags.modelOverride)}
-        bind:value={values.modelOverride}
+        disabled={!data.flags.modelOverride}
+        bind:value={values.model_override}
       />
       {#if !data.flags.modelOverride}
         <span class="text-dim">Requires FF_MODEL_OVERRIDE</span>
@@ -209,8 +187,8 @@
         id="max_runtime"
         name="max_runtime"
         type="text"
-        disabled={disabled(data.flags.maxRuntime)}
-        bind:value={values.maxRuntime}
+        disabled={!data.flags.maxRuntime}
+        bind:value={values.max_runtime}
       />
       {#if !data.flags.maxRuntime}
         <span class="text-dim">Requires FF_MAX_RUNTIME</span>
@@ -223,8 +201,8 @@
         id="max_retries"
         name="max_retries"
         type="number"
-        disabled={disabled(data.flags.maxRetries)}
-        bind:value={values.maxRetries}
+        disabled={!data.flags.maxRetries}
+        bind:value={values.max_retries}
       />
       {#if !data.flags.maxRetries}
         <span class="text-dim">Requires FF_MAX_RETRIES</span>
@@ -237,7 +215,7 @@
         id="workspace"
         name="workspace"
         type="text"
-        disabled={disabled(data.flags.defaultWorkdir)}
+        disabled={!data.flags.defaultWorkdir}
         bind:value={values.workspace}
       />
       {#if !data.flags.defaultWorkdir}
@@ -251,8 +229,8 @@
         id="session_id"
         name="session_id"
         type="text"
-        disabled={disabled(data.flags.listFiltersSort)}
-        bind:value={values.sessionId}
+        disabled={!data.flags.listFiltersSort}
+        bind:value={values.session_id}
       />
       {#if !data.flags.listFiltersSort}
         <span class="text-dim">Requires FF_LIST_FILTERS_SORT</span>
@@ -264,8 +242,8 @@
       <select
         id="workflow_template_id"
         name="workflow_template_id"
-        disabled={disabled(data.flags.workflowTemplates)}
-        bind:value={values.workflowTemplateId}
+        disabled={!data.flags.workflowTemplates}
+        bind:value={values.workflow_template_id}
       >
         <option value="">—</option>
         {#each data.templates as t}
@@ -280,7 +258,7 @@
     {#if selectedTemplate}
       <div class="stack-sm">
         <label for="step_key">Step key</label>
-        <select id="step_key" name="step_key" bind:value={values.stepKey}>
+        <select id="step_key" name="step_key" bind:value={values.step_key}>
           <option value="">First step ({selectedTemplate.steps[0]})</option>
           {#each selectedTemplate.steps as step}
             <option value={step}>{step}</option>
@@ -295,8 +273,8 @@
           id="goal_mode"
           name="goal_mode"
           type="checkbox"
-          disabled={disabled(data.flags.goalMode)}
-          bind:checked={values.goalMode}
+          disabled={!data.flags.goalMode}
+          bind:checked={values.goal_mode}
         />
         Goal mode
       </label>
@@ -305,19 +283,19 @@
       {/if}
     </div>
 
-    {#if goalOpen}
+    {#if values.goal_mode}
       <div class="stack-sm">
         <label for="goal_max_turns">Goal max turns</label>
         <input
           id="goal_max_turns"
           name="goal_max_turns"
           type="number"
-          bind:value={values.goalMaxTurns}
+          bind:value={values.goal_max_turns}
         />
       </div>
       <div class="stack-sm">
         <label for="goal_judge_profile">Goal judge profile</label>
-        <select id="goal_judge_profile" name="goal_judge_profile" bind:value={values.goalJudgeProfile}>
+        <select id="goal_judge_profile" name="goal_judge_profile" bind:value={values.goal_judge_profile}>
           <option value="">—</option>
           {#each data.profiles as p}
             <option value={p.name}>{p.name}</option>
@@ -332,8 +310,8 @@
         id="parent_ids"
         name="parent_ids"
         type="text"
-        disabled={disabled(data.flags.createParent)}
-        bind:value={values.parentIds}
+        disabled={!data.flags.createParent}
+        bind:value={values.parent_ids}
       />
       {#if !data.flags.createParent}
         <span class="text-dim">Requires FF_CREATE_PARENT</span>
