@@ -150,7 +150,7 @@ describe("KDI-UI-004 task create/edit bridge", () => {
 
   it("createTaskJson rejects missing title", async () => {
     const slug = await freshBoard();
-    await expectBridgeError(createTaskJson(slug, { title: "" }), "invalid_input", 400);
+    await expect(createTaskJson(slug, { title: "" })).rejects.toThrow("Title is required.");
   });
 
   it("editTaskJson updates body", async () => {

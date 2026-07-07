@@ -226,7 +226,7 @@ function wrap(err: unknown): BridgeError {
   if (/Invalid .*slug.*Slugs may only contain/.test(message)) return new BridgeError("invalid_slug", 400, message);
   if (/already exists/.test(message)) return new BridgeError("board_exists", 409, message);
   if (/not found or is archived/.test(message)) return new BridgeError("board_not_found", 404, message);
-  if (/cannot be empty|must be 255|requires scheduled_at|A board id is required|title is required/.test(message))
+  if (/cannot be empty|must be 255|requires scheduled_at|A board id is required|Title is required/.test(message))
     return new BridgeError("invalid_input", 400, message);
   if (/Database not initialized/.test(message)) return new BridgeError("db_not_initialized", 500, message);
   return new BridgeError("internal", 500, message);
@@ -744,7 +744,7 @@ export async function createTaskJson(slug: string, body: CreateTaskBody, parentI
   // `archived` (not a legal initial status). ponytail: never simplify away
   // input validation at trust boundaries.
   if (typeof body.title !== "string" || body.title.trim() === "")
-    throw new BridgeError("invalid_input", 400, "title is required");
+    throw new BridgeError("invalid_input", 400, "Title is required.");
   if ((body.initialStatus as string) === "archived")
     throw new BridgeError("invalid_input", 400, "initialStatus 'archived' is not allowed.");
   const board = await resolveBoard(slug);

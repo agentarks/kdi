@@ -13,9 +13,14 @@ export const load: PageServerLoad = async ({ params }) => {
     throw error(404, "UI disabled");
   }
   const { board } = await showBoardJson(params.slug);
-  const { task } = await showTaskJson(params.slug, Number(params.id));
-  if (!task) {
-    throw error(404, `Task ${params.id} not found.`);
+  let task;
+  try {
+    ({ task } = await showTaskJson(params.slug, Number(params.id)));
+  } catch (err) {
+    if (err instanceof BridgeError && err.code === "task_not_found") {
+      throw error(404, `Task ${params.id} not found.`);
+    }
+    throw err;
   }
   return { board, task, flags: { sveltekitFrontend: isSvelteKitEnabled() } };
 };

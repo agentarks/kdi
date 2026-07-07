@@ -31,7 +31,7 @@ async function waitAlive(timeoutMs = 30000): Promise<void> {
   throw new Error(`dev server did not come alive on :${PORT} within ${timeoutMs}ms`);
 }
 
-async function startServer(flag = true): Promise<void> {
+async function startServer(flag = true, extraEnv: Record<string, string> = {}): Promise<void> {
   if (proc) {
     try {
       proc.kill();
@@ -52,6 +52,21 @@ async function startServer(flag = true): Promise<void> {
       FF_SVELTEKIT_FRONTEND: flag ? "true" : "false",
       VITE_FF_SVELTEKIT_FRONTEND: flag ? "true" : "false",
       NODE_ENV: "development",
+      // Enable all per-field flags so the form exercises full-field validation.
+      FF_SCHEDULED_STATUS: "true",
+      FF_PRIORITY_INTEGER: "true",
+      FF_TENANT_NAMESPACE: "true",
+      FF_CREATED_BY: "true",
+      FF_SKILLS_ARRAY: "true",
+      FF_MODEL_OVERRIDE: "true",
+      FF_MAX_RUNTIME: "true",
+      FF_MAX_RETRIES: "true",
+      FF_DEFAULT_WORKDIR: "true",
+      FF_LIST_FILTERS_SORT: "true",
+      FF_WORKFLOW_TEMPLATES: "true",
+      FF_GOAL_MODE: "true",
+      FF_CREATE_PARENT: "true",
+      ...extraEnv,
     },
     stdout: "ignore",
     stderr: "ignore",
@@ -155,6 +170,89 @@ describe("KDI-UI-004 HTTP smoke (dev server, isolated HOME/KDI_DB)", () => {
     expect(data[1]).toBe("Title is required.");
     const bodyIndex = data[2].body as number;
     expect(data[bodyIndex]).toBe("kept");
+  }, 60000);
+
+  it("create form rejects empty optional fields with required messages", async () => {
+    await startServer(true);
+    await createBoardApi("empty");
+
+    const cases = [
+      { field: "tenant", value: "", expected: "Tenant cannot be empty." },
+      { field: "created_by", value: "", expected: "Created-by cannot be empty." },
+      { field: "model_override", value: "", expected: "Model cannot be empty." },
+      { field: "workspace", value: "", expected: "Workspace cannot be empty." },
+      { field: "session_id", value: "", expected: "Session ID cannot be empty." },
+      { field: "tenant", value: "   ", expected: "Tenant cannot be empty." },
+      { field: "created_by", value: "   ", expected: "Created-by cannot be empty." },
+    ];
+
+    for (const c of cases) {
+      const form = new URLSearchParams();
+      form.set("title", "valid title");
+      form.set(c.field, c.value);
+      const r = await fetch(`${BASE_URL}/boards/empty/tasks/new`, {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: form.toString(),
+      });
+      const result = (await r.json()) as { type: string; status: number; data: string };
+      expect(result.type).toBe("failure");
+      expect(result.status).toBe(400);
+      const data = JSON.parse(result.data) as [unknown, string, ...unknown[]];
+      expect(data[1]).toBe(c.expected);
+    }
+  }, 60000);
+
+  it("create form rejects disabled per-field flags with feature messages", async () => {
+    await startServer(true, {
+      FF_TENANT_NAMESPACE: "false",
+      FF_CREATED_BY: "false",
+      FF_MODEL_OVERRIDE: "false",
+      FF_DEFAULT_WORKDIR: "false",
+      FF_LIST_FILTERS_SORT: "false",
+      FF_SCHEDULED_STATUS: "false",
+      FF_PRIORITY_INTEGER: "false",
+      FF_SKILLS_ARRAY: "false",
+      FF_MAX_RUNTIME: "false",
+      FF_MAX_RETRIES: "false",
+      FF_WORKFLOW_TEMPLATES: "false",
+      FF_GOAL_MODE: "false",
+      FF_CREATE_PARENT: "false",
+    });
+    await createBoardApi("disabled");
+
+    const cases = [
+      { field: "tenant", value: "acme", expected: "Tenant namespace feature is not enabled." },
+      { field: "created_by", value: "alice", expected: "Created-by tracking is not enabled." },
+      { field: "model_override", value: "gpt-4o", expected: "Model override feature is not enabled." },
+      { field: "workspace", value: "/tmp", expected: "Default workdir feature is not enabled." },
+      { field: "session_id", value: "s1", expected: "List filters and sort feature is not enabled." },
+    ];
+
+    for (const c of cases) {
+      const form = new URLSearchParams();
+      form.set("title", "valid title");
+      form.set(c.field, c.value);
+      const r = await fetch(`${BASE_URL}/boards/disabled/tasks/new`, {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: form.toString(),
+      });
+      const result = (await r.json()) as { type: string; status: number; data: string };
+      expect(result.type).toBe("failure");
+      expect(result.status).toBe(400);
+      const data = JSON.parse(result.data) as [unknown, string, ...unknown[]];
+      expect(data[1]).toBe(c.expected);
+    }
+  }, 60000);
+
+  it("edit route renders 404 with spec message for missing task", async () => {
+    await startServer(true);
+    await createBoardApi("missing");
+    const r = await fetch(`${BASE_URL}/boards/missing/tasks/999/edit`);
+    expect(r.status).toBe(404);
+    const text = await r.text();
+    expect(text).toContain("Task 999 not found.");
   }, 60000);
 
   it("form actions reject mutations when FF_SVELTEKIT_FRONTEND is off", async () => {

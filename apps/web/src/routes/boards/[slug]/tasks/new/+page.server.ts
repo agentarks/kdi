@@ -27,7 +27,7 @@ const SKILL_NAME_PATTERN = /^[a-zA-Z0-9_-]+$/;
 function getString(data: FormData, name: string): string | undefined {
   const value = data.get(name);
   if (value === null) return undefined;
-  return value.toString().trim() || undefined;
+  return value.toString().trim();
 }
 
 function getCheckbox(data: FormData, name: string): boolean {

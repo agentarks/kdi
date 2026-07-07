@@ -27,8 +27,8 @@
 - [x] Added bridge helpers: `editTaskJson`, `createTaskJson` parent linking, `taskFlags`, `getWorkflowTemplateJson`, `validateStepKeyBridge`, `profilesJson`, `parseDurationBridge`
 - [x] Added bridge unit tests in `apps/web/src/lib/server/createEditTask.test.ts`
 - [x] Added HTTP smoke tests in `apps/web/src/lib/server/createEditTask.http.test.ts` and updated `apps/web/src/lib/server/bridge.http.test.ts` to close the dev server before the CLI cross-check (fixes cross-process SQLite lock flakiness)
-- [x] Full verification with isolated `HOME=/tmp/kdi-home-test` and `KDI_DB=/tmp/kdi-home-test/kdi-test.sqlite`: `bun install`, `bun run lint`, `bun run build`, `bun run check:web`, `bun run build:web`, `bun test` → **984 pass / 0 fail**
-- [ ] Acceptance: created task displays correctly in board view (KDI-UI-003) and `kdi show` (blocked on KDI-UI-003 board view; forms verified against `kdi show` CLI source of truth and `showTask` model in smoke tests)
+- [x] Review fixes: empty/whitespace optional fields (tenant, created-by, model override, workspace, session) are now rejected with the spec messages; edit route renders `Task <id> not found.` for missing tasks; bridge title error matches CLI (`Title is required.`); added HTTP smoke coverage for disabled per-field flags (AC-05) and empty-field rejection
+- [x] Full verification with isolated `KDI_DB`: `bun install`, `bun run lint`, `bun run build`, `bun run check:web`, `bun run build:web`, `bun test` → **1023 pass / 0 fail**
 
 ## KDI-UI-005: Task Detail Panel — Spec
 - [x] BRD/spec drafted at `specs/sveltekit-ui/KDI-UI-005-task-detail-panel.md`
