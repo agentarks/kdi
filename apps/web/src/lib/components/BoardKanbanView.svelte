@@ -33,7 +33,7 @@
 </script>
 
 <div class="board-view">
-  <header class="board-header">
+  <header class="board-view-header">
     <h1>Board: {board.name ?? board.slug}</h1>
     {#if board.archivedAt !== null}
       <span class="archived-tag">archived</span>
@@ -53,33 +53,3 @@
   <KanbanBoard {tasks} board={displayBoard} {capabilities} />
 </div>
 
-<style>
-  .board-view {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-    height: 100%;
-  }
-  .board-header {
-    display: flex;
-    align-items: baseline;
-    gap: 0.75rem;
-    flex-wrap: wrap;
-  }
-  .board-header h1 {
-    margin: 0;
-    font-size: 1.25rem;
-  }
-  .archived-tag {
-    font-size: 0.75rem;
-    text-transform: uppercase;
-    padding: 0.1rem 0.4rem;
-    border-radius: 0.25rem;
-    background: var(--color-muted, #e5e7eb);
-    color: var(--color-muted-text, #4b5563);
-  }
-  .board-meta {
-    font-size: 0.85rem;
-    color: var(--color-dim, #6b7280);
-  }
-</style>

@@ -1,5 +1,13 @@
 # kdi — Status
 
+## SvelteKit UI Design Refresh — Applied
+- [x] Selected design direction: **Brutalist Soft — Yellow** (after exploring 10+ modern directions and focused variations)
+- [x] Added `PRODUCT.md` and `DESIGN.md` at project root to lock down product context, tone, color strategy, typography, elevation, and component rules
+- [x] Rewrote `apps/web/src/app.css` with new token system: light background, black outlines, white surfaces, yellow accent, offset shadows
+- [x] Removed conflicting scoped component styles from `KanbanBoard`, `KanbanColumn`, `TaskCard`, `BoardKanbanView`, `KanbanFilterBar`, and board routes
+- [x] Deleted throwaway `apps/web/static/design-preview.html`
+- [x] Verification: `bun run lint`, `bun run test` (1006 pass / 0 fail), `bun run build`, `bun run check:web`, `bun run build:web` all pass
+
 ## SvelteKit UI Backlog - Drafted
 - [x] Drafted UI backlog at `specs/sveltekit-ui-backlog.md` based on implemented Hermes/KDI parity features.
 - [x] Linked frontend backlog from `specs/hermes-kanban-backlog.md`.

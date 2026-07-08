@@ -36,13 +36,3 @@
   {/each}
 </div>
 
-<style>
-  .kanban-board {
-    display: grid;
-    grid-template-columns: repeat(9, minmax(16rem, 1fr));
-    gap: 0.75rem;
-    overflow-x: auto;
-    flex: 1 1 auto;
-    min-height: 0;
-  }
-</style>

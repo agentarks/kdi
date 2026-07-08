@@ -26,33 +26,3 @@
   </div>
 </div>
 
-<style>
-  .kanban-column {
-    display: flex;
-    flex-direction: column;
-    min-width: 16rem;
-    background: var(--color-surface, #f9fafb);
-    border: 1px solid var(--color-border, #e5e7eb);
-    border-radius: 0.5rem;
-    overflow: hidden;
-  }
-  .column-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 0.5rem 0.75rem;
-    background: var(--color-muted, #e5e7eb);
-    font-weight: 600;
-  }
-  .column-count {
-    font-size: 0.85rem;
-    color: var(--color-dim, #6b7280);
-  }
-  .column-cards {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    padding: 0.5rem;
-    overflow-y: auto;
-  }
-</style>

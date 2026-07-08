@@ -106,33 +106,3 @@
   </div>
 {/if}
 
-<style>
-  .flex-between {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    flex-wrap: wrap;
-  }
-  .actions {
-    display: flex;
-    gap: 8px;
-  }
-  .board-detail {
-    display: grid;
-    gap: 8px;
-  }
-  .detail-row {
-    display: grid;
-    grid-template-columns: 140px 1fr;
-    gap: 12px;
-    align-items: baseline;
-  }
-  dt {
-    color: var(--text-dim);
-    font-size: 13px;
-  }
-  dd {
-    margin: 0;
-  }
-</style>
