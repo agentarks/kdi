@@ -11,16 +11,17 @@ A modern brutalist style with softened edges: heavy black outlines, white surfac
 Restrained palette with one strong accent:
 
 - **Background:** `#fafafa`
-- **Surface:** `#ffffff`
+- **Surface:** `#fdfdfd` (slightly tinted white, not pure `#fff`)
 - **Surface secondary:** `#f5f5f5`
 - **Border / outline:** `#1a1a1a`
 - **Text:** `#1a1a1a`
 - **Text dim:** `#666666`
-- **Accent:** `#fff176` (soft yellow)
+- **Accent:** `#fff176` (soft yellow) — reserved for small badges, primary buttons, and the flag badge
+- **Accent muted:** `#fff9c4` — used for larger active areas such as the selected navigation item
 - **Accent text:** `#1a1a1a`
 - **Warning:** `#ff6b6b`
 
-No gradients, no `#000`, no `#fff`, no glass, no blur.
+No gradients, no `#000`, no glass, no blur. Pure `#fff` is avoided on large surfaces; the surface token uses `#fdfdfd` to keep the palette consistent while remaining legible on `#fafafa` backgrounds.
 
 ## Typography
 
@@ -61,14 +62,14 @@ No gradients, no `#000`, no `#fff`, no glass, no blur.
 - Padding: 6px 12px
 
 ### Card
-- Background: `#ffffff`
+- Background: `#fdfdfd`
 - Border: 1px solid `#1a1a1a`
 - Radius: 6px
 - Shadow: `2px 2px 0 #1a1a1a`
 - Hover: shift 1px, reduce shadow to 1px
 
 ### Column
-- Background: `#ffffff`
+- Background: `#fdfdfd`
 - Border: 1px solid `#1a1a1a`
 - Radius: 8px
 - Shadow: `3px 3px 0 #1a1a1a`
@@ -89,7 +90,7 @@ No gradients, no `#000`, no `#fff`, no glass, no blur.
 ### Navigation item
 - Default: transparent
 - Hover: white background, inset outline 1px
-- Active: yellow background, inset outline 2px
+- Active: muted yellow (`#fff9c4`) background, inset outline 2px
 
 ## Layout
 
@@ -98,6 +99,23 @@ No gradients, no `#000`, no `#fff`, no glass, no blur.
 - Sidebar padding: 20px 16px
 - Column gap: 18px
 - Card gap: 12px
+
+## Responsive behavior
+
+- Sidebar becomes a horizontal strip at ≤768px
+- Kanban columns reflow with `auto-fill` and collapse to a single column on mobile
+- Board detail definition lists stack vertically on mobile
+- Tables remain horizontal-scroll; no mobile table transform is required for this phase
+
+## Accessibility
+
+- Visible `:focus-visible` outline on all interactive elements (`2px solid var(--border)`)
+- `prefers-reduced-motion` media query disables transitions and animations
+- Archived rows use `opacity: 0.6`; ensure text contrast is verified if this value is lowered further
+
+## CSS architecture
+
+The app shell, base buttons, forms, tables, and utility classes live in `app.css`. Component-specific layout (kanban grid, column structure, card layout, filter bar layout, board detail layout) lives in the component’s own `<style>` block and consumes the global tokens.
 
 ## Motion
 
@@ -113,4 +131,4 @@ No gradients, no `#000`, no `#fff`, no glass, no blur.
 - Hero metric templates
 - Identical card grids without variation
 - Modals as default
-- `#000` or `#fff`
+- `#000` or pure `#fff` on large surfaces

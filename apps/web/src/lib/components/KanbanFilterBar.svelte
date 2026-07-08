@@ -149,3 +149,60 @@
   </div>
 </form>
 
+<style>
+  .filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: 12px;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    background: var(--surface);
+    margin-bottom: 16px;
+  }
+  .filter-field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .filter-field.inline {
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
+  }
+  .filter-field span {
+    font-size: 11px;
+    color: var(--text-dim);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+  .filter-field input,
+  .filter-field select {
+    padding: 5px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    box-shadow: var(--shadow-sm);
+    font-size: 13px;
+    color: var(--text);
+  }
+  .filter-field input:disabled,
+  .filter-field select:disabled {
+    opacity: 0.45;
+    box-shadow: none;
+    cursor: not-allowed;
+  }
+  .filter-actions {
+    display: flex;
+    gap: 8px;
+    margin-left: auto;
+  }
+  .btn.secondary {
+    background: var(--surface);
+    color: var(--text);
+  }
+</style>
+

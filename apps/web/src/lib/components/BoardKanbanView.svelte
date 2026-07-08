@@ -53,3 +53,37 @@
   <KanbanBoard {tasks} board={displayBoard} {capabilities} />
 </div>
 
+<style>
+  .board-view {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    height: 100%;
+  }
+  .board-view-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .board-view-header h1 {
+    margin: 0;
+    font-size: 24px;
+    font-weight: 600;
+  }
+  .archived-tag {
+    font-size: 11px;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: var(--radius-sm);
+    background: var(--warning);
+    color: var(--surface);
+    border: 1px solid var(--border);
+    font-weight: 600;
+  }
+  .board-meta {
+    font-size: 13px;
+    color: var(--text-dim);
+  }
+</style>
+

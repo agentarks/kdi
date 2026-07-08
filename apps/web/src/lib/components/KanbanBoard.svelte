@@ -36,3 +36,18 @@
   {/each}
 </div>
 
+<style>
+  .kanban-board {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+    gap: 18px;
+    align-content: start;
+  }
+
+  @media (max-width: 768px) {
+    .kanban-board {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
+

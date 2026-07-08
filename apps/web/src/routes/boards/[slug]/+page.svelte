@@ -106,3 +106,36 @@
   </div>
 {/if}
 
+<style>
+  .board-detail {
+    display: grid;
+    gap: 8px;
+    margin: 0 0 16px;
+    padding: 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+  }
+  .detail-row {
+    display: grid;
+    grid-template-columns: 140px 1fr;
+    gap: 12px;
+    align-items: baseline;
+  }
+  .detail-row dt {
+    color: var(--text-dim);
+    font-size: 13px;
+    font-weight: 500;
+  }
+  .detail-row dd {
+    margin: 0;
+  }
+  @media (max-width: 768px) {
+    .detail-row {
+      grid-template-columns: 1fr;
+      gap: 4px;
+    }
+  }
+</style>
+

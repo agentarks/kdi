@@ -52,3 +52,9 @@
     <BoardActions {board} {current} {flags} {form} />
   </td>
 </tr>
+
+<style>
+  .badge {
+    margin-left: 6px;
+  }
+</style>

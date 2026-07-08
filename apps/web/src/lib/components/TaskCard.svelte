@@ -56,3 +56,57 @@
   {/if}
 </a>
 
+<style>
+  .task-card {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 14px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    box-shadow: var(--shadow-sm);
+    color: var(--text);
+    text-decoration: none;
+    font-size: 13px;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+  .task-card:hover {
+    transform: translate(1px, 1px);
+    box-shadow: var(--shadow-hover);
+    text-decoration: none;
+  }
+  .card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .task-id {
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+    font-size: 11px;
+  }
+  .priority {
+    font-weight: 700;
+    font-size: 12px;
+  }
+  .task-title {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 1.45;
+  }
+  .card-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: var(--text-dim);
+    font-size: 12px;
+  }
+  .assignee {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+</style>
+
