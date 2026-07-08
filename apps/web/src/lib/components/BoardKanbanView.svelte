@@ -36,7 +36,7 @@
   <header class="board-view-header">
     <h1>Board: {board.name ?? board.slug}</h1>
     {#if board.archivedAt !== null}
-      <span class="archived-tag">archived</span>
+      <span class="badge archived-tag">archived</span>
     {/if}
     <span class="board-meta">{board.workdir} · {board.baseRef}</span>
   </header>
@@ -69,16 +69,6 @@
   .board-view-header h1 {
     margin: 0;
     font-size: 24px;
-    font-weight: 600;
-  }
-  .archived-tag {
-    font-size: 11px;
-    text-transform: uppercase;
-    padding: 3px 8px;
-    border-radius: var(--radius-sm);
-    background: var(--warning);
-    color: var(--surface);
-    border: 1px solid var(--border);
     font-weight: 600;
   }
   .board-meta {

@@ -11,7 +11,8 @@
 - [x] Fixed warning badge contrast: warning badges now use dark text (`#1a1a1a`) on `#ff6b6b` backgrounds
 - [x] Fixed primary button focus: `.btn--primary:focus-visible` uses accent (`#fff176`) outline
 - [x] Fixed button shadow: all buttons now use `#fff176` accent shadow per `DESIGN.md`
-- [x] Restored `.badge.archived-tag` styling
+- [x] Restored `.badge.archived-tag` styling and removed duplicate scoped `.archived-tag` in `BoardKanbanView.svelte`; switched archived board tag to use global `.badge.archived-tag`
+- [x] Combined `.badge.warn`, `.badge.archived-tag`, and `.badge.stale` into one shared rule in `app.css`
 - [x] Fixed body font: app shell no longer forces `Space Grotesk`; UI chrome uses `Space Grotesk`, `.work-area` uses `Inter`
 - [x] Added tokens for success and semantic badge colors; documented in `DESIGN.md`
 - [x] Deleted redundant per-element focus-visible rules and redundant `.btn.secondary` override in `KanbanFilterBar`

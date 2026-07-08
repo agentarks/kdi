@@ -313,11 +313,9 @@ textarea {
   color: var(--accent-text);
   border: 1px solid var(--border);
 }
-.badge.warn {
-  background: var(--warning);
-  color: var(--warning-text);
-}
-.badge.archived-tag {
+.badge.warn,
+.badge.archived-tag,
+.badge.stale {
   background: var(--warning);
   color: var(--warning-text);
 }
@@ -329,14 +327,7 @@ textarea {
   background: var(--badge-created-by-bg);
   color: var(--badge-created-by-text);
 }
-.badge.reason {
-  background: var(--badge-reason-bg);
-  color: var(--badge-reason-text);
-}
-.badge.stale {
-  background: var(--warning);
-  color: var(--warning-text);
-}
+.badge.reason,
 .badge.rate-limited {
   background: var(--badge-reason-bg);
   color: var(--badge-reason-text);
