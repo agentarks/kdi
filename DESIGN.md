@@ -20,12 +20,17 @@ Restrained palette with one strong accent:
 - **Accent muted:** `#fff9c4` — used for larger active areas such as the selected navigation item
 - **Accent text:** `#1a1a1a`
 - **Warning:** `#ff6b6b`
+- **Warning text:** `#1a1a1a` (dark text on warning backgrounds for WCAG AA contrast)
+- **Success:** `#10b981`
+- **Tenant badge:** `#dbeafe` background, `#1e40af` text
+- **Created-by badge:** `#ede9fe` background, `#5b21b6` text
+- **Reason badge:** `#ffedd5` background, `#9a3412` text
 
 No gradients, no `#000`, no glass, no blur. Pure `#fff` is avoided on large surfaces; the surface token uses `#fdfdfd` to keep the palette consistent while remaining legible on `#fafafa` backgrounds.
 
 ## Typography
 
-- **Font:** `Space Grotesk` for UI, `Inter` for body text
+- **Font:** `Space Grotesk` for UI chrome (topbar, sidebar, nav, buttons, command bar, forms), `Inter` for body text inside `.work-area`
 - **Hierarchy:** weight and size contrast, no decorative styles
 - **Body:** 13–14px, line-height 1.45
 - **Headings:** 24px board title, 36px page title, weight 600–700
@@ -47,12 +52,13 @@ No gradients, no `#000`, no glass, no blur. Pure `#fff` is avoided on large surf
 ## Components
 
 ### Button
-- Background: `#1a1a1a`
-- Text: `#ffffff`
+- Background: `#1a1a1a` (primary) / `#fdfdfd` (default)
+- Text: `#fdfdfd` (primary) / `#1a1a1a` (default)
 - Border: 1px solid `#1a1a1a`
 - Radius: 6px
-- Shadow: `2px 2px 0 #fff176`
-- Hover: shift 1px and reduce shadow
+- Shadow: `2px 2px 0 #fff176` (accent shadow for all buttons)
+- Hover: shift 1px and reduce shadow to `1px 1px 0 #1a1a1a`
+- Focus-visible: `2px solid #fff176` outline for primary buttons
 
 ### Input / Select
 - Background: transparent
@@ -79,7 +85,10 @@ No gradients, no `#000`, no glass, no blur. Pure `#fff` is avoided on large surf
 - Background: `#fff176`
 - Text: `#1a1a1a`
 - Radius: 6px
-- Warning: `#ff6b6b` background, white text
+- Warning / archived / stale: `#ff6b6b` background, `#1a1a1a` text
+- Tenant: `#dbeafe` background, `#1e40af` text
+- Created-by: `#ede9fe` background, `#5b21b6` text
+- Reason / rate-limited: `#ffedd5` background, `#9a3412` text
 
 ### Avatar
 - Background: `#1a1a1a`
@@ -116,6 +125,8 @@ No gradients, no `#000`, no glass, no blur. Pure `#fff` is avoided on large surf
 ## CSS architecture
 
 The app shell, base buttons, forms, tables, and utility classes live in `app.css`. Component-specific layout (kanban grid, column structure, card layout, filter bar layout, board detail layout) lives in the component’s own `<style>` block and consumes the global tokens.
+
+Fonts are loaded via Google Fonts `@import` in `app.css` for now; self-hosting is the recommended next step to avoid render-blocking and simplify CSP.
 
 ## Motion
 

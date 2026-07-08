@@ -200,9 +200,5 @@
     gap: 8px;
     margin-left: auto;
   }
-  .btn.secondary {
-    background: var(--surface);
-    color: var(--text);
-  }
 </style>
 

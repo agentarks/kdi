@@ -8,9 +8,16 @@
 - [x] Made kanban board responsive: `auto-fill` grid, single-column collapse at ≤768px
 - [x] Added accessibility baseline: `focus-visible` outlines, `prefers-reduced-motion` support, mobile sidebar breakpoint
 - [x] Fixed design system consistency: surface `#fdfdfd`, active nav uses muted yellow `#fff9c4`, consolidated duplicate `.badge` declarations
+- [x] Fixed warning badge contrast: warning badges now use dark text (`#1a1a1a`) on `#ff6b6b` backgrounds
+- [x] Fixed primary button focus: `.btn--primary:focus-visible` uses accent (`#fff176`) outline
+- [x] Fixed button shadow: all buttons now use `#fff176` accent shadow per `DESIGN.md`
+- [x] Restored `.badge.archived-tag` styling
+- [x] Fixed body font: app shell no longer forces `Space Grotesk`; UI chrome uses `Space Grotesk`, `.work-area` uses `Inter`
+- [x] Added tokens for success and semantic badge colors; documented in `DESIGN.md`
+- [x] Deleted redundant per-element focus-visible rules and redundant `.btn.secondary` override in `KanbanFilterBar`
 - [x] Deleted throwaway `apps/web/static/design-preview.html`
 - [x] Verification: `bun run lint`, `bun run test` (1006 pass / 0 fail), `bun run build`, `bun run check:web`, `bun run build:web` all pass
-- [ ] Review follow-up: further contrast audit for archived rows; consider self-hosting fonts to avoid Google Fonts render block
+- [ ] Review follow-up: further contrast audit for archived rows; self-host fonts to avoid Google Fonts render-block
 
 ## SvelteKit UI Backlog - Drafted
 - [x] Drafted UI backlog at `specs/sveltekit-ui-backlog.md` based on implemented Hermes/KDI parity features.
