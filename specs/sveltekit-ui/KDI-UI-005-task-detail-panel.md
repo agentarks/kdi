@@ -272,38 +272,38 @@ No new feature flag is introduced by this BRD.
 -------------------------------------------------------------------------------
 Acceptance Criteria
 -------------------------------------------------------------------------------
-- [ ] AC-01: A `/tasks/[id]` page exists and renders the task detail panel.
-- [ ] AC-02: The board view (KDI-UI-003) links each task card to its detail page.
-- [ ] AC-03: `GET /api/boards/[slug]/tasks/[id]/detail` returns a `TaskDetail`
+- [x] AC-01: A `/tasks/[id]` page exists and renders the task detail panel.
+- [x] AC-02: The board view (KDI-UI-003) links each task card to its detail page.
+- [x] AC-03: `GET /api/boards/[slug]/tasks/[id]/detail` returns a `TaskDetail`
       JSON shape covering the data exposed by `kdi show`, `kdi runs`, `kdi tail`,
       `kdi log`, `kdi context`, and `kdi attach`: task, parents, children, handoff,
       log presence, runs, events, comments, attachments, and context.
-- [ ] AC-04: The detail panel displays the task header (title, status, priority,
+- [x] AC-04: The detail panel displays the task header (title, status, priority,
       assignee, tenant, created by, age) without page errors.
-- [ ] AC-05: The detail panel displays the body, result, and summary sections.
-- [ ] AC-06: The detail panel displays metadata fields conditionally based on
+- [x] AC-05: The detail panel displays the body, result, and summary sections.
+- [x] AC-06: The detail panel displays metadata fields conditionally based on
       their existing backend feature flags.
-- [ ] AC-07: The detail panel displays comments with author and timestamp.
-- [ ] AC-08: The detail panel displays attachments with filename, size, content
+- [x] AC-07: The detail panel displays comments with author and timestamp.
+- [x] AC-08: The detail panel displays attachments with filename, size, content
       type, uploader, and timestamp when the feature is enabled.
-- [ ] AC-09: The detail panel displays parent and child task links.
-- [ ] AC-10: The detail panel displays the bounded context when `FF_CONTEXT_BUILDER` is on.
-- [ ] AC-11: The detail panel displays the runs section and supports run
+- [x] AC-09: The detail panel displays parent and child task links.
+- [x] AC-10: The detail panel displays the bounded context when `FF_CONTEXT_BUILDER` is on.
+- [x] AC-11: The detail panel displays the runs section and supports run
       filtering by status/outcome when `FF_SHOW_RUN_FILTERING` is on.
-- [ ] AC-12: The detail panel displays events with follow and non-follow modes
+- [x] AC-12: The detail panel displays events with follow and non-follow modes
       and a pause/resume toggle.
-- [ ] AC-13: The detail panel displays the worker log section, supports follow
+- [x] AC-13: The detail panel displays the worker log section, supports follow
       and non-follow tail modes, and refreshes manually.
-- [ ] AC-14: The detail panel displays the worktree handoff section when a
+- [x] AC-14: The detail panel displays the worktree handoff section when a
       handoff event exists.
-- [ ] AC-15: Missing or empty sections show clear empty-state messages instead
+- [x] AC-15: Missing or empty sections show clear empty-state messages instead
       of blank areas.
-- [ ] AC-16: When `FF_SVELTEKIT_FRONTEND=false`, the routes return `503` and
+- [x] AC-16: When `FF_SVELTEKIT_FRONTEND=false`, the routes return `503` and
       the UI shows the disabled screen (already implemented by KDI-UI-000).
-- [ ] AC-17: A smoke test with temp `HOME` and temp `KDI_DB` creates a task via
+- [x] AC-17: A smoke test with temp `HOME` and temp `KDI_DB` creates a task via
       the CLI, opens the detail page, and asserts the panel displays the title,
       status, and body.
-- [ ] AC-18: `bun run lint`, `bun run build` (CLI), `bun run check:web`, and
+- [x] AC-18: `bun run lint`, `bun run build` (CLI), `bun run check:web`, and
       `bun run build:web` all pass with an isolated `KDI_DB`.
 
 -------------------------------------------------------------------------------

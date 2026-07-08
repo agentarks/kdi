@@ -37,3 +37,199 @@ export interface FormResult {
   success?: boolean;
   values?: Record<string, unknown>;
 }
+
+export interface TaskSummary {
+  id: number;
+  title: string;
+  status: string;
+  assignee: string | null;
+  priority: number;
+  tenant: string | null;
+  updatedAt: number;
+  archivedAt: number | null;
+}
+
+export interface TaskDetailTask {
+  id: number;
+  boardId: number;
+  title: string;
+  body: string | null;
+  assignee: string | null;
+  status: string;
+  priority: number;
+  tenant: string | null;
+  workspaceKind: string;
+  workspace: string | null;
+  branch: string | null;
+  result: string | null;
+  summary: string | null;
+  blockReason: string | null;
+  scheduleReason: string | null;
+  reviewReason: string | null;
+  createdBy: string;
+  skills: string[];
+  createdAt: number;
+  updatedAt: number;
+  startedAt: number | null;
+  archivedAt: number | null;
+  currentRunId: number | null;
+  claimLock: string | null;
+  claimExpires: number | null;
+  lastHeartbeatAt: number | null;
+  maxRuntimeSeconds: number | null;
+  maxRetries: number | null;
+  consecutiveFailures: number;
+  idempotencyKey: string | null;
+  modelOverride: string | null;
+  rateLimitedUntil: number | null;
+  scheduledAt: number | null;
+  sessionId: string | null;
+  workflowTemplateId: string | null;
+  currentStepKey: string | null;
+  swarmParentId: number | null;
+  goalMode: boolean;
+  goalMaxTurns: number | null;
+  goalRemainingTurns: number | null;
+  goalJudgeProfile: string | null;
+}
+
+export interface TaskDetailComment {
+  id: number;
+  taskId: number;
+  text: string;
+  author: string | null;
+  createdAt: number;
+}
+
+export interface TaskDetailAttachment {
+  id: number;
+  taskId: number;
+  filename: string;
+  storedPath: string;
+  contentType: string | null;
+  size: number;
+  uploadedBy: string | null;
+  createdAt: number;
+}
+
+export interface TaskDetailRun {
+  id: number;
+  taskId: number;
+  profile: string | null;
+  stepKey: string | null;
+  status: string;
+  claimLock: string | null;
+  claimExpires: number | null;
+  workerPid: number | null;
+  maxRuntimeSeconds: number | null;
+  lastHeartbeatAt: number | null;
+  startedAt: number;
+  spawnedAt: number | null;
+  endedAt: number | null;
+  outcome: string | null;
+  summary: string | null;
+  metadata: string | null;
+  error: string | null;
+}
+
+export interface TaskDetailEvent {
+  id: number;
+  taskId: number;
+  runId: number | null;
+  kind: string;
+  payload: string | null;
+  createdAt: number;
+}
+
+export interface TaskDetailContext {
+  taskId: number;
+  title: string;
+  assignee?: string;
+  status: string;
+  priority: number;
+  tenant?: string;
+  createdBy?: string;
+  body: string;
+  parents: Array<{ taskId: number; title: string; result: string; summary: string }>;
+  olderParentsOmitted: number;
+  priorAttempts: Array<{
+    runId: number;
+    profile: string | null;
+    status: string;
+    outcome: string | null;
+    summary: string;
+    error: string;
+    startedAt: number;
+    endedAt: number | null;
+  }>;
+  olderAttemptsOmitted: number;
+  roleHistory: Array<{ at: number; event: string; actor: string; note: string | null }>;
+  olderRoleHistoryOmitted: number;
+  comments: Array<{ id: number; author: string; text: string; createdAt: number }>;
+  olderCommentsOmitted: number;
+  attachments: Array<{ filename: string; absolutePath: string }>;
+}
+
+export interface TaskDetailHandoff {
+  branch: string;
+  worktreePath: string;
+  eventAt: number;
+}
+
+export interface TaskDetail {
+  task: TaskDetailTask;
+  parents: TaskSummary[];
+  children: TaskSummary[];
+  handoff: TaskDetailHandoff | null;
+  log: { present: boolean; path: string };
+  runs: TaskDetailRun[];
+  events: TaskDetailEvent[];
+  comments: TaskDetailComment[];
+  attachments: TaskDetailAttachment[];
+  context: TaskDetailContext | null;
+  contextError?: string;
+}
+
+export interface DetailFlags {
+  sveltekitFrontend: boolean;
+  contextBuilder: boolean;
+  taskAttachments: boolean;
+  showRunFiltering: boolean;
+  workerLogCapture: boolean;
+  commentEnhancements: boolean;
+  goalMode: boolean;
+  workflowTemplates: boolean;
+  heartbeat: boolean;
+  maxRuntime: boolean;
+  maxRetries: boolean;
+  rateLimitExitCode: boolean;
+  scheduledStatus: boolean;
+  skillsArray: boolean;
+  modelOverride: boolean;
+  createdBy: boolean;
+  tenantNamespace: boolean;
+  resultSummary: boolean;
+  worktreeHandoff: boolean;
+  priorityInteger: boolean;
+}
+
+export interface LogResponse {
+  present: boolean;
+  content?: string;
+  path?: string;
+  truncated?: boolean;
+  size?: number;
+  disabled?: boolean;
+}
+
+export interface DependenciesResponse {
+  parents: TaskSummary[];
+  children: TaskSummary[];
+}
+
+export interface HandoffResponse {
+  present: boolean;
+  branch?: string;
+  worktreePath?: string;
+  eventAt?: number;
+}

@@ -106,3 +106,14 @@ export const VALID_SORT_KEYS = [
 ] as const;
 
 export type SortKey = (typeof VALID_SORT_KEYS)[number];
+
+export function formatDate(seconds: number): string {
+  return new Date(seconds * 1000).toLocaleString();
+}
+
+export function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
