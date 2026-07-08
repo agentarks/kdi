@@ -1,5 +1,25 @@
 # kdi — Status
 
+## SvelteKit UI Design Refresh — Applied
+- [x] Selected design direction: **Brutalist Soft — Yellow** (after exploring 10+ modern directions and focused variations)
+- [x] Added `PRODUCT.md` and `DESIGN.md` at project root to lock down product context, tone, color strategy, typography, elevation, and component rules
+- [x] Rewrote `apps/web/src/app.css` with new token system: light background, black outlines, white surfaces, yellow accent, offset shadows
+- [x] Moved component-specific layout back into scoped `<style>` blocks for `KanbanBoard`, `KanbanColumn`, `TaskCard`, `BoardKanbanView`, `KanbanFilterBar`, `BoardListRow`, and board routes while keeping global tokens/utilities in `app.css`
+- [x] Made kanban board responsive: `auto-fill` grid, single-column collapse at ≤768px
+- [x] Added accessibility baseline: `focus-visible` outlines, `prefers-reduced-motion` support, mobile sidebar breakpoint
+- [x] Fixed design system consistency: surface `#fdfdfd`, active nav uses muted yellow `#fff9c4`, consolidated duplicate `.badge` declarations
+- [x] Fixed warning badge contrast: warning badges now use dark text (`#1a1a1a`) on `#ff6b6b` backgrounds
+- [x] Fixed primary button focus: `.btn--primary:focus-visible` uses accent (`#fff176`) outline
+- [x] Fixed button shadow: all buttons now use `#fff176` accent shadow per `DESIGN.md`
+- [x] Restored `.badge.archived-tag` styling and removed duplicate scoped `.archived-tag` in `BoardKanbanView.svelte`; switched archived board tag to use global `.badge.archived-tag`
+- [x] Combined `.badge.warn`, `.badge.archived-tag`, and `.badge.stale` into one shared rule in `app.css`
+- [x] Fixed body font: app shell no longer forces `Space Grotesk`; UI chrome uses `Space Grotesk`, `.work-area` uses `Inter`
+- [x] Added tokens for success and semantic badge colors; documented in `DESIGN.md`
+- [x] Deleted redundant per-element focus-visible rules and redundant `.btn.secondary` override in `KanbanFilterBar`
+- [x] Deleted throwaway `apps/web/static/design-preview.html`
+- [x] Verification: `bun run lint`, `bun run test` (1006 pass / 0 fail), `bun run build`, `bun run check:web`, `bun run build:web` all pass
+- [ ] Review follow-up: further contrast audit for archived rows; self-host fonts to avoid Google Fonts render-block
+
 ## SvelteKit UI Backlog - Drafted
 - [x] Drafted UI backlog at `specs/sveltekit-ui-backlog.md` based on implemented Hermes/KDI parity features.
 - [x] Linked frontend backlog from `specs/hermes-kanban-backlog.md`.

@@ -107,20 +107,15 @@
 {/if}
 
 <style>
-  .flex-between {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    flex-wrap: wrap;
-  }
-  .actions {
-    display: flex;
-    gap: 8px;
-  }
   .board-detail {
     display: grid;
     gap: 8px;
+    margin: 0 0 16px;
+    padding: 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
   }
   .detail-row {
     display: grid;
@@ -128,11 +123,19 @@
     gap: 12px;
     align-items: baseline;
   }
-  dt {
+  .detail-row dt {
     color: var(--text-dim);
     font-size: 13px;
+    font-weight: 500;
   }
-  dd {
+  .detail-row dd {
     margin: 0;
   }
+  @media (max-width: 768px) {
+    .detail-row {
+      grid-template-columns: 1fr;
+      gap: 4px;
+    }
+  }
 </style>
+

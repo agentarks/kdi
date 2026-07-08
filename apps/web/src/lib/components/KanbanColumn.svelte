@@ -31,28 +31,34 @@
     display: flex;
     flex-direction: column;
     min-width: 16rem;
-    background: var(--color-surface, #f9fafb);
-    border: 1px solid var(--color-border, #e5e7eb);
-    border-radius: 0.5rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
     overflow: hidden;
+    padding: 16px;
   }
   .column-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 0.5rem 0.75rem;
-    background: var(--color-muted, #e5e7eb);
+    margin-bottom: 14px;
     font-weight: 600;
+    font-size: 13px;
   }
   .column-count {
-    font-size: 0.85rem;
-    color: var(--color-dim, #6b7280);
+    font-size: 12px;
+    padding: 3px 10px;
+    border-radius: var(--radius-sm);
+    background: var(--border);
+    color: var(--surface);
+    font-weight: 600;
   }
   .column-cards {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
-    padding: 0.5rem;
+    gap: 12px;
     overflow-y: auto;
   }
 </style>
+

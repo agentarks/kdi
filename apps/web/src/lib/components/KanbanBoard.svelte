@@ -39,10 +39,15 @@
 <style>
   .kanban-board {
     display: grid;
-    grid-template-columns: repeat(9, minmax(16rem, 1fr));
-    gap: 0.75rem;
-    overflow-x: auto;
-    flex: 1 1 auto;
-    min-height: 0;
+    grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+    gap: 18px;
+    align-content: start;
+  }
+
+  @media (max-width: 768px) {
+    .kanban-board {
+      grid-template-columns: 1fr;
+    }
   }
 </style>
+

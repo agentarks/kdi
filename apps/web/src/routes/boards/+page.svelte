@@ -75,11 +75,3 @@
   </table>
 {/if}
 
-<style>
-  .flex-between {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-  }
-</style>

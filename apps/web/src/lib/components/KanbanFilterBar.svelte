@@ -154,51 +154,51 @@
     display: flex;
     flex-wrap: wrap;
     align-items: end;
-    gap: 0.75rem;
-    padding: 0.75rem;
-    border: 1px solid var(--color-border, #e5e7eb);
-    border-radius: 0.5rem;
-    background: var(--color-surface, #f9fafb);
+    gap: 12px;
+    padding: 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    background: var(--surface);
+    margin-bottom: 16px;
   }
   .filter-field {
     display: flex;
     flex-direction: column;
-    gap: 0.25rem;
+    gap: 4px;
   }
   .filter-field.inline {
     flex-direction: row;
     align-items: center;
-    gap: 0.4rem;
+    gap: 6px;
   }
   .filter-field span {
-    font-size: 0.75rem;
-    color: var(--color-dim, #6b7280);
+    font-size: 11px;
+    color: var(--text-dim);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
   }
   .filter-field input,
   .filter-field select {
-    padding: 0.35rem 0.5rem;
-    border: 1px solid var(--color-border, #d1d5db);
-    border-radius: 0.25rem;
-    background: white;
-    font-size: 0.85rem;
+    padding: 5px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    box-shadow: var(--shadow-sm);
+    font-size: 13px;
+    color: var(--text);
+  }
+  .filter-field input:disabled,
+  .filter-field select:disabled {
+    opacity: 0.45;
+    box-shadow: none;
+    cursor: not-allowed;
   }
   .filter-actions {
     display: flex;
-    gap: 0.5rem;
+    gap: 8px;
     margin-left: auto;
   }
-  .btn {
-    padding: 0.35rem 0.75rem;
-    border: 1px solid var(--color-border, #d1d5db);
-    border-radius: 0.25rem;
-    background: var(--color-primary, #2563eb);
-    color: white;
-    font-size: 0.85rem;
-    text-decoration: none;
-    cursor: pointer;
-  }
-  .btn.secondary {
-    background: white;
-    color: var(--color-text, #111827);
-  }
 </style>
+
