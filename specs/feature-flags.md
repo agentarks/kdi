@@ -76,7 +76,7 @@ stateDiagram-v2
 | `ff_goal_mode` | `FF_GOAL_MODE` | CLI / create + dispatcher | InDev | `false` | KDI-038 | Ralph-style multi-turn goal loop; `kdi create --goal`/`--goal-max-turns`/`--goal-judge`; dispatcher decrements a turn budget and requeues until the (v1 approximated) judge says done.
 | `ff_harness_context` | `FF_HARNESS_CONTEXT` | CLI / dispatcher | Active | `true` | KDI-052 | Pass task title/body/id and board slug to harness via `{{title}}`/`{{body}}` templates and `KDI_TASK_TITLE`/`KDI_TASK_BODY`/`KDI_TASK_ID`/`KDI_BOARD` env vars.
 | `ff_result_summary` | `FF_RESULT_SUMMARY` | CLI / dispatcher | Active | `true` | KDI-053 | Store clean result/summary from harness output; reads `.kdi-result.txt` or the last JSON text chunk instead of raw stdout.
-| `ff_worktree_handoff` | `FF_WORKTREE_HANDOFF` | CLI / dispatcher/worktree | InDev | `true` | KDI-055 | Preserve successful task worktree branches as the handoff artifact; emit handoff event with branch and worktree path.
+| `ff_worktree_handoff` | `FF_WORKTREE_HANDOFF` | CLI / dispatcher/worktree | Active | `true` | KDI-055 | Preserve successful task worktree branches as the handoff artifact; emit handoff event with branch and worktree path.
 | `ff_sveltekit_frontend` | `FF_SVELTEKIT_FRONTEND` / `VITE_FF_SVELTEKIT_FRONTEND` | SvelteKit UI | InDev | `false` | KDI-UI-000 | Gates the SvelteKit operator UI (`apps/web/`). Server hook reads `FF_SVELTEKIT_FRONTEND`; browser badge reads `VITE_FF_SVELTEKIT_FRONTEND`. See `specs/sveltekit-ui-backlog.md`. |
 | `ff_real_harness_profiles` | `FF_REAL_HARNESS_PROFILES` | CLI / dispatcher | Active | `true` | KDI-056 | Real `opencode`/`pi` profile bootstrap + doctor and a pre-dispatch binary guard that refuses to claim a task whose harness binary is missing (no more exit-127 after claim). Contract documented in `specs/harness-contract.md`. |
 ## Rollout Notes
@@ -94,7 +94,7 @@ stateDiagram-v2
 
 ## Lifecycle Notes
 
-### `ff_created_by` — InDev
+### `ff_created_by` — Active
 
 - **Owner:** kdi core team
 - **BRD:** [BRD-KDI-007](brd-kdi-007-created-by.md)
@@ -493,12 +493,12 @@ stateDiagram-v2
 - **Rollback / deactivation:** Set `FF_LIST_FILTERS_SORT=false` to reject the new list options and `create --session`.
 - **Deprecation plan:** N/A
 
-### `ff_show_run_filtering` — Planned
+### `ff_show_run_filtering` — Active
 
 - **Owner:** kdi core team
 - **BRD:** [BRD-KDI-031](brd-kdi-031-show-run-filtering.md)
 - **Status transitions:**
-  - `Planned` → `InDev` when `kdi show` run section and `--state-type`/`--state-name` filtering are implemented.
+  - `Planned` → `InDev` → `Active` when `kdi show` run section and `--state-type`/`--state-name` filtering were implemented and promoted.
 - **Schema note:** No schema changes; reads from the existing `task_runs` table and `idx_task_runs_task_id` index.
 - **Activation criteria:**
   - `kdi show <task_id>` displays a "Runs:" section when the flag is enabled.

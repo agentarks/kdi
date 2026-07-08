@@ -93,7 +93,7 @@
   - `specs/sveltekit-ui/KDI-UI-014-goal-mode-ui.md`
   - `specs/sveltekit-ui/KDI-UI-015-accessibility-keyboard-baseline.md`
   - `specs/sveltekit-ui/KDI-UI-016-end-to-end-ui-smoke-loop.md`
-- [ ] Next implementation: P1 board/task UI (KDI-UI-002/003/004) consuming the merged KDI-UI-001 bridge, then dispatch/observability and UI smoke loop (KDI-UI-016). Specs drafted for P3/P4 items KDI-UI-013, KDI-UI-015, and KDI-UI-016 in PR #66.
+- [ ] Next implementation: P1 task detail and lifecycle UI (KDI-UI-005/006/007) consuming the merged KDI-UI-001 bridge, then observability and end-to-end smoke loop (KDI-UI-016). Specs drafted for P3/P4 items KDI-UI-013, KDI-UI-015, and KDI-UI-016 in PR #66.
 
 ## KDI-UI-001: Server-Side Data Bridge — Implemented (PR #69)
 - [x] BRD drafted at `specs/sveltekit-ui/KDI-UI-001-server-data-bridge.md`
@@ -209,7 +209,7 @@
 - [ ] No new UI screens, CLI commands, or flags; only a test harness and no-op smoke profile
 - [ ] `bun run lint`, CLI build, `bun run build:web`, and `bun run check:web` pass
 
-## KDI-UI-055: Worktree Handoff — Done
+## KDI-055: Worktree Handoff — Done
 - [x] BRD finalized at `specs/brd-kdi-055-worktree-handoff.md`
 - [x] Feature flag `ff_worktree_handoff` / `FF_WORKTREE_HANDOFF` registered in `specs/feature-flags.md` and `src/flags.ts`, defaults to `true`
 - [x] `src/worktree.ts` exposes `detectWorktreeChanges()` helper
@@ -223,7 +223,7 @@
 - [x] User-loop smoke test with temp `HOME`/`KDI_DB` proves real CLI dispatch preserves the worktree/branch and leaves the original repo clean
 - [x] `bun run lint`, `bun test` (**938 pass / 0 fail**), `bun run build` pass
 
-## KDI-056: Real Harness Profiles — InDev
+## KDI-056: Real Harness Profiles — Done
 - [x] Added KDI-056 backlog item for real Pi/opencode harness profile bootstrap/doctor support after local smoke showed user-level profiles can point to stale `/tmp/mock-harness` and block dispatch with exit 127.
 - [x] BRD drafted at `specs/brd-kdi-056-real-harness-profiles.md` (gated behind `ff_real_harness_profiles` / `FF_REAL_HARNESS_PROFILES`, default `false`).
 - [x] Flag `ff_real_harness_profiles` / `FF_REAL_HARNESS_PROFILES` registered in `specs/feature-flags.md` and `src/flags.ts`, defaults to `false`.
@@ -317,12 +317,6 @@
 - [x] KDI-053: Clean result/summary capture from harness output implemented.
 - [x] KDI-054: Real harness parity test added (opt-in via `KDI_REAL_HARNESS_TEST=true`).
 
-## KDI-055: Worktree Handoff — Spec Drafted
-- [x] BRD drafted at `specs/brd-kdi-055-worktree-handoff.md`
-- [x] Decision documented: do not copy/commit/merge task changes back automatically; preserve the task-owned `wt/<profile>/<task_id>` branch/worktree as the operator handoff artifact
-- [x] Planned feature flag documented in `specs/feature-flags.md` as `ff_worktree_handoff` / `FF_WORKTREE_HANDOFF`, default `false`
-- [ ] Implementation pending
-
 ## KDI-052 / KDI-053 / KDI-054: Hermes Parity Bundle — Done
 - [x] Feature flags `ff_harness_context` / `FF_HARNESS_CONTEXT` and `ff_result_summary` / `FF_RESULT_SUMMARY` registered in `src/flags.ts` and `specs/feature-flags.md`, defaults to `false`
 - [x] `ALLOWED_TEMPLATES` and `substituteCommand` support `{{title}}`, `{{body}}`, and `{{result_file}}`
@@ -342,7 +336,7 @@
 - [x] Unit tests in `tests/create-parent.test.ts` cover single parent, multiple parents, flag gating, missing parent, self-dependency, circular dependency, and idempotency with `--idempotency-key`
 - [x] `bun run lint`, `bun test tests/create-parent.test.ts`, and `bun run build` pass
 
-## Bulk `kdi unblock` (KDI-047) — In Progress
+## Bulk `kdi unblock` (KDI-047) — Done
 - [x] BRD drafted at `specs/brd-kdi-047-unblock-bulk.md`
 - [x] `kdi unblock <id1> <id2>...` unblocks or readies multiple tasks at once
 - [x] Per-task success/skip reporting with summary line
@@ -355,7 +349,7 @@
 
 ## Dispatcher Presence Warning (KDI-037) — Done
 - [x] BRD drafted at `specs/brd-kdi-037-dispatcher-presence-warning.md`
-- [x] Feature flag `ff_dispatcher_presence_warning` / `FF_DISPATCHER_PRESENCE_WARNING` registered in `src/flags.ts` and `specs/feature-flags.md`, defaults to `false`
+- [x] Feature flag `ff_dispatcher_presence_warning` / `FF_DISPATCHER_PRESENCE_WARNING` registered in `src/flags.ts` and `specs/feature-flags.md`, default **Active** (`true`)
 - [x] `src/dispatcherPresence.ts` exposes `getDispatcherPidPath(slug)` and `isDispatcherPresent(slug)`; `isDispatcherPresent` returns `true` only when the PID file exists, is readable, contains a single positive integer, and `process.kill(pid, 0)` succeeds — any other condition returns `false`
 - [x] `kdi create <title> [--no-dispatcher-warning]` option added to `src/commands/tasks.ts`; warning is printed to stderr (single line via `console.warn`) after the board is resolved and before the task is created, only when the flag is on AND `--no-dispatcher-warning` is not set
 - [x] Warning is non-blocking: task ID is still printed to stdout and the command exits `0`
@@ -1003,7 +997,7 @@
 
 - [ ] **KDI-036: `validTypes` constant duplicated in three places** — `["status", "outcome"]` is defined in `src/models/taskRun.ts:117` (model), `src/commands/tasks.ts:1448` (`listRunsCommand`, KDI-036), and `src/commands/tasks.ts:464` (`showTaskCommand`, KDI-031). Extract a single `VALID_RUN_FILTER_TYPES` const or a small `parseRunFilterOptions(...)` helper. Risk: the two commands can drift on error wording; consolidating removes the duplication. Caught by `pi.backend-reviewer` on PR #32, APPROVE_WITH_NITS.
 - [ ] **KDI-036: option-gate / partial-pair / valid-type validation block duplicated between `listRunsCommand` and `showTaskCommand`** — `src/commands/tasks.ts:1431-1455` (KDI-036) is a near byte-for-byte copy of `src/commands/tasks.ts:444-462` (KDI-031). Extract a shared helper to remove ~25 lines of duplication. Caught by `pi.backend-reviewer` on PR #32, APPROVE_WITH_NITS.
-- [ ] **KDI-031 docs typo: `ff_show_run_filtering` lifecycle header still says `— Planned`** — `specs/feature-flags.md:458` reads `### \`ff_show_run_filtering\` — Planned` but the registry row at line 60 is `InDev` and the section in `STATUS.md` is marked Done. Pre-existing from KDI-031; the KDI-036 PR makes the inconsistency more visible. Caught by `pi.backend-reviewer` on PR #32. Fix: flip the header to `— InDev`.
+- [x] ~~**KDI-031 docs typo: `ff_show_run_filtering` lifecycle header still says `— Planned`**~~ — fixed in `specs/feature-flags.md`; header is now `— Active` and status transitions note the promotion.
 - [ ] **KDI-037: unused imports in `tests/dispatcherPresence.test.ts:2,8`** — `readFileSync` (from `node:fs`) and `createBoard` (from `../src/models/board`) are imported but never referenced. The linter does not catch them because the project does not enable `noUnusedLocals` for this file context. Drop the imports. Caught by `pi.backend-reviewer` on PR #32, APPROVE_WITH_NITS.
 - [ ] **KDI-037: dead helpers `captureWarn` / `restoreWarn` in `tests/commands/tasks.test.ts:864-878`** — Defined in the KDI-037 describe block but never called; every test inlines its own `console.warn` capture via `try/finally`. Delete the helpers. Caught by `pi.backend-reviewer` on PR #32, APPROVE_WITH_NITS.
 
@@ -1025,14 +1019,14 @@
 - [x] `kdi --version` returns semantic version
 - [x] Adding new harness profile to `profiles.yaml` requires zero code changes
 
-## Hermes Backlog Verification (2026-06-19)
+## Hermes Backlog Verification (2026-06-19) — Historical Snapshot
 
 - [x] `scripts/verify-hermes-backlog.sh` runs **89 / 90 PASS** against `main` (a4b2618) with every `FF_*` flag on, temp `HOME` + temp `KDI_DB`
 - [x] Full per-item report at `specs/hermes-backlog-verification-2026-06-19.md`
 - [x] Backlog updated with a `## Verification (2026-06-19)` section at `specs/hermes-kanban-backlog.md` listing 5 gaps
-- [ ] **Gap: KDI-013 global `--board` flag** — real divergence from hermes; per-subcommand `--board`, `KDI_BOARD`, and `current` file all work, but `kdi --board demo …` errors with `unknown option '--board'`
-- [ ] **Gap: `kdi boards create --switch`** — hermes parity; auto-switch-on-create not implemented
-- [ ] **Gap: `kdi dispatch` is a long-running daemon, not a one-shot pass** — hermes defines `dispatch` as one-shot and `daemon` as long-running; kdi has only the daemon form (`src/dispatcher.ts:679-694`)
-- [ ] **Gap: `kdi link` / `kdi unlink` CLI** — model exists in `src/models/dependency.ts`, no CLI command registered
-- [ ] **Gap: `kdi specify --tenant <name>`** — rejected without `--all` or `<task_id>`; backlog implies it should sweep on its own
+- [x] ~~**Gap: global `--board` flag**~~ — resolved by **KDI-042** (`FF_GLOBAL_BOARD` / `kdi --board <slug>`)
+- [x] ~~**Gap: `kdi boards create --switch`**~~ — resolved by **KDI-043** (`FF_BOARD_CREATE_SWITCH`)
+- [x] ~~**Gap: one-shot `kdi dispatch` mode**~~ — resolved by **KDI-034x** / `FF_DISPATCH_ONCE` (`kdi dispatch --once`)
+- [x] ~~**Gap: `kdi link` / `kdi unlink` CLI**~~ — resolved by **KDI-026** (`FF_LINK_UNLINK`)
+- [ ] **Gap: `kdi specify --tenant <name>` sweep** — still open; `kdi decompose --tenant <name>` exists, but `kdi specify` does not yet support a tenant-only sweep
 - [x] `bun test` (836 pass) and `tsc --noEmit` (clean) after adding the verification harness
