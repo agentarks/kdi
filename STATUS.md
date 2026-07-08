@@ -50,14 +50,13 @@
 - [x] Review fixes: empty/whitespace optional fields (tenant, created-by, model override, workspace, session) are now rejected with the spec messages; edit route renders `Task <id> not found.` for missing tasks; bridge title error matches CLI (`Title is required.`); added HTTP smoke coverage for disabled per-field flags (AC-05) and empty-field rejection
 - [x] Full verification with isolated `KDI_DB`: `bun install`, `bun run lint`, `bun run build`, `bun run check:web`, `bun run build:web`, `bun test` → **1023 pass / 0 fail**
 
-## KDI-UI-005: Task Detail Panel — Implemented
+## KDI-UI-005: Task Detail Panel — Spec
 - [x] BRD/spec drafted at `specs/sveltekit-ui/KDI-UI-005-task-detail-panel.md`
-- [x] Task detail page at `/tasks/[id]` (with `?board=<slug>` fallback) renders body, metadata, result, summary, comments, attachments, dependencies, context, runs, events, worker log, and worktree handoff
-- [x] Aggregate endpoint `GET /api/boards/[slug]/tasks/[id]/detail` returns full snapshot; specialized read routes `/log`, `/dependencies`, and `/handoff` added under `/api/boards/[slug]/tasks/[id]/`
-- [x] Polling for events and log tail with follow/pause controls; run filtering by status/outcome when `FF_SHOW_RUN_FILTERING` is on
-- [x] Board view task cards link to `/tasks/[id]?board=<slug>` so the detail page is reachable from the kanban view
-- [x] HTTP smoke test with temp HOME/KDI_DB creates a board and task via the CLI, opens the detail page, and asserts the panel renders the title, status, and body
-- [x] `bun run lint`, `bun run build`, `bun run check:web`, `bun run build:web`, and `bun test` all pass with an isolated `KDI_DB`
+- [ ] Task detail page renders body, metadata, result, summary, comments, attachments, dependencies, context, runs, events, worker log, and worktree handoff
+- [ ] Aggregate endpoint returns full snapshot; specialized routes for log, dependencies, and handoff
+- [ ] Polling for events and log tail; run filtering when `FF_SHOW_RUN_FILTERING` is on
+- [ ] Smoke test with temp HOME/KDI_DB opens a CLI-created task and asserts the panel renders title, status, and body
+- [ ] `bun run lint`, CLI build, `bun run check:web`, and `bun run build:web` pass
 
 ## KDI-UI-006: Task Lifecycle Actions — Spec
 - [x] BRD/spec drafted at `specs/sveltekit-ui/KDI-UI-006-task-lifecycle-actions.md`
