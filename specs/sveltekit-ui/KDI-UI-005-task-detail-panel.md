@@ -305,6 +305,16 @@ Acceptance Criteria
       status, and body.
 - [x] AC-18: `bun run lint`, `bun run build` (CLI), `bun run check:web`, and
       `bun run build:web` all pass with an isolated `KDI_DB`.
+- [x] AC-19: The dependencies section visually indicates when a blocked task has
+      non-done parent dependencies (top-level callout + per-parent `blocking` badge).
+- [x] AC-20: The context section surfaces `contextError: "not_available"` with a
+      "Context not available" message instead of hiding the section when
+      `buildTaskContext` fails.
+- [x] AC-21: The worker log tail endpoint reads only the requested last `N` bytes
+      from disk and aligns to a valid UTF-8 boundary, without loading the whole
+      file into memory.
+- [x] AC-22: The aggregate detail endpoint avoids wrapping synchronous model calls
+      in `Promise.resolve` inside `taskDetailJson`.
 
 -------------------------------------------------------------------------------
 Verification Notes

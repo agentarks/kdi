@@ -357,16 +357,17 @@
         <div class="reason-section">
           <span class="badge warn">Context not available</span>
         </div>
-      {:else}
+      {:else if detail.context}
+        {@const ctx = detail.context}
         <div class="context-summary">
-          <span class="badge">{detail.context!.parents.length} parents</span>
-          <span class="badge">{detail.context!.priorAttempts.length} prior attempts</span>
-          <span class="badge">{detail.context!.roleHistory.length} role history</span>
-          <span class="badge">{detail.context!.comments.length} comments</span>
-          <span class="badge">{detail.context!.attachments.length} attachments</span>
+          <span class="badge">{ctx.parents.length} parents</span>
+          <span class="badge">{ctx.priorAttempts.length} prior attempts</span>
+          <span class="badge">{ctx.roleHistory.length} role history</span>
+          <span class="badge">{ctx.comments.length} comments</span>
+          <span class="badge">{ctx.attachments.length} attachments</span>
         </div>
-        {#if detail.context!.body}
-          <pre class="plain-text context-body">{detail.context!.body}</pre>
+        {#if ctx.body}
+          <pre class="plain-text context-body">{ctx.body}</pre>
         {/if}
       {/if}
     </section>
