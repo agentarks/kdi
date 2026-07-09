@@ -14,6 +14,8 @@
   const task = $derived(detail.task);
   const age = $derived(formatAge(task.createdAt));
   const createdDate = $derived(formatDate(task.createdAt));
+  const isBlocked = $derived(task.status === "blocked");
+  const blockedParents = $derived(detail.parents.filter((p) => p.status !== "done"));
 
   // Runs filter state
   let runs = $state<TaskDetailRun[]>([]);
@@ -305,6 +307,12 @@
 
   <section class="detail-section" aria-labelledby="dependencies-heading">
     <h2 id="dependencies-heading">Dependencies</h2>
+    {#if isBlocked && blockedParents.length > 0}
+      <div class="blocking-callout">
+        <span class="badge warn">Blocked by dependencies</span>
+        <span>{blockedParents.length} parent task(s) not done</span>
+      </div>
+    {/if}
     <div class="dependency-lists">
       <div>
         <h3>Parent tasks</h3>
@@ -314,6 +322,9 @@
               <li>
                 <a href={taskHref(parent.id)} class={parent.status === "blocked" ? "blocked-link" : ""}>#{parent.id} {parent.title}</a>
                 <span class="badge">{parent.status}</span>
+                {#if isBlocked && parent.status !== "done"}
+                  <span class="badge warn">blocking</span>
+                {/if}
               </li>
             {/each}
           </ul>
@@ -339,18 +350,24 @@
     </div>
   </section>
 
-  {#if flags.contextBuilder && detail.context}
+  {#if flags.contextBuilder && (detail.context || detail.contextError)}
     <section class="detail-section" aria-labelledby="context-heading">
       <h2 id="context-heading">Context</h2>
-      <div class="context-summary">
-        <span class="badge">{detail.context.parents.length} parents</span>
-        <span class="badge">{detail.context.priorAttempts.length} prior attempts</span>
-        <span class="badge">{detail.context.roleHistory.length} role history</span>
-        <span class="badge">{detail.context.comments.length} comments</span>
-        <span class="badge">{detail.context.attachments.length} attachments</span>
-      </div>
-      {#if detail.context.body}
-        <pre class="plain-text context-body">{detail.context.body}</pre>
+      {#if detail.contextError}
+        <div class="reason-section">
+          <span class="badge warn">Context not available</span>
+        </div>
+      {:else}
+        <div class="context-summary">
+          <span class="badge">{detail.context!.parents.length} parents</span>
+          <span class="badge">{detail.context!.priorAttempts.length} prior attempts</span>
+          <span class="badge">{detail.context!.roleHistory.length} role history</span>
+          <span class="badge">{detail.context!.comments.length} comments</span>
+          <span class="badge">{detail.context!.attachments.length} attachments</span>
+        </div>
+        {#if detail.context!.body}
+          <pre class="plain-text context-body">{detail.context!.body}</pre>
+        {/if}
       {/if}
     </section>
   {/if}
@@ -642,6 +659,13 @@
   .blocked-link {
     text-decoration: line-through;
     opacity: 0.7;
+  }
+  .blocking-callout {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
   }
   .section-header {
     display: flex;
