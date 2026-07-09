@@ -6,17 +6,14 @@
 
   let { data }: PageProps = $props();
 
-  // svelte-ignore state_referenced_locally
-  let status = $state<DispatchStatus | undefined>(data.status);
-  // svelte-ignore state_referenced_locally
-  let error = $state<string | undefined>(data.error);
+  let liveStatus = $state<DispatchStatus | undefined>(undefined);
+  let liveError = $state<string | undefined>(undefined);
+  let liveLastRefreshed = $state<Date | null>(null);
   let result = $state<DispatchOnceResult | null>(null);
   let submitError = $state<string | null>(null);
   let loading = $state(false);
   let bootstrapping = $state(false);
   let pollInterval = $state(5);
-  // svelte-ignore state_referenced_locally
-  let lastRefreshed = $state<Date | null>(data.status ? new Date() : null);
   let forceBootstrap = $state(false);
 
   // Clamp poll interval to [2, 30] whenever it changes (e.g., user input).
@@ -30,9 +27,9 @@
   // Sync server data back into local state when the board changes (e.g., client-side navigation).
   // This prevents stale status, error, or result from the previous board.
   $effect(() => {
-    status = data.status;
-    error = data.error;
-    lastRefreshed = data.status ? new Date() : null;
+    liveStatus = data.status;
+    liveError = data.error;
+    liveLastRefreshed = data.status ? new Date() : null;
     result = null;
     submitError = null;
   });
@@ -46,6 +43,10 @@
   const boardSlug = $derived(page.url.searchParams.get("board") ?? board?.slug ?? "default");
   const boardName = $derived(board?.name || board?.slug || boardSlug);
   const pollIntervalMs = $derived(pollInterval * 1000);
+  // Fall back to SSR data for the initial render so the server and client paint the same content.
+  const status = $derived(liveStatus ?? data.status);
+  const error = $derived(liveError ?? data.error);
+  const lastRefreshed = $derived(liveLastRefreshed ?? (data.status ? new Date() : null));
   const pageTitle = $derived(
     error ? "Board not found — Dispatch — kdi" : boardName ? `${boardName} — Dispatch — kdi` : "Dispatch — kdi",
   );
@@ -55,12 +56,12 @@
     const res = await fetch(`/api/boards/${boardSlug}/dispatch/status`);
     if (!res.ok) {
       const payload = await res.json().catch(() => ({ message: "Failed to load status" }));
-      error = payload.message ?? "Failed to load status";
+      liveError = payload.message ?? "Failed to load status";
       return;
     }
-    status = (await res.json()) as DispatchStatus;
-    lastRefreshed = new Date();
-    error = undefined;
+    liveStatus = (await res.json()) as DispatchStatus;
+    liveLastRefreshed = new Date();
+    liveError = undefined;
   }
 
   $effect(() => {
@@ -123,8 +124,8 @@
       submitError = payload.message ?? "Bootstrap failed";
       return;
     }
-    if (status) {
-      status.profiles.entries = payload.profiles;
+    if (liveStatus) {
+      liveStatus.profiles.entries = payload.profiles;
     }
     await loadStatus();
   }
