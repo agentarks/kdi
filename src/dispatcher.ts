@@ -500,7 +500,7 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
   checkSwarmFailures(counters);
 
   const tasks = listReadyTasks(options.boardId);
-  let processed = 0;
+  let done = 0;
   let spawned = 0;
   let skipped = 0;
   let failed = crashCount;
@@ -682,7 +682,7 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
             : { result: harnessResult.stdout, summary: harnessResult.stdout.slice(0, 200) };
           finishTask(task, result, runId, summary);
           taskCompleted = true;
-          processed++;
+          done++;
         } else {
           recordAgentError(profile.agent ?? profile.name);
           handleGoalContinue(task, stdout, `Harness failed (exit ${exitCode}): ${stderr || "unknown error"}`, runId, counters);
@@ -698,7 +698,7 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
           : { result: harnessResult.stdout, summary: harnessResult.stdout.slice(0, 200) };
         finishTask(task, result, runId, summary);
         taskCompleted = true;
-        processed++;
+        done++;
       } else if (exitCode === 75 && isEnabled(FF_RATE_LIMIT_EXIT_CODE)) {
         handleRateLimit(task, runId, rateLimitCooldownSeconds, stderr || stdout);
       } else {
@@ -760,7 +760,7 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
     }
   }
 
-  return { processed, spawned, blocked: counters.blocked, skipped, failed };
+  return { processed: done + counters.blocked, spawned, blocked: counters.blocked, skipped, failed };
 }
 
 export interface DispatcherHandle {
