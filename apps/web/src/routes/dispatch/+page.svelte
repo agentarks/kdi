@@ -45,6 +45,7 @@
   const flags = $derived(data.flags ?? { canDispatch: false, canUseFailureLimit: false, canUseRateLimitCooldown: false, canShowProfiles: false });
   const boardSlug = $derived(page.url.searchParams.get("board") ?? board?.slug ?? "default");
   const boardName = $derived(board?.name || board?.slug || boardSlug);
+  const pollIntervalMs = $derived(pollInterval * 1000);
   const pageTitle = $derived(
     error ? "Board not found — Dispatch — kdi" : boardName ? `${boardName} — Dispatch — kdi` : "Dispatch — kdi",
   );
@@ -64,12 +65,11 @@
 
   $effect(() => {
     if (typeof document === "undefined") return;
-    const intervalMs = pollInterval * 1000;
     const id = setInterval(() => {
       if (document.visibilityState === "visible") {
         loadStatus();
       }
-    }, intervalMs);
+    }, pollIntervalMs);
     const onVisibility = () => {
       if (document.visibilityState === "visible") loadStatus();
     };
