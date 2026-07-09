@@ -20,6 +20,11 @@
 - [x] Verification: `bun run lint`, `bun run test` (1006 pass / 0 fail), `bun run build`, `bun run check:web`, `bun run build:web` all pass
 - [ ] Review follow-up: further contrast audit for archived rows; self-host fonts to avoid Google Fonts render-block
 
+## Tech Debt
+- [ ] KDI-UI-005: `readHeadText` caps non-tail logs at 500KB but may split a trailing UTF-8 character at the byte boundary; trim trailing partial sequence if that becomes user-visible.
+- [ ] KDI-UI-005: No HTTP smoke test forces `buildTaskContext` to throw, so `contextError: "not_available"` rendering is covered by unit tests only.
+- [ ] Flaky test: `tests/commands/triage-automation.test.ts > specify --all sweeps triage tasks` fails intermittently when run in the full suite (passes in isolation). Likely a mock-server / timing interaction.
+
 ## SvelteKit UI Backlog - Drafted
 - [x] Drafted UI backlog at `specs/sveltekit-ui-backlog.md` based on implemented Hermes/KDI parity features.
 - [x] Linked frontend backlog from `specs/hermes-kanban-backlog.md`.
