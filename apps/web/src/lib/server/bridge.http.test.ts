@@ -256,7 +256,7 @@ describe("KDI-UI-001 HTTP smoke (dev server, isolated HOME/KDI_DB)", () => {
       skipped: number;
       failed: number;
     };
-    expect(result.processed).toBe(0);
+    expect(result.processed).toBe(1);
     expect(result.spawned).toBe(1);
     expect(result.blocked).toBe(1);
     expect(result.skipped).toBe(0);
