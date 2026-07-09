@@ -363,6 +363,14 @@ Acceptance Criteria
       `running: 1` or `done: 1` depending on the test harness.
 - [x] AC-17: `bun run lint`, `bun run build` (CLI), `bun run check:web`, and
       `bun run build:web` all pass with an isolated `KDI_DB`.
+- [x] AC-18: `dispatchOnceJson` catches errors thrown by `tick()` and returns
+      `500 { error: "dispatch_failed" }` per the Edge Case table.
+- [x] AC-19: The poll interval input is reactive, clamps to `[2, 30]`, and
+      changing it restarts the polling timer so the new interval takes effect.
+- [x] AC-20: The `processed` field in `DispatchOnceResult` counts tasks that
+      reached a terminal state (`done` + `blocked`), matching the spec definition.
+- [x] AC-21: The dispatch page builds without Svelte compiler warnings
+      (e.g., `state_referenced_locally`); `bun run check:web` is clean.
 
 -------------------------------------------------------------------------------
 Verification Notes
