@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, afterAll } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach, afterAll, spyOn } from "bun:test";
 import { rmSync, mkdirSync, existsSync, writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import {
@@ -15,12 +15,19 @@ import { addEvent } from "~/models/taskEvent";
 import { completeTask } from "~/models/task";
 import { closeDb } from "~/db";
 import { clearOverrides } from "~/flags";
+import * as context from "~/models/context";
 
 const FF_KEYS = ["FF_SVELTEKIT_FRONTEND", "FF_WORKER_LOG_CAPTURE", "FF_CONTEXT_BUILDER"];
 
 let tmpHome: string;
 const tmpDirs: string[] = [];
 const envSnapshot: Record<string, string | undefined> = {};
+let forceContextFailure = false;
+const realBuildTaskContext = context.buildTaskContext;
+spyOn(context, "buildTaskContext").mockImplementation((...args) => {
+  if (forceContextFailure) throw new Error("forced context failure");
+  return realBuildTaskContext(...args);
+});
 
 function isolate(): void {
   tmpHome = `/tmp/kdi-ui005-${process.pid}-${Math.random().toString(36).slice(2)}`;
@@ -185,5 +192,18 @@ describe("KDI-UI-005 task detail bridge", () => {
     expect(flags.sveltekitFrontend).toBe(true);
     expect(typeof flags.contextBuilder).toBe("boolean");
     expect(typeof flags.showRunFiltering).toBe("boolean");
+  });
+
+  it("returns contextError when buildTaskContext fails", async () => {
+    forceContextFailure = true;
+    try {
+      const slug = await freshBoard();
+      const { task } = await createTaskJson(slug, { title: "Context failure task" });
+      const detail = await taskDetailJson(slug, task.id);
+      expect(detail.context).toBeNull();
+      expect(detail.contextError).toBe("not_available");
+    } finally {
+      forceContextFailure = false;
+    }
   });
 });
