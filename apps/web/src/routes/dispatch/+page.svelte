@@ -15,8 +15,18 @@
   let bootstrapping = $state(false);
   let pollInterval = $state(5);
   // svelte-ignore state_referenced_locally
-  let lastRefreshed = $state<Date | null>(status ? new Date() : null);
+  let lastRefreshed = $state<Date | null>(data.status ? new Date() : null);
   let forceBootstrap = $state(false);
+
+  // Sync server data back into local state when the board changes (e.g., client-side navigation).
+  // This prevents stale status, error, or result from the previous board.
+  $effect(() => {
+    status = data.status;
+    error = data.error;
+    lastRefreshed = data.status ? new Date() : null;
+    result = null;
+    submitError = null;
+  });
 
   let max = $state(0);
   let failureLimit = $state<number | null>(null);
@@ -40,24 +50,20 @@
     error = undefined;
   }
 
-  function startPolling() {
-    const id = setInterval(() => {
-      if (typeof document !== "undefined" && document.visibilityState === "visible") {
-        loadStatus();
-      }
-    }, pollInterval * 1000);
-    return () => clearInterval(id);
-  }
-
   $effect(() => {
     if (typeof document === "undefined") return;
-    const stop = startPolling();
+    const intervalMs = pollInterval * 1000;
+    const id = setInterval(() => {
+      if (document.visibilityState === "visible") {
+        loadStatus();
+      }
+    }, intervalMs);
     const onVisibility = () => {
       if (document.visibilityState === "visible") loadStatus();
     };
     document.addEventListener("visibilitychange", onVisibility);
     return () => {
-      stop();
+      clearInterval(id);
       document.removeEventListener("visibilitychange", onVisibility);
     };
   });
@@ -249,7 +255,7 @@
         <form onsubmit={runDispatch}>
           <div class="form-group">
             <label for="max">max</label>
-            <input id="max" name="max" type="number" min={0} bind:value={max} disabled={!flags.canDispatch} />
+            <input id="max" name="max" type="number" min={0} step={1} bind:value={max} disabled={!flags.canDispatch} />
             <span class="text-dim">0 = unlimited</span>
           </div>
           {#if flags.canUseFailureLimit}
