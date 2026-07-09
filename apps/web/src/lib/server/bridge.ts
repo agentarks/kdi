@@ -81,6 +81,13 @@ type Modules = {
   getTaskLogPath: typeof import("~/observability")["getTaskLogPath"];
 };
 let _models: Promise<Modules> | null = null;
+
+// Reset the cached model module promise. Exported for tests that need to
+// re-populate the cache after swapping a model implementation (e.g., spies).
+export function resetModels(): void {
+  _models = null;
+}
+
 async function models(): Promise<Modules> {
   if (!_models) {
     _models = (async () => {

@@ -10,6 +10,7 @@ import {
   createTaskJson,
   BridgeError,
   detailFlags,
+  resetModels,
 } from "./bridge";
 import { addEvent } from "~/models/taskEvent";
 import { completeTask } from "~/models/task";
@@ -196,6 +197,7 @@ describe("KDI-UI-005 task detail bridge", () => {
 
   it("returns contextError when buildTaskContext fails", async () => {
     forceContextFailure = true;
+    resetModels();
     try {
       const slug = await freshBoard();
       const { task } = await createTaskJson(slug, { title: "Context failure task" });
