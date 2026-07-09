@@ -159,16 +159,16 @@
 - [ ] `bun run lint`, CLI build, `bun run check:web`, and `bun run build:web` pass with isolated `KDI_DB`
 
 ## KDI-UI-007: Dispatch Control Center — Spec
-- [ ] BRD drafted at `specs/sveltekit-ui/KDI-UI-007-dispatch-control-center.md`
-- [ ] `/dispatch` page renders dispatcher presence, ready/running counts, profile
+- [x] BRD drafted at `specs/sveltekit-ui/KDI-UI-007-dispatch-control-center.md`
+- [x] `/dispatch` page renders dispatcher presence, ready/running counts, profile
       health, recent spawn failures, and a one-shot dispatch form
-- [ ] Server action calls `tick()` directly with `max`, `failureLimit`, and
+- [x] Server action calls `tick()` directly with `max`, `failureLimit`, and
       `rateLimitCooldown` options; returns spawned/blocked/skipped/failed/processed
       breakdown
-- [ ] Profile health/repair card gated by `FF_REAL_HARNESS_PROFILES`
-- [ ] Smoke test with temp HOME/KDI_DB creates a ready task and triggers one-shot
+- [x] Profile health/repair card gated by `FF_REAL_HARNESS_PROFILES`
+- [x] Smoke test with temp HOME/KDI_DB creates a ready task and triggers one-shot
       dispatch from the UI, asserting the counts update
-- [ ] `bun run lint`, CLI build, `bun run check:web`, and `bun run build:web` pass
+- [x] `bun run lint`, CLI build, `bun run check:web`, and `bun run build:web` pass
 
 ## KDI-UI-012: Swarm Builder — Spec
 - [x] BRD drafted at `specs/sveltekit-ui/KDI-UI-012-swarm-builder.md`
@@ -1000,6 +1000,9 @@
 - [ ] **SQLite monolithic migration** — The single `CREATE TABLE tasks_new ... DROP TABLE ... RENAME TO` migration handles schema changes for KDI-001 (triage), KDI-002 (scheduled), KDI-003 (review), and KDI-004 (integer priority) in one pass. This is technically required by SQLite (can't `ALTER TABLE` CHECK constraints or change column types), but it mixes feature boundaries. If versioned migration files are ever introduced, this should be split into per-feature steps with intermediate schema versions.
 - [ ] **`tests/init.test.ts` fails when `KDI_DB` is set** — `defaultDbPath()` honors the `KDI_DB`/`KDI_DB_PATH` environment variables, but `tests/init.test.ts` asserts that `defaultDbPath()` ends with `.db`. When the parent environment sets `KDI_DB` to a path without that suffix (e.g. `.../kdi.sqlite`), the assertion fails. The implementation is correct; the test is environment-sensitive. Run the suite with `env -u KDI_DB bun test` for a clean baseline.
 - [ ] **Import-path convention conflict** — `AGENTS.md` prescribes the `~/*` alias for `src/*` imports, but the entire existing codebase uses relative imports (e.g. `../models/board`). KDI-024 followed the existing relative-import convention to stay consistent with surrounding code. The project should either migrate all imports to `~/*` or update `AGENTS.md` to reflect the actual convention.
+
+- [ ] **KDI-UI-007: `bridge.http.test.ts` times out locally** — `apps/web/src/lib/server/bridge.http.test.ts` starts a dev server and frequently hangs until the test runner timeout on both `main` and feature branches. The test assertions were updated to match the corrected `processed`/`dispatch_failed` behavior, but the test itself cannot be run reliably in the local loop. Investigate server startup/teardown and port contention, or run it in CI.
+- [ ] **KDI-UI-007: `lastRefreshed` derived fallback creates a new `Date()` per evaluation** — The derived `lastRefreshed` falls back to `data.status ? new Date() : null` for SSR. Each evaluation constructs a fresh `Date()`, which could produce a minor server/client timestamp mismatch if hydration is slow. Functionally harmless; consider storing the SSR timestamp explicitly if exact parity matters.
 
 ### Review nits (from KDI-036/037/038 reviews)
 

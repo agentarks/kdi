@@ -241,3 +241,34 @@ export function finishRun(
 
   return run;
 }
+
+export function getRecentBoardRunFailures(
+  boardId: number,
+  limit = 10,
+): {
+  run_id: number;
+  task_id: number;
+  task_title: string;
+  profile: string | null;
+  outcome: NonNullable<TaskRun["outcome"]>;
+  error: string | null;
+  started_at: number;
+}[] {
+  const db = getDb();
+  return db.query(
+    `SELECT r.id AS run_id, r.task_id, t.title AS task_title, r.profile, r.outcome, r.error, r.started_at
+     FROM task_runs r
+     JOIN tasks t ON t.id = r.task_id
+     WHERE t.board_id = ? AND r.outcome IN ('spawn_failed', 'crashed')
+     ORDER BY r.started_at DESC
+     LIMIT ?`,
+  ).all(boardId, limit) as {
+    run_id: number;
+    task_id: number;
+    task_title: string;
+    profile: string | null;
+    outcome: NonNullable<TaskRun["outcome"]>;
+    error: string | null;
+    started_at: number;
+  }[];
+}

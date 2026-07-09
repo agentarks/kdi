@@ -17,7 +17,7 @@
 // logic tests cannot see it.
 
 import { describe, it, expect, afterAll } from "bun:test";
-import { rmSync, mkdirSync, existsSync } from "node:fs";
+import { rmSync, mkdirSync, existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { showTask } from "~/models/task";
 import { initDb, closeDb } from "~/db";
@@ -195,6 +195,96 @@ describe("KDI-UI-001 HTTP smoke (dev server, isolated HOME/KDI_DB)", () => {
     // that writes were refused; avoid a second direct DB open in this process
     // because other tests in the same process may leave the getDb singleton in
     // a state that makes the extra cross-check flaky.
+    await stopServer();
+  }, 60000);
+
+  it("POST /api/boards/[slug]/dispatch triggers one-shot dispatch and refreshes counts", async () => {
+    closeDb();
+    await startServer(true);
+
+    // Ensure the opencode profile resolves so the task is claimed.
+    const profilesDir = join(tmpHome, ".config", "kdi");
+    mkdirSync(profilesDir, { recursive: true });
+    const profilesPath = join(profilesDir, "profiles.yaml");
+    writeFileSync(
+      profilesPath,
+      "- name: opencode\n  command: \"true\"\n- name: pi\n  command: \"true\"\n",
+    );
+    process.env.KDI_PROFILES_PATH = profilesPath;
+
+    const nonExistentWorkdir = join(tmpHome, "nonexistent");
+    const r1 = await fetch(`${baseUrl}/api/boards`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ slug: "dispatch", workdir: nonExistentWorkdir }),
+      signal: AbortSignal.timeout(10000),
+    });
+    expect(r1.status).toBe(201);
+
+    const r2 = await fetch(`${baseUrl}/api/boards/dispatch/tasks`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ title: "Ready task", assignee: "opencode", initialStatus: "ready" }),
+      signal: AbortSignal.timeout(10000),
+    });
+    expect(r2.status).toBe(201);
+
+    const r3 = await fetch(`${baseUrl}/api/boards/dispatch/dispatch/status`, {
+      signal: AbortSignal.timeout(10000),
+    });
+    expect(r3.status).toBe(200);
+    const status = (await r3.json()) as {
+      board: string;
+      presence: { present: boolean };
+      taskCounts: { ready: number; blocked: number };
+    };
+    expect(status.board).toBe("dispatch");
+    expect(status.presence.present).toBe(false);
+    expect(status.taskCounts.ready).toBe(1);
+
+    const r4 = await fetch(`${baseUrl}/api/boards/dispatch/dispatch`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ max: 0 }),
+      signal: AbortSignal.timeout(10000),
+    });
+    expect(r4.status).toBe(201);
+    const result = (await r4.json()) as {
+      processed: number;
+      spawned: number;
+      blocked: number;
+      skipped: number;
+      failed: number;
+    };
+    expect(result.processed).toBe(1);
+    expect(result.spawned).toBe(1);
+    expect(result.blocked).toBe(1);
+    expect(result.skipped).toBe(0);
+    expect(result.failed).toBe(1);
+
+    const r5 = await fetch(`${baseUrl}/api/boards/dispatch/dispatch/status`, {
+      signal: AbortSignal.timeout(10000),
+    });
+    expect(r5.status).toBe(200);
+    const status2 = (await r5.json()) as {
+      taskCounts: { ready: number; blocked: number };
+    };
+    expect(status2.taskCounts.ready).toBe(0);
+    expect(status2.taskCounts.blocked).toBe(1);
+
+    // AC-16: the /dispatch page renders the control center from the server.
+    const rPage = await fetch(`${baseUrl}/dispatch?board=dispatch`, {
+      signal: AbortSignal.timeout(10000),
+    });
+    expect(rPage.status).toBe(200);
+    const pageHtml = await rPage.text();
+    expect(pageHtml).toContain("Dispatcher presence");
+    expect(pageHtml).toContain("Task counts");
+    expect(pageHtml).toContain("One-shot dispatch");
+    expect(pageHtml).toContain("ready");
+    expect(pageHtml).toContain("blocked");
+    expect(pageHtml).toContain("No tasks are ready to dispatch.");
+
     await stopServer();
   }, 60000);
 });
