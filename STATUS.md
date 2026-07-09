@@ -52,6 +52,9 @@
 
 ## KDI-UI-005: Task Detail Panel — Spec
 - [x] BRD/spec drafted at `specs/sveltekit-ui/KDI-UI-005-task-detail-panel.md`
+- [x] Review fix: blocked-by-dependency visual indication (FR-10) — `TaskDetailPanel` shows a top-level "Blocked by dependencies" callout and a `blocking` badge on each non-done parent when the task is blocked
+- [x] Review fix: surface `contextError` in the UI — `TaskDetailPanel` shows a "Context not available" callout when `taskDetailJson` returns `contextError: "not_available"`
+- [x] Review fix: log tail no longer loads the whole file into memory — `taskLogJson` reads only the requested tail bytes from disk and aligns to a valid UTF-8 boundary; large non-tail logs are capped at 500KB without reading past the cap
 - [ ] Task detail page renders body, metadata, result, summary, comments, attachments, dependencies, context, runs, events, worker log, and worktree handoff
 - [ ] Aggregate endpoint returns full snapshot; specialized routes for log, dependencies, and handoff
 - [ ] Polling for events and log tail; run filtering when `FF_SHOW_RUN_FILTERING` is on

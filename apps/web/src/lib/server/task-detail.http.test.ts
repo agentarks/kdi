@@ -135,4 +135,40 @@ describe("KDI-UI-005 HTTP smoke (dev server, isolated HOME/KDI_DB)", () => {
 
     await stopServer();
   }, 60000);
+
+  it("shows blocked-by-dependency visual indication when a blocked task has non-done parents", async () => {
+    closeDb();
+    await startServer();
+
+    await runCli(["boards", "create", "smoke-blocked", "--workdir", tmpHome]);
+    const parentIdOutput = await runCli(["create", "Parent task", "--board", "smoke-blocked"]);
+    const parentId = Number(parentIdOutput);
+    expect(Number.isInteger(parentId)).toBe(true);
+    expect(parentId).toBeGreaterThan(0);
+
+    const childIdOutput = await runCli([
+      "create",
+      "Blocked child task",
+      "--board",
+      "smoke-blocked",
+      "--parent",
+      String(parentId),
+    ]);
+    const childId = Number(childIdOutput);
+    expect(Number.isInteger(childId)).toBe(true);
+    expect(childId).toBeGreaterThan(0);
+
+    await runCli(["block", String(childId), "--reason", "waiting on parent"]);
+
+    const pageRes = await fetch(`${baseUrl}/tasks/${childId}?board=smoke-blocked`, {
+      signal: AbortSignal.timeout(10000),
+    });
+    expect(pageRes.status).toBe(200);
+    const html = await pageRes.text();
+    expect(html).toInclude("Blocked by dependencies");
+    expect(html).toInclude("blocking");
+    expect(html).toInclude("Parent task");
+
+    await stopServer();
+  }, 60000);
 });

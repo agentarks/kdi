@@ -119,6 +119,40 @@ describe("KDI-UI-005 task detail bridge", () => {
     expect(tail.content).toBe(" line two\n");
   });
 
+  it("tails a log from a UTF-8 boundary without a partial leading character", async () => {
+    const slug = await freshBoard();
+    const { task } = await createTaskJson(slug, { title: "Utf8 log task" });
+    const logPath = join(tmpHome, ".local", "share", "kdi", "logs", slug, `${task.id}.log`);
+    mkdirSync(dirname(logPath), { recursive: true });
+    // "aa" + "é" (UTF-8: C3 A9) + "bb" = 6 bytes total.
+    writeFileSync(logPath, "aaébb");
+
+    const tail3 = await taskLogJson(slug, task.id, new URLSearchParams({ tail: "3" }));
+    expect(tail3.present).toBe(true);
+    // Tail starts at byte A9 (continuation of é), so skip to the next boundary and return "bb".
+    expect(tail3.content).toBe("bb");
+
+    const tail4 = await taskLogJson(slug, task.id, new URLSearchParams({ tail: "4" }));
+    expect(tail4.present).toBe(true);
+    // Tail starts at byte C3 (start of é), so return "ébb".
+    expect(tail4.content).toBe("ébb");
+  });
+
+  it("truncates large logs to the first 500KB when not tailing", async () => {
+    const slug = await freshBoard();
+    const { task } = await createTaskJson(slug, { title: "Huge log task" });
+    const logPath = join(tmpHome, ".local", "share", "kdi", "logs", slug, `${task.id}.log`);
+    mkdirSync(dirname(logPath), { recursive: true });
+    const size = 11 * 1024 * 1024;
+    writeFileSync(logPath, Buffer.alloc(size, "x"));
+
+    const full = await taskLogJson(slug, task.id, new URLSearchParams());
+    expect(full.present).toBe(true);
+    expect(full.truncated).toBe(true);
+    expect(full.size).toBe(size);
+    expect(full.content).toBe("x".repeat(500 * 1024));
+  });
+
   it("returns dependencies for parent and child tasks", async () => {
     const slug = await freshBoard();
     const { task: parent } = await createTaskJson(slug, { title: "Parent task" });

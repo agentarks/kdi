@@ -17,7 +17,7 @@ const dev = process.env.NODE_ENV !== "production";
 // the build-time Node module graph (they only feed svelte-check, which resolves
 // `bun:sqlite` types from the hoisted bun-types at the repo root).
 // Spec FR-1: models are imported via the `~/*` alias the CLI already uses.
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync, openSync, closeSync, readSync } from "node:fs";
 import type { Board, BoardMetadata, BoardWithTaskCounts, BoardStats } from "~/models/board";
 import type { TaskSummary, TaskDetail, DetailFlags } from "$lib/types";
 import type { BoardListRow, BoardFlags } from "$lib/types";
@@ -1029,13 +1029,13 @@ export async function taskDetailJson(slug: string, id: number): Promise<TaskDeta
   const commentEnhancements = isEnabled(FF_COMMENT_ENHANCEMENTS);
 
   const [task, parents, children, attachments, comments, events, runs, contextResult] = await Promise.all([
-    Promise.resolve(m.showTask(id) as TaskModel),
-    Promise.resolve(loadParentSummaries(m, id)),
-    Promise.resolve(loadChildrenSummaries(m, id)),
-    attachmentsEnabled ? Promise.resolve(m.listAttachments(id)) : Promise.resolve([] as TaskAttachment[]),
-    Promise.resolve(m.getComments(id)),
-    Promise.resolve(m.getRecentTaskEvents(id, 50)),
-    Promise.resolve(m.getRuns(id)),
+    m.showTask(id) as TaskModel,
+    loadParentSummaries(m, id),
+    loadChildrenSummaries(m, id),
+    attachmentsEnabled ? m.listAttachments(id) : ([] as TaskAttachment[]),
+    m.getComments(id),
+    m.getRecentTaskEvents(id, 50),
+    m.getRuns(id),
     contextEnabled
       ? (async () => {
           try {
@@ -1044,7 +1044,7 @@ export async function taskDetailJson(slug: string, id: number): Promise<TaskDeta
             return { ok: false as const };
           }
         })()
-      : Promise.resolve({ ok: false as const }),
+      : { ok: false as const },
   ]);
 
   if (!task) {
@@ -1073,6 +1073,42 @@ export async function taskDetailJson(slug: string, id: number): Promise<TaskDeta
   };
 }
 
+// Read only the last `tailBytes` bytes from a text file, aligning to a valid
+// UTF-8 start byte so we never return a partial leading character.
+function readTailText(path: string, tailBytes: number, size?: number): string {
+  const fileSize = size ?? statSync(path).size;
+  if (tailBytes <= 0 || fileSize <= tailBytes) {
+    return readFileSync(path, "utf-8");
+  }
+  const buffer = Buffer.alloc(tailBytes);
+  const fd = openSync(path, "r");
+  try {
+    readSync(fd, buffer, 0, tailBytes, fileSize - tailBytes);
+  } finally {
+    closeSync(fd);
+  }
+  // Skip leading continuation bytes (10xxxxxx) to reach a valid UTF-8 boundary.
+  let i = 0;
+  while (i < buffer.length && (buffer[i] & 0xc0) === 0x80) {
+    i++;
+  }
+  return new TextDecoder().decode(buffer.subarray(i));
+}
+
+function readHeadText(path: string, headBytes: number, size?: number): string {
+  const fileSize = size ?? statSync(path).size;
+  const bytesToRead = Math.min(headBytes, fileSize);
+  if (bytesToRead <= 0) return "";
+  const buffer = Buffer.alloc(bytesToRead);
+  const fd = openSync(path, "r");
+  try {
+    readSync(fd, buffer, 0, bytesToRead, 0);
+  } finally {
+    closeSync(fd);
+  }
+  return new TextDecoder().decode(buffer);
+}
+
 export async function taskLogJson(
   slug: string,
   id: number,
@@ -1091,16 +1127,15 @@ export async function taskLogJson(
   const tail = params.get("tail");
   if (tail !== null) {
     const tailBytes = Number(tail);
-    const content = readFileSync(path, "utf-8");
-    const slice = tailBytes > 0 ? content.slice(-tailBytes) : content;
-    return { present: true, content: slice, path };
+    const content = readTailText(path, tailBytes, stats.size);
+    return { present: true, content, path };
   }
   const MAX_FULL = 500 * 1024;
-  const content = readFileSync(path, "utf-8");
   if (stats.size > 10 * 1024 * 1024) {
-    return { present: true, content: content.slice(0, MAX_FULL), path, truncated: true, size: stats.size };
+    const content = readHeadText(path, MAX_FULL, stats.size);
+    return { present: true, content, path, truncated: true, size: stats.size };
   }
-  return { present: true, content, path };
+  return { present: true, content: readFileSync(path, "utf-8"), path };
 }
 
 export async function taskDependenciesJson(
