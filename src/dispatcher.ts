@@ -760,7 +760,7 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
     }
   }
 
-  return { processed: done + counters.blocked, spawned, blocked: counters.blocked, skipped, failed };
+  return { processed: done + counters.blocked + failed, spawned, blocked: counters.blocked, skipped, failed };
 }
 
 export interface DispatcherHandle {
