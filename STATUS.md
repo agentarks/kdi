@@ -151,16 +151,16 @@
 - [ ] `bun run lint`, CLI build, `bun run check:web`, and `bun run build:web` pass with isolated `KDI_DB`
 
 ## KDI-UI-007: Dispatch Control Center — Spec
-- [ ] BRD drafted at `specs/sveltekit-ui/KDI-UI-007-dispatch-control-center.md`
-- [ ] `/dispatch` page renders dispatcher presence, ready/running counts, profile
+- [x] BRD drafted at `specs/sveltekit-ui/KDI-UI-007-dispatch-control-center.md`
+- [x] `/dispatch` page renders dispatcher presence, ready/running counts, profile
       health, recent spawn failures, and a one-shot dispatch form
-- [ ] Server action calls `tick()` directly with `max`, `failureLimit`, and
+- [x] Server action calls `tick()` directly with `max`, `failureLimit`, and
       `rateLimitCooldown` options; returns spawned/blocked/skipped/failed/processed
       breakdown
-- [ ] Profile health/repair card gated by `FF_REAL_HARNESS_PROFILES`
-- [ ] Smoke test with temp HOME/KDI_DB creates a ready task and triggers one-shot
+- [x] Profile health/repair card gated by `FF_REAL_HARNESS_PROFILES`
+- [x] Smoke test with temp HOME/KDI_DB creates a ready task and triggers one-shot
       dispatch from the UI, asserting the counts update
-- [ ] `bun run lint`, CLI build, `bun run check:web`, and `bun run build:web` pass
+- [x] `bun run lint`, CLI build, `bun run check:web`, and `bun run build:web` pass
 
 ## KDI-UI-012: Swarm Builder — Spec
 - [x] BRD drafted at `specs/sveltekit-ui/KDI-UI-012-swarm-builder.md`

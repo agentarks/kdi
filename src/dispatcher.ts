@@ -46,6 +46,10 @@ export interface TickOptions {
 
 export interface TickResult {
   processed: number;
+  spawned: number;
+  blocked: number;
+  skipped: number;
+  failed: number;
 }
 
 export async function spawnHarness(command: string, cwd: string, logPath?: string, timeoutMs: number = 300000, env?: Record<string, string>): Promise<HarnessResult> {
@@ -203,7 +207,7 @@ function completeSwarmOrchestrator(orchestratorId: number, synthesizerId: number
   }
 }
 
-function checkSwarmFailures(): number {
+function checkSwarmFailures(counters?: { blocked: number }): number {
   if (!isEnabled(FF_SWARM_MODE)) return 0;
   const db = getDb();
   const rows = db.query(
@@ -226,6 +230,7 @@ function checkSwarmFailures(): number {
     if (updateResult.changes > 0) {
       addEvent(orchestrator.id, "swarm_failed", { child_id: child.id, child_title: child.title, child_status: child.status, reason });
       blocked++;
+      if (counters) counters.blocked++;
     }
   }
   return blocked;
@@ -238,12 +243,13 @@ function determineOutcome(reason: string): Parameters<typeof finishRun>[1] {
   return "blocked";
 }
 
-function blockTask(id: number, result: string, blockReason: string, runError: string, runId: number | null, consecutiveFailures: number): void {
+function blockTask(id: number, result: string, blockReason: string, runError: string, runId: number | null, consecutiveFailures: number, counters?: { blocked: number }): void {
   const db = getDb();
-  db.run(
+  const updateResult = db.run(
     `UPDATE tasks SET status = 'blocked', result = ?, block_reason = ?, consecutive_failures = ?, claim_lock = NULL, claim_expires = NULL, started_at = NULL, rate_limited_until = NULL, updated_at = unixepoch() WHERE id = ?`,
     [result, blockReason, consecutiveFailures, id]
   );
+  if (counters && updateResult.changes > 0) counters.blocked++;
   const outcome = determineOutcome(runError);
   if (runId !== null) {
     finishRun(runId, outcome, null, null, runError);
@@ -288,17 +294,17 @@ function handleRateLimit(task: Task, runId: number | null, cooldownSeconds: numb
   addEvent(task.id, "rate_limited", { exit_code: 75, cooldown_until: cooldownUntil, reason }, runId ?? undefined);
 }
 
-function handleFailure(task: Task, result: string, reason: string, runId: number | null): void {
+function handleFailure(task: Task, result: string, reason: string, runId: number | null, counters?: { blocked: number }): void {
   const consecutiveFailures = task.consecutive_failures + 1;
   const hasMaxRetries = task.max_retries !== null && task.max_retries !== undefined;
 
   if (hasMaxRetries && consecutiveFailures >= task.max_retries!) {
     const blockReason = `Circuit breaker: ${consecutiveFailures} consecutive failures`;
-    blockTask(task.id, result, blockReason, reason, runId, consecutiveFailures);
+    blockTask(task.id, result, blockReason, reason, runId, consecutiveFailures, counters);
   } else if (hasMaxRetries) {
     requeueTask(task.id, reason, runId, consecutiveFailures);
   } else {
-    blockTask(task.id, result, reason, reason, runId, consecutiveFailures);
+    blockTask(task.id, result, reason, reason, runId, consecutiveFailures, counters);
   }
 }
 
@@ -319,7 +325,7 @@ function isGoalSatisfied(exitCode: number): boolean {
   return exitCode === 0;
 }
 
-function handleGoalContinue(task: Task, result: string, runError: string, runId: number | null): void {
+function handleGoalContinue(task: Task, result: string, runError: string, runId: number | null, counters?: { blocked: number }): void {
   const db = getDb();
   const max = task.goal_max_turns ?? 0;
   const remainingBefore = task.goal_remaining_turns ?? 0;
@@ -331,10 +337,11 @@ function handleGoalContinue(task: Task, result: string, runError: string, runId:
   if (remainingAfter <= 0) {
     // Exhausted — block the task.
     const reason = "Goal max turns exhausted";
-    db.run(
+    const updateResult = db.run(
       `UPDATE tasks SET status = 'blocked', result = ?, block_reason = ?, claim_lock = NULL, claim_expires = NULL, started_at = NULL, rate_limited_until = NULL, updated_at = unixepoch() WHERE id = ?`,
       [result, reason, task.id]
     );
+    if (counters && updateResult.changes > 0) counters.blocked++;
     if (runId !== null) {
       finishRun(runId, "blocked", null, null, runError);
     }
@@ -357,7 +364,7 @@ function handleGoalContinue(task: Task, result: string, runError: string, runId:
   addEvent(task.id, "goal_turn", { turn, max_turns: max, remaining_after: remainingAfter, verdict: "continue" }, runId ?? undefined);
 }
 
-function handleCrash(task: Task, reason: string, runId: number | null): void {
+function handleCrash(task: Task, reason: string, runId: number | null, counters?: { blocked: number }): void {
   const db = getDb();
   const consecutiveFailures = task.consecutive_failures + 1;
   const hasMaxRetries = task.max_retries !== null && task.max_retries !== undefined;
@@ -367,10 +374,11 @@ function handleCrash(task: Task, reason: string, runId: number | null): void {
   }
 
   if (hasMaxRetries && consecutiveFailures >= task.max_retries!) {
-    db.run(
+    const updateResult = db.run(
       `UPDATE tasks SET status = 'blocked', result = ?, block_reason = ?, consecutive_failures = ?, claim_lock = NULL, claim_expires = NULL, started_at = NULL, updated_at = unixepoch() WHERE id = ?`,
       ["", `Circuit breaker: ${consecutiveFailures} consecutive failures`, consecutiveFailures, task.id]
     );
+    if (counters && updateResult.changes > 0) counters.blocked++;
     addEvent(task.id, "blocked", { reason: `Circuit breaker: ${consecutiveFailures} consecutive failures`, run_error: reason, consecutive_failures: consecutiveFailures }, runId ?? undefined);
   } else if (hasMaxRetries) {
     db.run(
@@ -379,15 +387,16 @@ function handleCrash(task: Task, reason: string, runId: number | null): void {
     );
     addEvent(task.id, "reclaimed", { reason, consecutive_failures: consecutiveFailures }, runId ?? undefined);
   } else {
-    db.run(
+    const updateResult = db.run(
       `UPDATE tasks SET status = 'blocked', result = ?, block_reason = ?, consecutive_failures = ?, claim_lock = NULL, claim_expires = NULL, started_at = NULL, updated_at = unixepoch() WHERE id = ?`,
       ["", reason, consecutiveFailures, task.id]
     );
+    if (counters && updateResult.changes > 0) counters.blocked++;
     addEvent(task.id, "blocked", { reason, consecutive_failures: consecutiveFailures }, runId ?? undefined);
   }
 }
 
-function checkCrashedRuns(): number {
+function checkCrashedRuns(counters?: { blocked: number }): number {
   const db = getDb();
   const now = Math.floor(Date.now() / 1000);
   let crashes = 0;
@@ -407,7 +416,7 @@ function checkCrashedRuns(): number {
     }
 
     if (!isProcessAlive(run.worker_pid)) {
-      handleCrash(task, `Worker process died after grace period (PID ${run.worker_pid})`, run.id);
+      handleCrash(task, `Worker process died after grace period (PID ${run.worker_pid})`, run.id, counters);
       crashes++;
     }
   }
@@ -481,18 +490,20 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
   recordTick();
 
   if (!isEnabled(FF_ENABLE_KANBAN_DISPATCH)) {
-    return { processed: 0 };
+    return { processed: 0, spawned: 0, blocked: 0, skipped: 0, failed: 0 };
   }
 
   reapStaleClaims();
   promoteScheduledTasks(Math.floor(Date.now() / 1000));
-  const crashCount = checkCrashedRuns();
-  checkSwarmFailures();
+  const counters = { blocked: 0 };
+  const crashCount = checkCrashedRuns(counters);
+  checkSwarmFailures(counters);
 
   const tasks = listReadyTasks(options.boardId);
   let processed = 0;
   let spawned = 0;
-  let failuresThisPass = crashCount;
+  let skipped = 0;
+  let failed = crashCount;
   const failureLimit = options.failureLimit;
 
   for (const task of tasks) {
@@ -500,7 +511,7 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
       break;
     }
 
-    if (failureLimit !== undefined && failuresThisPass >= failureLimit) {
+    if (failureLimit !== undefined && failed >= failureLimit) {
       const warning = `Dispatcher stopped spawning: failure limit of ${failureLimit} reached this pass.`;
       console.warn(warning);
       // Log to board if we can resolve a slug
@@ -514,6 +525,7 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
     }
 
     if (isBlockedByDependencies(task.id)) {
+      skipped++;
       continue;
     }
 
@@ -533,6 +545,7 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
         const profileName = task.assignee ?? "opencode";
         addEvent(task.id, "profile_invalid", { profile: profileName, binary: "", reason: "unknown profile" });
         if (slug) logToBoard(slug, `Task ${task.id} skipped: unknown profile "${profileName}". Run: kdi profiles bootstrap / kdi profiles doctor`);
+        skipped++;
         continue;
       }
       const { binary, resolvedPath } = resolveCommandBinary(guardProfile.command);
@@ -540,6 +553,7 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
         const slug = getBoardSlug(task.board_id);
         addEvent(task.id, "profile_invalid", { profile: guardProfile.name, binary });
         if (slug) logToBoard(slug, `Task ${task.id} skipped: profile "${guardProfile.name}" binary "${binary}" not found. Run: kdi profiles bootstrap / kdi profiles doctor`);
+        skipped++;
         continue;
       }
     }
@@ -547,6 +561,7 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
     const claimResult = claimTask(task.id, task.assignee);
     recordClaim(claimResult.success);
     if (!claimResult.success) {
+      skipped++;
       continue;
     }
     const runId = claimResult.runId;
@@ -558,9 +573,9 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
 
     const workdir = task.workspace ?? getBoardWorkdir(task.board_id);
     if (!workdir) {
-      handleFailure(task, "", "Board not found or archived", runId);
+      handleFailure(task, "", "Board not found or archived", runId, counters);
       spawned++;
-      failuresThisPass++;
+      failed++;
       continue;
     }
 
@@ -570,9 +585,9 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
     try {
       profile = getProfile(task.assignee ?? "opencode");
     } catch {
-      handleFailure(task, "", `Unknown profile: ${task.assignee ?? "opencode"}`, runId);
+      handleFailure(task, "", `Unknown profile: ${task.assignee ?? "opencode"}`, runId, counters);
       spawned++;
-      failuresThisPass++;
+      failed++;
       continue;
     }
 
@@ -582,9 +597,9 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
     try {
       worktreePath = doCreateWorktree(workdir, profile.name, String(task.id), baseRef);
     } catch (err: any) {
-      handleFailure(task, "", `Worktree creation failed: ${err.message}`, runId);
+      handleFailure(task, "", `Worktree creation failed: ${err.message}`, runId, counters);
       spawned++;
-      failuresThisPass++;
+      failed++;
       continue;
     }
 
@@ -670,8 +685,8 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
           processed++;
         } else {
           recordAgentError(profile.agent ?? profile.name);
-          handleGoalContinue(task, stdout, `Harness failed (exit ${exitCode}): ${stderr || "unknown error"}`, runId);
-          failuresThisPass++;
+          handleGoalContinue(task, stdout, `Harness failed (exit ${exitCode}): ${stderr || "unknown error"}`, runId, counters);
+          failed++;
         }
         spawned++;
         continue;
@@ -688,16 +703,16 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
         handleRateLimit(task, runId, rateLimitCooldownSeconds, stderr || stdout);
       } else {
         recordAgentError(profile.agent ?? profile.name);
-        handleFailure(task, stdout, `Harness failed (exit ${exitCode}): ${stderr || "unknown error"}`, runId);
-        failuresThisPass++;
+        handleFailure(task, stdout, `Harness failed (exit ${exitCode}): ${stderr || "unknown error"}`, runId, counters);
+        failed++;
       }
 
       spawned++;
     } catch (err: any) {
       recordAgentError(profile.agent ?? profile.name);
-      handleFailure(task, "", `Harness execution failed: ${err.message}`, runId);
+      handleFailure(task, "", `Harness execution failed: ${err.message}`, runId, counters);
       spawned++;
-      failuresThisPass++;
+      failed++;
     } finally {
       try {
         const branchName = `wt/${profile.name}/${task.id}`;
@@ -745,7 +760,7 @@ export async function tick(options: TickOptions = {}): Promise<TickResult> {
     }
   }
 
-  return { processed };
+  return { processed, spawned, blocked: counters.blocked, skipped, failed };
 }
 
 export interface DispatcherHandle {

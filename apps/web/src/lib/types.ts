@@ -30,6 +30,77 @@ export interface BoardFlags {
   boardRmDelete: boolean;
 }
 
+// Dispatch Control Center (KDI-UI-007)
+
+export interface DispatchPresence {
+  present: boolean;
+  pid: number | null;
+  checkedAt: number;
+}
+
+export interface ProfileHealth {
+  name: string;
+  agent: string | undefined;
+  command: string;
+  binary: string;
+  resolvedPath: string | null;
+  ok: boolean;
+  status: "ok" | "missing-binary";
+}
+
+export interface SpawnFailure {
+  runId: number;
+  taskId: number;
+  taskTitle: string;
+  profile: string | null;
+  outcome: "spawn_failed" | "crashed" | "failed";
+  error: string | null;
+  startedAt: number;
+}
+
+export interface DispatchFlags {
+  canDispatch: boolean;
+  canUseFailureLimit: boolean;
+  canUseRateLimitCooldown: boolean;
+  canShowProfiles: boolean;
+}
+
+export interface TaskCounts {
+  triage: number;
+  todo: number;
+  scheduled: number;
+  ready: number;
+  running: number;
+  blocked: number;
+  review: number;
+  done: number;
+  archived: number;
+}
+
+export interface DispatchStatus {
+  board: string;
+  presence: DispatchPresence;
+  taskCounts: TaskCounts;
+  profiles: {
+    enabled: boolean;
+    path: string;
+    entries: ProfileHealth[];
+  };
+  recentFailures: {
+    enabled: boolean;
+    failures: SpawnFailure[];
+  };
+  flags: DispatchFlags;
+}
+
+export interface DispatchOnceResult {
+  processed: number;
+  spawned: number;
+  blocked: number;
+  skipped: number;
+  failed: number;
+}
+
 export interface FormResult {
   error?: string;
   intent?: string;
@@ -37,3 +108,4 @@ export interface FormResult {
   success?: boolean;
   values?: Record<string, unknown>;
 }
+

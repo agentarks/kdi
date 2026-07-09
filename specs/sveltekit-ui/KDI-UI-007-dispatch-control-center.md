@@ -324,44 +324,44 @@ No new feature flag is introduced by this BRD.
 -------------------------------------------------------------------------------
 Acceptance Criteria
 -------------------------------------------------------------------------------
-- [ ] AC-01: A `/dispatch` page exists and renders the board header, dispatcher
+- [x] AC-01: A `/dispatch` page exists and renders the board header, dispatcher
       presence card, counts card, profile card, recent failures card, and
       dispatch control form.
-- [ ] AC-02: The board view (KDI-UI-003) and left navigation link to the dispatch
+- [x] AC-02: The board view (KDI-UI-003) and left navigation link to the dispatch
       page.
-- [ ] AC-03: `GET /api/boards/[slug]/dispatch/status` returns `DispatchStatus`
+- [x] AC-03: `GET /api/boards/[slug]/dispatch/status` returns `DispatchStatus`
       with board, presence, task counts, profile health, and recent failures.
-- [ ] AC-04: The presence card shows "Running" when a live `dispatcher.pid`
+- [x] AC-04: The presence card shows "Running" when a live `dispatcher.pid`
       exists and "Not detected" otherwise.
-- [ ] AC-05: The counts card matches the `taskCounts` from `showBoard` for the
+- [x] AC-05: The counts card matches the `taskCounts` from `showBoard` for the
       same board.
-- [ ] AC-06: When `FF_REAL_HARNESS_PROFILES=true`, the profile card lists all
+- [x] AC-06: When `FF_REAL_HARNESS_PROFILES=true`, the profile card lists all
       profiles from `doctorProfiles()` and marks missing binaries with a
       warning.
-- [ ] AC-07: When `FF_REAL_HARNESS_PROFILES=false`, the profile card is absent.
-- [ ] AC-08: The "Bootstrap profiles" button calls `bootstrapRealProfiles(false)`
+- [x] AC-07: When `FF_REAL_HARNESS_PROFILES=false`, the profile card is absent.
+- [x] AC-08: The "Bootstrap profiles" button calls `bootstrapRealProfiles(false)`
       and refreshes the profile list; "Force bootstrap" calls it with `true`.
-- [ ] AC-09: The recent failures card shows up to 10 latest `spawn_failed` /
+- [x] AC-09: The recent failures card shows up to 10 latest `spawn_failed` /
       `crashed` runs for the board, with links to task detail pages.
-- [ ] AC-10: The dispatch form exposes `max` always, `failureLimit` only when
+- [x] AC-10: The dispatch form exposes `max` always, `failureLimit` only when
       `FF_DISPATCH_CONTROLS=true`, and `rateLimitCooldown` only when
       `FF_RATE_LIMIT_EXIT_CODE=true`.
-- [ ] AC-11: Submitting the form triggers a server action that calls `tick()`
+- [x] AC-11: Submitting the form triggers a server action that calls `tick()`
       and returns `processed`, `spawned`, `blocked`, `skipped`, and `failed`
       counts; the UI shows the breakdown and refreshes the counts card.
-- [ ] AC-12: With `FF_ENABLE_KANBAN_DISPATCH=false` or `FF_DISPATCH_ONCE=false`,
+- [x] AC-12: With `FF_ENABLE_KANBAN_DISPATCH=false` or `FF_DISPATCH_ONCE=false`,
       the submit button is disabled and the server rejects the POST with a clear
       feature-disabled message.
-- [ ] AC-13: Invalid `max`, `failureLimit`, or `rateLimitCooldown` values are
+- [x] AC-13: Invalid `max`, `failureLimit`, or `rateLimitCooldown` values are
       rejected with stable error codes before `tick()` is invoked.
-- [ ] AC-14: Polling pauses when the page is hidden and resumes when visible.
-- [ ] AC-15: When `FF_SVELTEKIT_FRONTEND=false`, the page shows the disabled
+- [x] AC-14: Polling pauses when the page is hidden and resumes when visible.
+- [x] AC-15: When `FF_SVELTEKIT_FRONTEND=false`, the page shows the disabled
       screen and routes return `503 { enabled: false }`.
-- [ ] AC-16: A smoke test with temp `HOME` and temp `KDI_DB` creates a board and
+- [x] AC-16: A smoke test with temp `HOME` and temp `KDI_DB` creates a board and
       a ready task via the CLI, opens `/dispatch`, asserts the counts show
       `ready: 1`, runs the one-shot dispatch form, and asserts the count becomes
       `running: 1` or `done: 1` depending on the test harness.
-- [ ] AC-17: `bun run lint`, `bun run build` (CLI), `bun run check:web`, and
+- [x] AC-17: `bun run lint`, `bun run build` (CLI), `bun run check:web`, and
       `bun run build:web` all pass with an isolated `KDI_DB`.
 
 -------------------------------------------------------------------------------
