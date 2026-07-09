@@ -2,6 +2,7 @@
   import { page } from "$app/state";
   import type { PageProps } from "./$types";
   import type { DispatchStatus, DispatchOnceResult } from "$lib/types";
+  import { clampInterval } from "$lib/pollInterval";
 
   let { data }: PageProps = $props();
 
@@ -17,6 +18,14 @@
   // svelte-ignore state_referenced_locally
   let lastRefreshed = $state<Date | null>(data.status ? new Date() : null);
   let forceBootstrap = $state(false);
+
+  // Clamp poll interval to [2, 30] whenever it changes (e.g., user input).
+  $effect(() => {
+    const clamped = clampInterval(pollInterval);
+    if (clamped !== pollInterval) {
+      pollInterval = clamped;
+    }
+  });
 
   // Sync server data back into local state when the board changes (e.g., client-side navigation).
   // This prevents stale status, error, or result from the previous board.
@@ -119,12 +128,6 @@
     }
     await loadStatus();
   }
-
-  function clampInterval(value: number) {
-    if (value < 2) return 2;
-    if (value > 30) return 30;
-    return value;
-  }
 </script>
 
 <svelte:head>
@@ -161,8 +164,7 @@
             type="number"
             min={2}
             max={30}
-            value={pollInterval}
-            onchange={(e) => (pollInterval = clampInterval(Number(e.currentTarget.value)))}
+            bind:value={pollInterval}
           />
           s
         </label>
