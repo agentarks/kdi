@@ -1055,14 +1055,19 @@ export async function dispatchOnceJson(slug: string, body: DispatchTrigger): Pro
     }
   }
   const { tick } = await import("~/dispatcher");
-  const result = await tick({
-    boardId: board.id,
-    boardSlug: slug,
-    maxSpawnsPerTick: body.max === 0 ? Infinity : body.max,
-    rateLimitCooldownSeconds,
-    failureLimit,
-  });
-  return result;
+  try {
+    const result = await tick({
+      boardId: board.id,
+      boardSlug: slug,
+      maxSpawnsPerTick: body.max === 0 ? Infinity : body.max,
+      rateLimitCooldownSeconds,
+      failureLimit,
+    });
+    return result;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new BridgeError("dispatch_failed", 500, message);
+  }
 }
 
 export async function bootstrapProfilesJson(slug: string, force = false): Promise<{ profiles: ProfileHealth[] }> {

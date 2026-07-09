@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, afterAll } from "bun:test";
+import { describe, it, expect, beforeEach, afterEach, afterAll, mock } from "bun:test";
 import { rmSync, mkdirSync, existsSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
@@ -171,6 +171,20 @@ describe("KDI-UI-007 dispatch control center bridge", () => {
       "invalid_duration",
       400,
     );
+  });
+
+  it("returns dispatch_failed when tick throws", async () => {
+    await createBoardJson({ slug: "dispatch", workdir: tmpHome });
+    mock.module("~/dispatcher", () => ({
+      tick: () => {
+        throw new Error("forced tick failure");
+      },
+    }));
+    try {
+      await expectBridgeError(dispatchOnceJson("dispatch", { max: 0 }), "dispatch_failed", 500);
+    } finally {
+      mock.restore();
+    }
   });
 
   it("bootstrapProfilesJson refreshes profile health list", async () => {
