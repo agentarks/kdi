@@ -18,7 +18,7 @@ const dev = process.env.NODE_ENV !== "production";
 // `bun:sqlite` types from the hoisted bun-types at the repo root).
 // Spec FR-1: models are imported via the `~/*` alias the CLI already uses.
 import type { Board, BoardMetadata, BoardWithTaskCounts, BoardStats } from "~/models/board";
-import type { BoardListRow, BoardFlags } from "$lib/types";
+import type { BoardListRow, BoardFlags, DispatchStatus, DispatchOnceResult, DispatchFlags, ProfileHealth, SpawnFailure, TaskCounts } from "$lib/types";
 
 import type { Task, Task as TaskModel, CreateTaskInput } from "~/models/task";
 import type { TaskEvent } from "~/models/taskEvent";
@@ -29,7 +29,9 @@ import type { TaskContext } from "~/models/context";
 import type { WorkflowTemplate } from "~/models/workflowTemplate";
 import type { NotifySub } from "~/models/notifySub";
 import type { DiagnosticFinding, DiagnosticSeverity } from "~/models/diagnostic";
-import type { Profile } from "~/profiles";
+
+// Runtime profile imports stay server-side and do not pull `bun:sqlite`.
+import { loadProfiles, doctorProfiles, bootstrapRealProfiles, defaultProfilesPath, type Profile } from "~/profiles";
 
 // Runtime model import is DYNAMIC (string-literal) and cached. This keeps
 // `bun:sqlite` (pulled transitively by the CLI models via ../db) out of the
@@ -60,6 +62,7 @@ type Modules = {
   getRuns: typeof import("~/models/taskRun")["getRuns"];
   getRunsFiltered: typeof import("~/models/taskRun")["getRunsFiltered"];
   getRun: typeof import("~/models/taskRun")["getRun"];
+  getRecentBoardRunFailures: typeof import("~/models/taskRun")["getRecentBoardRunFailures"];
   getComments: typeof import("~/models/comment")["getComments"];
   listAttachments: typeof import("~/models/taskAttachment")["listAttachments"];
   buildTaskContext: typeof import("~/models/context")["buildTaskContext"];
@@ -129,7 +132,7 @@ async function models(): Promise<Modules> {
 // Spec FR: gate the whole bridge behind FF_SVELTEKIT_FRONTEND. Using the
 // shared flag registry so the UI honors the same env/registry overrides as
 // every other KDI feature.
-import { isEnabled, FF_SVELTEKIT_FRONTEND, FF_LIST_FILTERS_SORT, FF_TENANT_NAMESPACE, FF_CREATED_BY, FF_WORKFLOW_TEMPLATES, FF_RATE_LIMIT_EXIT_CODE, FF_HEARTBEAT, FF_BOARD_METADATA, FF_BOARD_CREATE_SWITCH, FF_DEFAULT_WORKDIR, FF_BOARD_SWITCH, FF_BOARD_RENAME_HERMES, FF_BOARD_RENAME, FF_BOARD_RM_DELETE } from "~/flags";
+import { isEnabled, FF_SVELTEKIT_FRONTEND, FF_LIST_FILTERS_SORT, FF_TENANT_NAMESPACE, FF_CREATED_BY, FF_WORKFLOW_TEMPLATES, FF_RATE_LIMIT_EXIT_CODE, FF_HEARTBEAT, FF_BOARD_METADATA, FF_BOARD_CREATE_SWITCH, FF_DEFAULT_WORKDIR, FF_BOARD_SWITCH, FF_BOARD_RENAME_HERMES, FF_BOARD_RENAME, FF_BOARD_RM_DELETE, FF_ENABLE_KANBAN_DISPATCH, FF_DISPATCH_ONCE, FF_DISPATCH_CONTROLS, FF_REAL_HARNESS_PROFILES } from "~/flags";
 import {
   FF_SCHEDULED_STATUS,
   FF_PRIORITY_INTEGER,
@@ -140,7 +143,6 @@ import {
   FF_GOAL_MODE,
   FF_CREATE_PARENT,
 } from "~/flags";
-import { loadProfiles } from "~/profiles";
 
 // Routes call gate() first; when the flag is off it returns the spec-defined
 // 503 { enabled:false } so feature-detect works without a redirect.
@@ -981,4 +983,92 @@ export async function subscriptionsJson(
   } catch (err) {
     throw wrap(err);
   }
+}
+
+export function dispatchFlags(): DispatchFlags {
+  return {
+    canDispatch: isEnabled(FF_ENABLE_KANBAN_DISPATCH) && isEnabled(FF_DISPATCH_ONCE),
+    canUseFailureLimit: isEnabled(FF_DISPATCH_CONTROLS),
+    canUseRateLimitCooldown: isEnabled(FF_RATE_LIMIT_EXIT_CODE),
+    canShowProfiles: isEnabled(FF_REAL_HARNESS_PROFILES),
+  };
+}
+
+export interface DispatchTrigger {
+  max: number;
+  failureLimit?: number;
+  rateLimitCooldown?: string;
+}
+
+export async function dispatchStatusJson(slug: string): Promise<DispatchStatus> {
+  const board = await resolveBoard(slug);
+  const dp = await import("~/dispatcherPresence");
+  const present = dp.isDispatcherPresent(slug);
+  const pid = present ? dp.getDispatcherPid(slug) : null;
+  const checkedAt = Math.floor(Date.now() / 1000);
+  const m = await models();
+  const profilesEnabled = isEnabled(FF_REAL_HARNESS_PROFILES);
+  const profilesPath = defaultProfilesPath();
+  const profileEntries: ProfileHealth[] = profilesEnabled
+    ? (toCamel(doctorProfiles(profilesPath)) as ProfileHealth[])
+    : [];
+  const failures = toCamel(m.getRecentBoardRunFailures(board.id)) as SpawnFailure[];
+  return {
+    board: slug,
+    presence: { present, pid, checkedAt },
+    taskCounts: board.taskCounts as TaskCounts,
+    profiles: { enabled: profilesEnabled, path: profilesPath, entries: profileEntries },
+    recentFailures: { enabled: true, failures },
+    flags: dispatchFlags(),
+  };
+}
+
+export async function dispatchOnceJson(slug: string, body: DispatchTrigger): Promise<DispatchOnceResult> {
+  if (!isEnabled(FF_ENABLE_KANBAN_DISPATCH) || !isEnabled(FF_DISPATCH_ONCE)) {
+    throw new BridgeError("feature_disabled", 403, "One-shot dispatch is not enabled.");
+  }
+  const board = await resolveBoard(slug);
+  if (typeof body.max !== "number" || !Number.isInteger(body.max) || body.max < 0) {
+    throw new BridgeError("invalid_max", 400, "max must be a non-negative integer");
+  }
+  let failureLimit: number | undefined;
+  if (body.failureLimit !== undefined) {
+    if (!isEnabled(FF_DISPATCH_CONTROLS)) {
+      throw new BridgeError("feature_disabled", 403, "failure-limit is not enabled");
+    }
+    if (typeof body.failureLimit !== "number" || !Number.isInteger(body.failureLimit) || body.failureLimit <= 0) {
+      throw new BridgeError("invalid_failure_limit", 400, "failureLimit must be a positive integer");
+    }
+    failureLimit = body.failureLimit;
+  }
+  let rateLimitCooldownSeconds: number | undefined;
+  if (body.rateLimitCooldown !== undefined) {
+    if (!isEnabled(FF_RATE_LIMIT_EXIT_CODE)) {
+      throw new BridgeError("feature_disabled", 403, "rate-limit-cooldown is not enabled");
+    }
+    const m = await models();
+    try {
+      rateLimitCooldownSeconds = m.parseDuration(body.rateLimitCooldown);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      throw new BridgeError("invalid_duration", 400, message);
+    }
+  }
+  const { tick } = await import("~/dispatcher");
+  const result = await tick({
+    boardId: board.id,
+    boardSlug: slug,
+    maxSpawnsPerTick: body.max === 0 ? Infinity : body.max,
+    rateLimitCooldownSeconds,
+    failureLimit,
+  });
+  return result;
+}
+
+export async function bootstrapProfilesJson(slug: string, force = false): Promise<{ profiles: ProfileHealth[] }> {
+  await resolveBoard(slug);
+  const path = defaultProfilesPath();
+  bootstrapRealProfiles(path, force);
+  const entries = doctorProfiles(path);
+  return { profiles: toCamel(entries) as ProfileHealth[] };
 }
