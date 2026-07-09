@@ -36,6 +36,9 @@
   const flags = $derived(data.flags ?? { canDispatch: false, canUseFailureLimit: false, canUseRateLimitCooldown: false, canShowProfiles: false });
   const boardSlug = $derived(page.url.searchParams.get("board") ?? board?.slug ?? "default");
   const boardName = $derived(board?.name || board?.slug || boardSlug);
+  const pageTitle = $derived(
+    error ? "Board not found — Dispatch — kdi" : boardName ? `${boardName} — Dispatch — kdi` : "Dispatch — kdi",
+  );
 
   async function loadStatus() {
     if (!board) return;
@@ -125,13 +128,13 @@
 </script>
 
 <svelte:head>
-  <title>{boardName} — Dispatch — kdi</title>
+  <title>{pageTitle}</title>
 </svelte:head>
 
 {#if error}
   <div class="stack-md">
     <h1>Board not found</h1>
-    <p class="error">{error}</p>
+    <p class="error" aria-live="polite">{error}</p>
     <p><a href="/boards">← Back to boards</a></p>
   </div>
 {:else if board && status}
@@ -139,11 +142,14 @@
     <div class="flex-between">
       <div>
         <h1>{boardName} — Dispatch</h1>
-        <p class="text-dim">
+        <p class="text-dim" aria-live="polite" aria-atomic="true">
           Last refreshed: {lastRefreshed ? lastRefreshed.toLocaleTimeString() : "—"}
           {#if status.presence.present}
             <span class="badge">Running</span>
           {/if}
+        </p>
+        <p class="sr-only" aria-live="polite" aria-atomic="true">
+          {status ? `Status updated: dispatcher ${status.presence.present ? "running" : "not detected"}; ready ${status.taskCounts.ready}, running ${status.taskCounts.running}` : ""}
         </p>
       </div>
       <div class="actions">
@@ -278,10 +284,10 @@
           </button>
         </form>
         {#if submitError}
-          <p class="error stack-sm">{submitError}</p>
+          <p class="error stack-sm" aria-live="polite">{submitError}</p>
         {/if}
         {#if result}
-          <div class="result stack-sm">
+          <div class="result stack-sm" aria-live="polite" aria-atomic="true">
             <h3>Result</h3>
             <div class="result-grid">
               <div><span class="count-value">{result.processed}</span> processed</div>
