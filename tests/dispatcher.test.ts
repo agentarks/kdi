@@ -137,7 +137,7 @@ describe("dispatcher", () => {
       removeWorktree: mockRemoveWorktree,
     });
 
-    expect(result.processed).toBe(2);
+    expect(result.processed).toBe(1);
 
     const updated = showTask(task.id);
     expect(updated!.status).toBe("blocked");
@@ -157,7 +157,7 @@ describe("dispatcher", () => {
       removeWorktree: mockRemoveWorktree,
     });
 
-    expect(result.processed).toBe(2);
+    expect(result.processed).toBe(1);
 
     const updated = showTask(task.id);
     expect(updated!.status).toBe("blocked");
@@ -223,7 +223,7 @@ describe("dispatcher", () => {
 
     const result = await tick();
 
-    expect(result.processed).toBe(2);
+    expect(result.processed).toBe(1);
 
     const updated = showTask(task.id);
     expect(updated!.status).toBe("blocked");
@@ -237,7 +237,7 @@ describe("dispatcher", () => {
 
     const result = await tick();
 
-    expect(result.processed).toBe(2);
+    expect(result.processed).toBe(1);
 
     const updated = showTask(task.id);
     expect(updated!.status).toBe("blocked");
@@ -259,7 +259,7 @@ describe("dispatcher", () => {
       removeWorktree: mockRemoveWorktree,
     });
 
-    expect(result.processed).toBe(2);
+    expect(result.processed).toBe(1);
 
     const updated = showTask(task.id);
     expect(updated!.status).toBe("blocked");
@@ -831,7 +831,7 @@ describe("dispatcher", () => {
       removeWorktree: () => ({ worktreeRemoved: true, branchDeleted: true, found: true }),
     });
 
-    expect(result.processed).toBe(2);
+    expect(result.processed).toBe(1);
 
     const updated = showTask(task.id);
     expect(updated!.status).toBe("blocked");
@@ -1455,7 +1455,7 @@ describe("dispatcher", () => {
         removeWorktree: () => ({ worktreeRemoved: true, branchDeleted: true, found: true }),
       });
 
-      expect(result.processed).toBe(2);
+      expect(result.processed).toBe(1);
       const updated = showTask(task.id);
       expect(updated!.status).toBe("blocked");
       expect(updated!.block_reason).toContain("timed out");

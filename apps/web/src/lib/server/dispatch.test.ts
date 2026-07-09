@@ -118,7 +118,7 @@ describe("KDI-UI-007 dispatch control center bridge", () => {
     expect(status.taskCounts.ready).toBe(1);
 
     const result = await dispatchOnceJson("dispatch", { max: 0 });
-    expect(result.processed).toBe(2);
+    expect(result.processed).toBe(1);
     expect(result.spawned).toBe(1);
     expect(result.blocked).toBe(1);
     expect(result.skipped).toBe(0);

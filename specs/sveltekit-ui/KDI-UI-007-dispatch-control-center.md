@@ -190,11 +190,11 @@ interface DispatchTrigger {
 `DispatchOnceResult`:
 ```typescript
 interface DispatchOnceResult {
-  processed: number;  // tasks that reached a terminal state (done/blocked/failed)
+  processed: number;  // tasks that reached a terminal state (done/blocked)
   spawned: number;    // harnesses that were started
   blocked: number;    // tasks that became blocked this pass
   skipped: number;    // tasks skipped because of unknown profile, missing binary, or dependencies
-  failed: number;     // tasks that failed/crashed this pass
+  failed: number;     // tasks that failed/crashed this pass (may include requeued tasks)
 }
 ```
 
