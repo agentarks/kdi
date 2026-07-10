@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { page } from "$app/state";
   import { formatAge, formatDate, formatBytes, statusLabel } from "$lib/kanban";
   import type { TaskDetail, DetailFlags, LogResponse, TaskDetailRun, TaskDetailEvent } from "$lib/types";
 
@@ -65,7 +64,7 @@
   }
 
   function metadataEntries() {
-    const out: { label: string; value: string | number; flag?: boolean }[] = [];
+    const out: { label: string; value: string | number }[] = [];
     if (task.workspaceKind) out.push({ label: "Workspace kind", value: task.workspaceKind });
     if (task.workspace) out.push({ label: "Workspace", value: task.workspace });
     if (task.branch) out.push({ label: "Branch", value: task.branch });
@@ -110,10 +109,9 @@
 
   async function refreshEvents() {
     const lastId = events[0]?.id ?? 0;
-    if (!lastId) return;
     const res = await fetch(`/api/boards/${boardSlug}/tasks/${task.id}/events?since=${lastId}`);
     const data = await res.json();
-    const newEvents = (data.events as typeof events).sort((a, b) => b.createdAt - a.createdAt);
+    const newEvents = (data.events as typeof events).sort((a, b) => b.createdAt - a.createdAt || b.id - a.id);
     events = [...newEvents, ...events];
   }
 
@@ -129,15 +127,19 @@
   }
 
   async function refreshLog() {
-    const url = logTailBytes > 0 && logFollowing
+    const url = logTailBytes > 0
       ? `/api/boards/${boardSlug}/tasks/${task.id}/log?tail=${logTailBytes}`
       : `/api/boards/${boardSlug}/tasks/${task.id}/log`;
-    const res = await fetch(url);
-    const data: LogResponse = await res.json();
-    logPresent = data.present;
-    logContent = data.present ? data.content ?? "" : null;
-    logTruncated = data.truncated ?? false;
-    logSize = data.size;
+    try {
+      const res = await fetch(url);
+      const data: LogResponse = await res.json();
+      logPresent = data.present;
+      logContent = data.present ? data.content ?? "" : null;
+      logTruncated = data.truncated ?? false;
+      logSize = data.size;
+    } catch (err) {
+      console.error("Log refresh failed:", err);
+    }
   }
 
   function toggleLogFollow() {
@@ -218,25 +220,23 @@
     {/if}
   </section>
 
-  {#if flags.resultSummary}
-    <section class="detail-section" aria-labelledby="result-heading">
-      <h2 id="result-heading">Result</h2>
-      {#if task.result}
-        <pre class="plain-text">{task.result}</pre>
-      {:else}
-        <p class="empty-state">No result captured</p>
-      {/if}
-    </section>
+  <section class="detail-section" aria-labelledby="result-heading">
+    <h2 id="result-heading">Result</h2>
+    {#if task.result}
+      <pre class="plain-text">{task.result}</pre>
+    {:else}
+      <p class="empty-state">No result captured</p>
+    {/if}
+  </section>
 
-    <section class="detail-section" aria-labelledby="summary-heading">
-      <h2 id="summary-heading">Summary</h2>
-      {#if task.summary}
-        <pre class="plain-text">{task.summary}</pre>
-      {:else}
-        <p class="empty-state">No summary</p>
-      {/if}
-    </section>
-  {/if}
+  <section class="detail-section" aria-labelledby="summary-heading">
+    <h2 id="summary-heading">Summary</h2>
+    {#if task.summary}
+      <pre class="plain-text">{task.summary}</pre>
+    {:else}
+      <p class="empty-state">No summary</p>
+    {/if}
+  </section>
 
   <section class="detail-section" aria-labelledby="metadata-heading">
     <h2 id="metadata-heading">Metadata</h2>

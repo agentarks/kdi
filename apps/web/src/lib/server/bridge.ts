@@ -979,8 +979,7 @@ function loadParentSummaries(m: Awaited<ReturnType<typeof models>>, childId: num
      FROM tasks t
      JOIN dependencies d ON d.parent_id = t.id
      WHERE d.child_id = ? AND t.archived_at IS NULL
-     ORDER BY t.updated_at DESC
-     LIMIT 10`
+     ORDER BY t.updated_at DESC`
   ).all(childId) as Array<{
     id: number;
     title: string;
@@ -1014,7 +1013,7 @@ function findHandoffEvent(
   const row = m.getDb().query(
     `SELECT payload, created_at FROM task_events
      WHERE task_id = ? AND kind = 'worktree_handed_off'
-     ORDER BY created_at DESC LIMIT 1`
+     ORDER BY created_at DESC, id DESC LIMIT 1`
   ).get(taskId) as { payload: string | null; created_at: number } | undefined;
   if (!row) return null;
   try {

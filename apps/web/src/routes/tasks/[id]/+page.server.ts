@@ -13,7 +13,7 @@ export const load: PageServerLoad = async ({ params, url }) => {
     return { detail, flags: detailFlags(), boardSlug };
   } catch (err) {
     if (err instanceof BridgeError && (err.code === "task_not_found" || err.code === "board_not_found")) {
-      return { error: err.message, flags: detailFlags(), boardSlug };
+      throw error(404, err.message);
     }
     throw err;
   }

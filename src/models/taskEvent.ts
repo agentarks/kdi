@@ -44,7 +44,7 @@ export function getEvents(taskId: number): TaskEvent[] {
   const db = getDb();
   return db
     .query(
-      `SELECT id, task_id, run_id, kind, payload, created_at FROM task_events WHERE task_id = ? ORDER BY created_at DESC`
+      `SELECT id, task_id, run_id, kind, payload, created_at FROM task_events WHERE task_id = ? ORDER BY created_at DESC, id DESC`
     )
     .all(taskId) as TaskEvent[];
 }
@@ -53,7 +53,7 @@ export function getRecentTaskEvents(taskId: number, limit: number): TaskEvent[] 
   const db = getDb();
   return db
     .query(
-      `SELECT id, task_id, run_id, kind, payload, created_at FROM task_events WHERE task_id = ? ORDER BY created_at DESC LIMIT ?`
+      `SELECT id, task_id, run_id, kind, payload, created_at FROM task_events WHERE task_id = ? ORDER BY created_at DESC, id DESC LIMIT ?`
     )
     .all(taskId, limit) as TaskEvent[];
 }
