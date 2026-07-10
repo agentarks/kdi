@@ -134,13 +134,20 @@
 - [ ] UI smoke with temp HOME/KDI_DB asserts list matches `kdi list --status triage` and actions update task states
 - [ ] `bun run lint`, CLI build, SvelteKit build pass with isolated `KDI_DB`
 
-## KDI-UI-008: Live Activity View — Spec
+## KDI-UI-008: Live Activity View — In Progress
 - [x] BRD/spec drafted at `specs/sveltekit-ui/KDI-UI-008-live-activity-view.md`
-- [ ] Board-wide activity stream with filters for assignee, tenant, and event kinds
-- [ ] Per-task event stream and worker log view
-- [ ] Poll first, with pause/resume and manual refresh
-- [ ] Acceptance: covers `watch`, `tail`, and `log` without requiring a WebSocket server
-- [ ] `bun run lint`, CLI build, `bun run check:web`, and `bun run build:web` pass with isolated `KDI_DB`
+- [x] `/activity` page renders a board-wide live event stream with pause/resume
+      and manual refresh
+- [x] Filter controls for assignee, tenant, kinds, and poll interval when
+      `FF_WATCH_FILTERS=true`
+- [x] Per-task event tail and worker log panel reusing KDI-UI-001/005 routes
+- [ ] Server-side filter gating in `boardEventsJson` (FF_WATCH_FILTERS, FF_TENANT_NAMESPACE)
+- [ ] Poll interval clamping (min 0.5s, no NaN)
+- [ ] Distinct "No matching events" empty state when filters active
+- [ ] Smoke test with temp HOME/KDI_DB creates a task, generates events, and
+      asserts the stream renders task id and event kind
+- [ ] `bun run lint`, CLI build, `bun run check:web`, and `bun run build:web` pass
+      with isolated `KDI_DB`
 
 ## KDI-UI-009: Stats and Diagnostics UI — Spec
 - [x] BRD/spec drafted at `specs/sveltekit-ui/KDI-UI-009-stats-diagnostics-ui.md`

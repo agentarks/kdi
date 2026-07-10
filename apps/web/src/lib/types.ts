@@ -30,6 +30,13 @@ export interface BoardFlags {
   boardRmDelete: boolean;
 }
 
+export interface ActivityFlags {
+  watchFilters: boolean;
+  tailNoFollow: boolean;
+  workerLogCapture: boolean;
+  tenantNamespace: boolean;
+}
+
 // Dispatch Control Center (KDI-UI-007)
 
 export interface DispatchPresence {
@@ -107,6 +114,15 @@ export interface FormResult {
   slug?: string;
   success?: boolean;
   values?: Record<string, unknown>;
+}
+
+export interface TaskEvent {
+  id: number;
+  taskId: number;
+  runId: number | null;
+  kind: string;
+  payload: string | null;
+  createdAt: number;
 }
 
 export interface TaskSummary {
@@ -212,6 +228,12 @@ export interface TaskDetailEvent {
   createdAt: number;
 }
 
+export interface TaskLog {
+  present: boolean;
+  content?: string;
+  path?: string;
+}
+
 export interface TaskDetailContext {
   taskId: number;
   title: string;
@@ -304,4 +326,3 @@ export interface HandoffResponse {
   worktreePath?: string;
   eventAt?: number;
 }
-

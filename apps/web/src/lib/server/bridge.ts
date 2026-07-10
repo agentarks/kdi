@@ -30,7 +30,6 @@ import type { TaskContext } from "~/models/context";
 import type { WorkflowTemplate } from "~/models/workflowTemplate";
 import type { NotifySub } from "~/models/notifySub";
 import type { DiagnosticFinding, DiagnosticSeverity } from "~/models/diagnostic";
-
 // Runtime profile imports stay server-side and do not pull `bun:sqlite`.
 import { loadProfiles, doctorProfiles, bootstrapRealProfiles, defaultProfilesPath, type Profile } from "~/profiles";
 
@@ -146,7 +145,7 @@ async function models(): Promise<Modules> {
 // Spec FR: gate the whole bridge behind FF_SVELTEKIT_FRONTEND. Using the
 // shared flag registry so the UI honors the same env/registry overrides as
 // every other KDI feature.
-import { isEnabled, FF_SVELTEKIT_FRONTEND, FF_LIST_FILTERS_SORT, FF_TENANT_NAMESPACE, FF_CREATED_BY, FF_WORKFLOW_TEMPLATES, FF_RATE_LIMIT_EXIT_CODE, FF_HEARTBEAT, FF_BOARD_METADATA, FF_BOARD_CREATE_SWITCH, FF_DEFAULT_WORKDIR, FF_BOARD_SWITCH, FF_BOARD_RENAME_HERMES, FF_BOARD_RENAME, FF_BOARD_RM_DELETE, FF_ENABLE_KANBAN_DISPATCH, FF_DISPATCH_ONCE, FF_DISPATCH_CONTROLS, FF_REAL_HARNESS_PROFILES } from "~/flags";
+import { isEnabled, FF_SVELTEKIT_FRONTEND, FF_LIST_FILTERS_SORT, FF_TENANT_NAMESPACE, FF_CREATED_BY, FF_WORKFLOW_TEMPLATES, FF_RATE_LIMIT_EXIT_CODE, FF_HEARTBEAT, FF_BOARD_METADATA, FF_BOARD_CREATE_SWITCH, FF_DEFAULT_WORKDIR, FF_BOARD_SWITCH, FF_BOARD_RENAME_HERMES, FF_BOARD_RENAME, FF_BOARD_RM_DELETE, FF_ENABLE_KANBAN_DISPATCH, FF_DISPATCH_ONCE, FF_DISPATCH_CONTROLS, FF_REAL_HARNESS_PROFILES, FF_WATCH_FILTERS, FF_TAIL_NO_FOLLOW } from "~/flags";
 import {
   FF_SCHEDULED_STATUS,
   FF_PRIORITY_INTEGER,
@@ -577,6 +576,22 @@ export function boardUiFlags(): BoardFlags {
   };
 }
 
+export interface ActivityFlags {
+  watchFilters: boolean;
+  tailNoFollow: boolean;
+  workerLogCapture: boolean;
+  tenantNamespace: boolean;
+}
+
+export function activityFlags(): ActivityFlags {
+  return {
+    watchFilters: isEnabled(FF_WATCH_FILTERS),
+    tailNoFollow: isEnabled(FF_TAIL_NO_FOLLOW),
+    workerLogCapture: isEnabled(FF_WORKER_LOG_CAPTURE),
+    tenantNamespace: isEnabled(FF_TENANT_NAMESPACE),
+  };
+}
+
 export async function assigneesJson(slug: string): Promise<{ assignees: Record<string, number> }> {
   const board = await resolveBoard(slug);
   const m = await models();
@@ -979,7 +994,8 @@ function loadParentSummaries(m: Awaited<ReturnType<typeof models>>, childId: num
      FROM tasks t
      JOIN dependencies d ON d.parent_id = t.id
      WHERE d.child_id = ? AND t.archived_at IS NULL
-     ORDER BY t.updated_at DESC`
+     ORDER BY t.updated_at DESC
+     LIMIT 10`
   ).all(childId) as Array<{
     id: number;
     title: string;
@@ -1182,9 +1198,22 @@ export async function boardEventsJson(
 ): Promise<{ events: CamelCase<TaskEvent>[] }> {
   await resolveBoard(slug);
   const m = await models();
-  const assignee = params.get("assignee") ?? undefined;
-  const tenant = params.get("tenant") ?? undefined;
-  const kinds = params.get("kinds") ? params.get("kinds")!.split(",") : undefined;
+  
+  let assignee = undefined;
+  let tenant = undefined;
+  let kinds = undefined;
+  
+  if (isEnabled(FF_WATCH_FILTERS)) {
+    assignee = params.get("assignee") ?? undefined;
+    if (params.get("tenant") !== null) {
+      if (!isEnabled(FF_TENANT_NAMESPACE)) {
+        throw new BridgeError("feature_disabled", 400, "Tenant namespace feature is not enabled");
+      }
+      tenant = params.get("tenant") ?? undefined;
+    }
+    kinds = params.get("kinds") ? params.get("kinds")!.split(",") : undefined;
+  }
+  
   const filters = { assignee, tenant, kinds };
   const since = params.get("since");
   const limit = params.get("limit") ? Number(params.get("limit")) : 50;

@@ -18,9 +18,10 @@
 
 import { describe, it, expect, afterAll } from "bun:test";
 import { rmSync, mkdirSync, existsSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 import { showTask } from "~/models/task";
 import { initDb, closeDb } from "~/db";
+import { getTaskLogPath } from "~/observability";
 
 const WORKTREE_ROOT = join(import.meta.dirname, "..", "..", "..", ".."); // repo root
 
@@ -99,7 +100,7 @@ afterAll(async () => {
 });
 
 describe("KDI-UI-001 HTTP smoke (dev server, isolated HOME/KDI_DB)", () => {
-  it("POST/GET boards + tasks over HTTP, flag-off disables writes, logs 501", async () => {
+  it("POST/GET boards + tasks over HTTP, flag-off disables writes, activity + logs render", async () => {
     // Close any DB handle left open by earlier tests in this process before
     // the dev server tries to open the same KDI_DB file.
     closeDb();
@@ -150,11 +151,27 @@ describe("KDI-UI-001 HTTP smoke (dev server, isolated HOME/KDI_DB)", () => {
     const shown = (await r4.json()) as { task: Record<string, unknown> };
     expect(shown.task.title).toBe("HTTP task");
 
-    // logs route is the spec's prescribed model-gap escape hatch -> 501.
-    const r5 = await fetch(`${baseUrl}/api/boards/smoke/tasks/${taskId}/logs`, { signal: AbortSignal.timeout(10000) });
-    expect(r5.status).toBe(501);
-    const logs = (await r5.json()) as { error: string; reason?: string };
-    expect(logs.error).toBe("not_implemented");
+    // GET /api/boards/smoke/tasks/<id>/log returns the worker log tail
+    const logPath = getTaskLogPath("smoke", taskId);
+    mkdirSync(dirname(logPath), { recursive: true });
+    writeFileSync(logPath, "worker log line 1\nworker log line 2\n");
+    const r5 = await fetch(`${baseUrl}/api/boards/smoke/tasks/${taskId}/log?tail=30`, { signal: AbortSignal.timeout(10000) });
+    expect(r5.status).toBe(200);
+    const logs = (await r5.json()) as { present: boolean; content: string };
+    expect(logs.present).toBe(true);
+    expect(logs.content).toContain("worker log line 2");
+
+    // KDI-UI-008: activity page and event stream endpoints
+    const rActivity = await fetch(`${baseUrl}/activity?board=smoke`, { signal: AbortSignal.timeout(10000) });
+    expect(rActivity.status).toBe(200);
+    const activityHtml = await rActivity.text();
+    expect(activityHtml.includes("Activity")).toBe(true);
+    expect(activityHtml.includes("smoke")).toBe(true);
+
+    const rEvents = await fetch(`${baseUrl}/api/boards/smoke/events`, { signal: AbortSignal.timeout(10000) });
+    expect(rEvents.status).toBe(200);
+    const eventsJson = (await rEvents.json()) as { events: Array<{ kind: string; taskId: number }> };
+    expect(eventsJson.events.some((e) => e.kind === "created" && e.taskId === taskId)).toBe(true);
 
     // Stop the dev server before reading the same DB from this process.
     // bun:sqlite WAL tolerates multiple readers, but concurrent open handles
