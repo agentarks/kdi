@@ -20,6 +20,11 @@
 - [x] Verification: `bun run lint`, `bun run test` (1006 pass / 0 fail), `bun run build`, `bun run check:web`, `bun run build:web` all pass
 - [ ] Review follow-up: further contrast audit for archived rows; self-host fonts to avoid Google Fonts render-block
 
+## Tech Debt
+- [ ] KDI-UI-005: `readHeadText` caps non-tail logs at 500KB but may split a trailing UTF-8 character at the byte boundary; trim trailing partial sequence if that becomes user-visible.
+- [ ] KDI-UI-005: No HTTP smoke test forces `buildTaskContext` to throw, so `contextError: "not_available"` rendering is covered by unit tests only.
+- [ ] Flaky test: `tests/commands/triage-automation.test.ts > specify --all sweeps triage tasks` fails intermittently when run in the full suite (passes in isolation). Likely a mock-server / timing interaction.
+
 ## SvelteKit UI Backlog - Drafted
 - [x] Drafted UI backlog at `specs/sveltekit-ui-backlog.md` based on implemented Hermes/KDI parity features.
 - [x] Linked frontend backlog from `specs/hermes-kanban-backlog.md`.
@@ -52,11 +57,14 @@
 
 ## KDI-UI-005: Task Detail Panel — Spec
 - [x] BRD/spec drafted at `specs/sveltekit-ui/KDI-UI-005-task-detail-panel.md`
-- [ ] Task detail page renders body, metadata, result, summary, comments, attachments, dependencies, context, runs, events, worker log, and worktree handoff
-- [ ] Aggregate endpoint returns full snapshot; specialized routes for log, dependencies, and handoff
-- [ ] Polling for events and log tail; run filtering when `FF_SHOW_RUN_FILTERING` is on
-- [ ] Smoke test with temp HOME/KDI_DB opens a CLI-created task and asserts the panel renders title, status, and body
-- [ ] `bun run lint`, CLI build, `bun run check:web`, and `bun run build:web` pass
+- [x] Review fix: blocked-by-dependency visual indication (FR-10) — `TaskDetailPanel` shows a top-level "Blocked by dependencies" callout and a `blocking` badge on each non-done parent when the task is blocked
+- [x] Review fix: surface `contextError` in the UI — `TaskDetailPanel` shows a "Context not available" callout when `taskDetailJson` returns `contextError: "not_available"`
+- [x] Review fix: log tail no longer loads the whole file into memory — `taskLogJson` reads only the requested tail bytes from disk and aligns to a valid UTF-8 boundary; large non-tail logs are capped at 500KB without reading past the cap
+- [x] Task detail page renders body, metadata, result, summary, comments, attachments, dependencies, context, runs, events, worker log, and worktree handoff
+- [x] Aggregate endpoint returns full snapshot; specialized routes for log, dependencies, and handoff
+- [x] Polling for events and log tail; run filtering when `FF_SHOW_RUN_FILTERING` is on
+- [x] Smoke test with temp HOME/KDI_DB opens a CLI-created task and asserts the panel renders title, status, and body
+- [x] `bun run lint`, CLI build, `bun run check:web`, and `bun run build:web` pass
 
 ## KDI-UI-006: Task Lifecycle Actions — Spec
 - [x] BRD/spec drafted at `specs/sveltekit-ui/KDI-UI-006-task-lifecycle-actions.md`

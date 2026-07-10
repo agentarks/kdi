@@ -20,7 +20,7 @@
   }
 </script>
 
-<a class="task-card" href={`/boards/${boardSlug}/tasks/${task.id}`}>
+<a class="task-card" href={`/tasks/${task.id}?board=${boardSlug}`}>
   <div class="card-header">
     <span class="task-id">#{task.id}</span>
     <span class="priority" title="Priority">{task.priority}</span>

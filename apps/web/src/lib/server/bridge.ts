@@ -17,8 +17,9 @@ const dev = process.env.NODE_ENV !== "production";
 // the build-time Node module graph (they only feed svelte-check, which resolves
 // `bun:sqlite` types from the hoisted bun-types at the repo root).
 // Spec FR-1: models are imported via the `~/*` alias the CLI already uses.
+import { existsSync, readFileSync, statSync, openSync, closeSync, readSync } from "node:fs";
 import type { Board, BoardMetadata, BoardWithTaskCounts, BoardStats } from "~/models/board";
-import type { BoardListRow, BoardFlags, DispatchStatus, DispatchOnceResult, DispatchFlags, ProfileHealth, SpawnFailure, TaskCounts } from "$lib/types";
+import type { BoardListRow, BoardFlags, TaskSummary, TaskDetail, DetailFlags, DispatchStatus, DispatchOnceResult, DispatchFlags, ProfileHealth, SpawnFailure, TaskCounts } from "$lib/types";
 
 import type { Task, Task as TaskModel, CreateTaskInput } from "~/models/task";
 import type { TaskEvent } from "~/models/taskEvent";
@@ -42,6 +43,7 @@ import { loadProfiles, doctorProfiles, bootstrapRealProfiles, defaultProfilesPat
 // Mirrors the proven KDI-UI-000 / KDI-UI-014 pattern.
 type Modules = {
   initDb: typeof import("~/db")["initDb"];
+  getDb: typeof import("~/db")["getDb"];
   listBoards: typeof import("~/models/board")["listBoards"];
   showBoard: typeof import("~/models/board")["showBoard"];
   createBoard: typeof import("~/models/board")["createBoard"];
@@ -58,6 +60,7 @@ type Modules = {
   getEvents: typeof import("~/models/taskEvent")["getEvents"];
   tailEvents: typeof import("~/models/taskEvent")["tailEvents"];
   getRecentEvents: typeof import("~/models/taskEvent")["getRecentEvents"];
+  getRecentTaskEvents: typeof import("~/models/taskEvent")["getRecentTaskEvents"];
   getEventsAfter: typeof import("~/models/taskEvent")["getEventsAfter"];
   getRuns: typeof import("~/models/taskRun")["getRuns"];
   getRunsFiltered: typeof import("~/models/taskRun")["getRunsFiltered"];
@@ -72,19 +75,28 @@ type Modules = {
   validateStepKey: typeof import("~/models/workflowTemplate")["validateStepKey"];
   listSubscriptions: typeof import("~/models/notifySub")["listSubscriptions"];
   addDependency: typeof import("~/models/dependency")["addDependency"];
+  getChildTasks: typeof import("~/models/dependency")["getChildTasks"];
   loadProfiles: typeof import("~/profiles")["loadProfiles"];
   getProfile: typeof import("~/profiles")["getProfile"];
   editTask: typeof import("~/models/task")["editTask"];
   parseDuration: typeof import("~/models/task")["parseDuration"];
+  getTaskLogPath: typeof import("~/observability")["getTaskLogPath"];
 };
 let _models: Promise<Modules> | null = null;
+
+// Reset the cached model module promise. Exported for tests that need to
+// re-populate the cache after swapping a model implementation (e.g., spies).
+export function resetModels(): void {
+  _models = null;
+}
+
 async function models(): Promise<Modules> {
   if (!_models) {
     _models = (async () => {
       // Dynamic string-literal imports via the `~/*` alias (spec FR-1). Kept
       // dynamic so bun:sqlite (pulled transitively via ~/db) stays out of the
       // build-time Node module graph; vite resolves the alias at build time.
-      const [db, board, task, taskEvent, taskRun, comment, taskAttachment, context, diagnostic, workflowTemplate, notifySub, dependency, profiles] =
+      const [db, board, task, taskEvent, taskRun, comment, taskAttachment, context, diagnostic, workflowTemplate, notifySub, dependency, profiles, observability] =
         await Promise.all([
           import("~/db"),
           import("~/models/board"),
@@ -99,6 +111,7 @@ async function models(): Promise<Modules> {
           import("~/models/notifySub"),
           import("~/models/dependency"),
           import("~/profiles"),
+          import("~/observability"),
         ]);
       // Eagerly initialize the DB singleton as soon as the server-side model
       // modules are loaded. Bridge functions also call initDb(), but this guards
@@ -119,6 +132,7 @@ async function models(): Promise<Modules> {
         ...notifySub,
         ...dependency,
         ...profiles,
+        ...observability,
       } as Modules;
     })();
   }
@@ -142,6 +156,13 @@ import {
   FF_MAX_RETRIES,
   FF_GOAL_MODE,
   FF_CREATE_PARENT,
+  FF_WORKER_LOG_CAPTURE,
+  FF_COMMENT_ENHANCEMENTS,
+  FF_CONTEXT_BUILDER,
+  FF_SHOW_RUN_FILTERING,
+  FF_RESULT_SUMMARY,
+  FF_WORKTREE_HANDOFF,
+  FF_TASK_ATTACHMENTS,
 } from "~/flags";
 
 // Routes call gate() first; when the flag is off it returns the spec-defined
@@ -198,6 +219,31 @@ export function taskFlags(): TaskFlags {
 
 export function isSvelteKitEnabled(): boolean {
   return isEnabled(FF_SVELTEKIT_FRONTEND);
+}
+
+export function detailFlags(): DetailFlags {
+  return {
+    sveltekitFrontend: isEnabled(FF_SVELTEKIT_FRONTEND),
+    contextBuilder: isEnabled(FF_CONTEXT_BUILDER),
+    taskAttachments: isEnabled(FF_TASK_ATTACHMENTS),
+    showRunFiltering: isEnabled(FF_SHOW_RUN_FILTERING),
+    workerLogCapture: isEnabled(FF_WORKER_LOG_CAPTURE),
+    commentEnhancements: isEnabled(FF_COMMENT_ENHANCEMENTS),
+    goalMode: isEnabled(FF_GOAL_MODE),
+    workflowTemplates: isEnabled(FF_WORKFLOW_TEMPLATES),
+    heartbeat: isEnabled(FF_HEARTBEAT),
+    maxRuntime: isEnabled(FF_MAX_RUNTIME),
+    maxRetries: isEnabled(FF_MAX_RETRIES),
+    rateLimitExitCode: isEnabled(FF_RATE_LIMIT_EXIT_CODE),
+    scheduledStatus: isEnabled(FF_SCHEDULED_STATUS),
+    skillsArray: isEnabled(FF_SKILLS_ARRAY),
+    modelOverride: isEnabled(FF_MODEL_OVERRIDE),
+    createdBy: isEnabled(FF_CREATED_BY),
+    tenantNamespace: isEnabled(FF_TENANT_NAMESPACE),
+    resultSummary: isEnabled(FF_RESULT_SUMMARY),
+    worktreeHandoff: isEnabled(FF_WORKTREE_HANDOFF),
+    priorityInteger: isEnabled(FF_PRIORITY_INTEGER),
+  };
 }
 
 // initDb() is called inside the bridge functions themselves (createBoardJson,
@@ -908,6 +954,214 @@ export async function taskAttachmentsJson(
   await assertTaskOnBoard(slug, id);
   const m = await models();
   return { attachments: toCamel(m.listAttachments(id)) };
+}
+
+// ---------------------------------------------------------------------------
+// Task detail panel (KDI-UI-005)
+// ---------------------------------------------------------------------------
+
+function toTaskSummary(t: TaskModel): TaskSummary {
+  return {
+    id: t.id,
+    title: t.title,
+    status: t.status,
+    assignee: t.assignee,
+    priority: t.priority,
+    tenant: t.tenant,
+    updatedAt: t.updated_at,
+    archivedAt: t.archived_at,
+  };
+}
+
+function loadParentSummaries(m: Awaited<ReturnType<typeof models>>, childId: number): TaskSummary[] {
+  const rows = m.getDb().query(
+    `SELECT t.id, t.title, t.status, t.assignee, t.priority, t.tenant, t.updated_at, t.archived_at
+     FROM tasks t
+     JOIN dependencies d ON d.parent_id = t.id
+     WHERE d.child_id = ? AND t.archived_at IS NULL
+     ORDER BY t.updated_at DESC`
+  ).all(childId) as Array<{
+    id: number;
+    title: string;
+    status: string;
+    assignee: string | null;
+    priority: number;
+    tenant: string | null;
+    updated_at: number;
+    archived_at: number | null;
+  }>;
+  return rows.map((r) => ({
+    id: r.id,
+    title: r.title,
+    status: r.status,
+    assignee: r.assignee,
+    priority: r.priority,
+    tenant: r.tenant,
+    updatedAt: r.updated_at,
+    archivedAt: r.archived_at,
+  }));
+}
+
+function loadChildrenSummaries(m: Awaited<ReturnType<typeof models>>, parentId: number): TaskSummary[] {
+  return m.getChildTasks(parentId).map(toTaskSummary);
+}
+
+function findHandoffEvent(
+  m: Awaited<ReturnType<typeof models>>,
+  taskId: number,
+): { branch: string; worktreePath: string; eventAt: number } | null {
+  const row = m.getDb().query(
+    `SELECT payload, created_at FROM task_events
+     WHERE task_id = ? AND kind = 'worktree_handed_off'
+     ORDER BY created_at DESC, id DESC LIMIT 1`
+  ).get(taskId) as { payload: string | null; created_at: number } | undefined;
+  if (!row) return null;
+  try {
+    const payload = row.payload ? JSON.parse(row.payload) : {};
+    if (typeof payload.branch === "string" && typeof payload.worktree_path === "string") {
+      return { branch: payload.branch, worktreePath: payload.worktree_path, eventAt: row.created_at };
+    }
+  } catch {
+    // ignore malformed payload
+  }
+  return null;
+}
+
+export async function taskDetailJson(slug: string, id: number): Promise<TaskDetail> {
+  await assertTaskOnBoard(slug, id);
+  const m = await models();
+
+  const contextEnabled = isEnabled(FF_CONTEXT_BUILDER);
+  const attachmentsEnabled = isEnabled(FF_TASK_ATTACHMENTS);
+  const commentEnhancements = isEnabled(FF_COMMENT_ENHANCEMENTS);
+
+  const [task, parents, children, attachments, comments, events, runs, contextResult] = await Promise.all([
+    m.showTask(id) as TaskModel,
+    loadParentSummaries(m, id),
+    loadChildrenSummaries(m, id),
+    attachmentsEnabled ? m.listAttachments(id) : ([] as TaskAttachment[]),
+    m.getComments(id),
+    m.getRecentTaskEvents(id, 50),
+    m.getRuns(id),
+    contextEnabled
+      ? (async () => {
+          try {
+            return { ok: true as const, value: m.buildTaskContext(id, slug) };
+          } catch {
+            return { ok: false as const };
+          }
+        })()
+      : { ok: false as const },
+  ]);
+
+  if (!task) {
+    throw new BridgeError("task_not_found", 404, `Task ${id} not found on board "${slug}".`);
+  }
+
+  const normalizedComments = commentEnhancements
+    ? comments
+    : comments.map((c) => ({ ...c, author: "user" }));
+
+  const handoff = findHandoffEvent(m, id);
+  const logPath = m.getTaskLogPath(slug, id);
+
+  return {
+    task: toCamel(task) as TaskDetail["task"],
+    parents,
+    children,
+    handoff: handoff ? { branch: handoff.branch, worktreePath: handoff.worktreePath, eventAt: handoff.eventAt } : null,
+    log: { present: existsSync(logPath), path: logPath },
+    runs: toCamel(runs) as TaskDetail["runs"],
+    events: toCamel(events) as TaskDetail["events"],
+    comments: toCamel(normalizedComments) as TaskDetail["comments"],
+    attachments: toCamel(attachments) as TaskDetail["attachments"],
+    context: contextResult.ok ? (toCamel(contextResult.value) as TaskDetail["context"]) : null,
+    contextError: contextResult.ok ? undefined : "not_available",
+  };
+}
+
+// Read only the last `tailBytes` bytes from a text file, aligning to a valid
+// UTF-8 start byte so we never return a partial leading character.
+function readTailText(path: string, tailBytes: number, size?: number): string {
+  const fileSize = size ?? statSync(path).size;
+  if (tailBytes <= 0 || fileSize <= tailBytes) {
+    return readFileSync(path, "utf-8");
+  }
+  const buffer = Buffer.alloc(tailBytes);
+  const fd = openSync(path, "r");
+  try {
+    readSync(fd, buffer, 0, tailBytes, fileSize - tailBytes);
+  } finally {
+    closeSync(fd);
+  }
+  // Skip leading continuation bytes (10xxxxxx) to reach a valid UTF-8 boundary.
+  let i = 0;
+  while (i < buffer.length && (buffer[i] & 0xc0) === 0x80) {
+    i++;
+  }
+  return new TextDecoder().decode(buffer.subarray(i));
+}
+
+function readHeadText(path: string, headBytes: number, size?: number): string {
+  const fileSize = size ?? statSync(path).size;
+  const bytesToRead = Math.min(headBytes, fileSize);
+  if (bytesToRead <= 0) return "";
+  const buffer = Buffer.alloc(bytesToRead);
+  const fd = openSync(path, "r");
+  try {
+    readSync(fd, buffer, 0, bytesToRead, 0);
+  } finally {
+    closeSync(fd);
+  }
+  return new TextDecoder().decode(buffer);
+}
+
+export async function taskLogJson(
+  slug: string,
+  id: number,
+  params: URLSearchParams,
+): Promise<{ present: boolean; content?: string; path?: string; truncated?: boolean; size?: number; disabled?: boolean }> {
+  await assertTaskOnBoard(slug, id);
+  if (!isEnabled(FF_WORKER_LOG_CAPTURE)) {
+    return { present: false, disabled: true };
+  }
+  const m = await models();
+  const path = m.getTaskLogPath(slug, id);
+  if (!existsSync(path)) {
+    return { present: false };
+  }
+  const stats = statSync(path);
+  const tail = params.get("tail");
+  if (tail !== null) {
+    const tailBytes = Number(tail);
+    const content = readTailText(path, tailBytes, stats.size);
+    return { present: true, content, path };
+  }
+  const MAX_FULL = 500 * 1024;
+  if (stats.size > 10 * 1024 * 1024) {
+    const content = readHeadText(path, MAX_FULL, stats.size);
+    return { present: true, content, path, truncated: true, size: stats.size };
+  }
+  return { present: true, content: readFileSync(path, "utf-8"), path };
+}
+
+export async function taskDependenciesJson(
+  slug: string,
+  id: number,
+): Promise<{ parents: TaskSummary[]; children: TaskSummary[] }> {
+  await assertTaskOnBoard(slug, id);
+  const m = await models();
+  return { parents: loadParentSummaries(m, id), children: loadChildrenSummaries(m, id) };
+}
+
+export async function taskHandoffJson(
+  slug: string,
+  id: number,
+): Promise<{ present: boolean; branch?: string; worktreePath?: string; eventAt?: number }> {
+  await assertTaskOnBoard(slug, id);
+  const m = await models();
+  const handoff = findHandoffEvent(m, id);
+  return handoff ? { present: true, ...handoff } : { present: false };
 }
 
 export async function assertTaskOnBoard(slug: string, id: number): Promise<void> {
