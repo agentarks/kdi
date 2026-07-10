@@ -52,10 +52,11 @@ async function startServer(): Promise<void> {
   baseUrl = `http://localhost:${port}`;
   process.env.HOME = tmpHome;
   process.env.KDI_DB = join(tmpHome, "kdi.sqlite");
-  // Use sh -c with exec in a subshell to create a new process group
   proc = Bun.spawn({
-    cmd: ["sh", "-c", `exec bun run dev:web --port ${port}`],
+    cmd: ["bun", "run", "dev:web", "--port", port],
     cwd: REPO_ROOT,
+    // POSIX setsid() makes proc.pid the process-group leader for cleanup.
+    detached: true,
     env: {
       ...process.env,
       HOME: tmpHome,
