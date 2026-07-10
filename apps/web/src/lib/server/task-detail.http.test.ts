@@ -31,7 +31,7 @@ async function waitAlive(timeoutMs = 30000): Promise<void> {
 async function stopServer(): Promise<void> {
   if (proc) {
     try {
-      // Kill the entire process group (bash + vite children)
+      // Kill the entire process group (setsid created a new session)
       process.kill(-proc.pid, 9);
       await proc.exited;
     } catch {
@@ -52,9 +52,9 @@ async function startServer(): Promise<void> {
   baseUrl = `http://localhost:${port}`;
   process.env.HOME = tmpHome;
   process.env.KDI_DB = join(tmpHome, "kdi.sqlite");
-  // Use a shell wrapper to create a process group we can kill entirely
+  // Use sh -c with exec in a subshell to create a new process group
   proc = Bun.spawn({
-    cmd: ["bash", "-c", `exec bun run dev:web --port ${port}`],
+    cmd: ["sh", "-c", `exec bun run dev:web --port ${port}`],
     cwd: REPO_ROOT,
     env: {
       ...process.env,
