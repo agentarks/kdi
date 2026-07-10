@@ -47,6 +47,10 @@
     if (logPresent && logContent === null && flags.workerLogCapture) {
       void refreshLog();
     }
+  });
+
+  $effect(() => {
+    // Cleanup intervals on unmount only
     return () => {
       if (eventInterval) clearInterval(eventInterval);
       if (logInterval) clearInterval(logInterval);
