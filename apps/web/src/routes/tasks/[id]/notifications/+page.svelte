@@ -71,33 +71,33 @@
       </p>
     </div>
 
-    <section class="panel stack-sm">
+    <section class="stack-sm">
       <h2>Subscribe</h2>
       {#if form?.error}
         <p class="error" role="alert">{form.error}</p>
       {:else if subscribed}
         <p class="success" role="status">Subscribed.</p>
       {/if}
-      <form method="POST" action="?/subscribe" use:enhance class="stack-sm subscribe-form">
-        <div class="field">
+      <form method="POST" action="?/subscribe" use:enhance class="subscribe-form">
+        <div class="form-group">
           <label for="platform">Platform</label>
           <select id="platform" name="platform" bind:value={values.platform}>
             {#each platforms as p}<option value={p}>{p}</option>{/each}
           </select>
         </div>
-        <div class="field">
+        <div class="form-group">
           <label for="chat_id">Chat ID <span class="req">*</span></label>
           <input id="chat_id" name="chat_id" type="text" required bind:value={values.chat_id} />
         </div>
-        <div class="field">
+        <div class="form-group">
           <label for="thread_id">Thread ID</label>
           <input id="thread_id" name="thread_id" type="text" bind:value={values.thread_id} />
         </div>
-        <div class="field">
+        <div class="form-group">
           <label for="user_id">User ID</label>
           <input id="user_id" name="user_id" type="text" bind:value={values.user_id} />
         </div>
-        <div class="field">
+        <div class="form-group">
           <label for="notifier_profile">Notifier profile</label>
           <input id="notifier_profile" name="notifier_profile" type="text" placeholder="defaults to platform" bind:value={values.notifier_profile} />
         </div>
@@ -121,7 +121,7 @@
       {#if subscriptions.length === 0}
         <div class="placeholder">No subscriptions for this task yet.</div>
       {:else}
-        <table class="subs-table">
+        <table class="table">
           <thead>
             <tr>
               <th scope="col">ID</th>
@@ -137,7 +137,7 @@
           </thead>
           <tbody>
             {#each subscriptions as sub (sub.id)}
-              <tr class:unsubscribed={sub.unsubscribedAt !== null}>
+              <tr class:archived={sub.unsubscribedAt !== null}>
                 <td>{sub.id}</td>
                 <td><span class="badge">{sub.platform}</span></td>
                 <td class="mono">{sub.chatId}</td>
@@ -176,61 +176,24 @@
 {/if}
 
 <style>
-  .panel {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-lg);
-    padding: 16px;
-  }
+  /* DESIGN.md CSS architecture: forms/tables use the global .form-group / .table
+     classes; only component-specific LAYOUT (the subscribe grid) lives here and
+     consumes the global tokens. Archived rows dim to opacity 0.6 (DESIGN.md a11y). */
   .subscribe-form {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
     gap: 10px;
     align-items: end;
   }
-  .field label {
-    display: block;
-    margin-bottom: 4px;
-    color: var(--text-dim);
-    font-size: 13px;
-  }
-  .field input,
-  .field select {
-    width: 100%;
-    background: var(--panel-2);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 8px 10px;
-    color: var(--text);
+  /* Let the grid gap, not .form-group's bottom margin, control row spacing. */
+  .subscribe-form .form-group {
+    margin-bottom: 0;
   }
   .req {
-    color: var(--accent, #c00);
+    color: var(--warning);
   }
-  .subs-table {
-    width: 100%;
-    border-collapse: collapse;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-lg);
-  }
-  .subs-table th,
-  .subs-table td {
-    padding: 8px 10px;
-    text-align: left;
-    border-bottom: 1px solid var(--border);
-    font-size: 13px;
-  }
-  .subs-table th {
-    color: var(--text-dim);
-    font-weight: 600;
-  }
-  .subs-table tr:last-child td {
-    border-bottom: none;
-  }
-  .subs-table tr.unsubscribed {
-    opacity: 0.55;
+  .table tr.archived {
+    opacity: 0.6;
   }
   .mono {
     font-family: var(--font-mono);
@@ -241,19 +204,5 @@
     gap: 8px;
     font-size: 13px;
     color: var(--text-dim);
-  }
-  .inline-form {
-    display: inline;
-  }
-  .sr-only {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
-    border: 0;
   }
 </style>

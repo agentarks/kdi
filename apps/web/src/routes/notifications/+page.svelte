@@ -76,7 +76,7 @@
         {/if}
       </div>
     {:else}
-      <table class="subs-table">
+      <table class="table">
         <thead>
           <tr>
             <th scope="col">ID</th>
@@ -93,7 +93,7 @@
         </thead>
         <tbody>
           {#each subscriptions as sub (sub.id)}
-            <tr class:unsubscribed={sub.unsubscribedAt !== null}>
+            <tr class:archived={sub.unsubscribedAt !== null}>
               <td>{sub.id}</td>
               <td><a href="/tasks/{sub.taskId}/notifications?board={data.boardSlug}">#{sub.taskId}</a></td>
               <td><span class="badge">{sub.platform}</span></td>
@@ -127,30 +127,11 @@
 {/if}
 
 <style>
-  .subs-table {
-    width: 100%;
-    border-collapse: collapse;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-lg);
-  }
-  .subs-table th,
-  .subs-table td {
-    padding: 8px 10px;
-    text-align: left;
-    border-bottom: 1px solid var(--border);
-    font-size: 13px;
-  }
-  .subs-table th {
-    color: var(--text-dim);
-    font-weight: 600;
-  }
-  .subs-table tr:last-child td {
-    border-bottom: none;
-  }
-  .subs-table tr.unsubscribed {
-    opacity: 0.55;
+  /* DESIGN.md: archived/unsubscribed rows dim to opacity 0.6; global .board-row.archived
+     uses the same value. Consuming the global .table + .badge + .inline-form + .sr-only
+     instead of reinventing them. */
+  .table tr.archived {
+    opacity: 0.6;
   }
   .mono {
     font-family: var(--font-mono);
@@ -161,19 +142,5 @@
     gap: 8px;
     font-size: 13px;
     color: var(--text-dim);
-  }
-  .inline-form {
-    display: inline;
-  }
-  .sr-only {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
-    border: 0;
   }
 </style>
