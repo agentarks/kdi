@@ -107,7 +107,7 @@
   <button type="button" class="btn" onclick={onclear}>Clear</button>
 
   {#if bulkResult}
-    <div class="bulk-result">
+    <div class="bulk-result" role="status" aria-live="polite">
       <div class="summary">
         <span class="badge">attempted {bulkResult.summary.attempted}</span>
         <span class="badge success-count">succeeded {bulkResult.summary.succeeded}</span>
@@ -161,7 +161,7 @@
       <button type="button" class="btn btn--primary" onclick={submit} disabled={busy || !atLocal || atInPast}>Schedule {selected.length}</button>
     </div>
   {:else if active === "archive"}
-    <p class="stack-sm warn-text">Archive {selected.length} task(s)? This is one-way — no UI restore exists.</p>
+    <p class="stack-sm warn-text">Archive {selected.length} task(s)? This is one-way; no UI restore exists.</p>
     <label class="check"><input type="checkbox" bind:checked={confirmChecked} /> I understand this is permanent</label>
     <div class="dialog-actions">
       <button type="button" class="btn" onclick={() => dialog?.close()}>Cancel</button>
@@ -208,7 +208,6 @@
     margin-bottom: 8px;
   }
   .badge.success-count { background: var(--success); color: var(--surface); }
-  .badge.warn { background: var(--warning); color: var(--warning-text); }
   .result-list {
     list-style: none;
     padding: 0;

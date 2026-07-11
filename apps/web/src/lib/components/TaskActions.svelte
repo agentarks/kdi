@@ -173,11 +173,14 @@
   <h2 id="actions-heading">Actions</h2>
 
   {#if result}
-    <p class="result-row {result.status}">
+    <p class="result-row {result.status}" role="status" aria-live="polite">
       <strong>#{result.taskId}</strong>
       <span class="result-status">{result.status}</span>
       <span>{result.message}</span>
     </p>
+  {/if}
+  {#if busy}
+    <p class="busy" role="status" aria-live="polite">Working…</p>
   {/if}
 
   <div class="action-grid">
@@ -239,7 +242,7 @@
       <button type="button" class="btn btn--primary" onclick={submit} disabled={busy}>Review</button>
     </div>
   {:else if active === "archive"}
-    <p class="stack-sm warn-text">Archive <strong>#{task.id} {task.title}</strong>? This is one-way — no UI restore exists.</p>
+    <p class="stack-sm warn-text">Archive <strong>#{task.id} {task.title}</strong>? This is one-way; no UI restore exists.</p>
     <label class="check"><input type="checkbox" bind:checked={confirmChecked} /> I understand this is permanent</label>
     <div class="dialog-actions">
       <button type="button" class="btn" onclick={() => dialog?.close()}>Cancel</button>
@@ -348,4 +351,5 @@
     margin-bottom: 12px;
   }
   .warn-text { color: var(--warning-text); font-size: 13px; }
+  .busy { color: var(--text-dim); font-size: 13px; font-family: var(--font-ui); }
 </style>
