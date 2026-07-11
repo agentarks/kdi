@@ -228,4 +228,66 @@ describe("KDI-UI-010 HTTP smoke (dev server, isolated HOME/KDI_DB)", () => {
     useDb();
     expect(listSubscriptions(taskId, true).length).toBe(0);
   }, 60000);
+
+  it("AC-14: FF_SVELTEKIT_FRONTEND=false redirects every route to /disabled and blocks mutations", async () => {
+    // Master flag off: hooks.server.ts redirects browser GETs to /disabled and
+    // serializes the same redirect for form POSTs, so no loader/action body
+    // runs. Proven on a separate port to avoid colliding with the per-feature
+    // server above. Mirrors the KDI-UI-004 master-off HTTP test.
+    const offPort = "5197";
+    const offBase = `http://localhost:${offPort}`;
+    const offHome = `/tmp/kdi-ui010-http-master-off-${process.pid}-${Math.random().toString(36).slice(2)}`;
+    mkdirSync(offHome, { recursive: true });
+    const offProc = Bun.spawn({
+      cmd: ["bun", "run", "dev:web", "--port", offPort],
+      cwd: WORKTREE_ROOT,
+      env: {
+        ...process.env,
+        HOME: offHome,
+        KDI_DB: join(offHome, "kdi.sqlite"),
+        FF_SVELTEKIT_FRONTEND: "false",
+        VITE_FF_SVELTEKIT_FRONTEND: "false",
+        FF_NOTIFY_SUBS: "true",
+        NODE_ENV: "development",
+      },
+      stdout: "ignore",
+      stderr: "ignore",
+    });
+
+    const deadline = Date.now() + 30000;
+    while (Date.now() < deadline) {
+      try {
+        const r = await fetch(`${offBase}/`);
+        if (r.status === 307 || r.status === 303 || r.status === 404 || r.ok) break;
+      } catch { /* not up yet */ }
+      await new Promise((res) => setTimeout(res, 300));
+    }
+
+    // GET loaders redirect to /disabled (no loader body runs).
+    const g1 = await fetch(`${offBase}/notifications?board=x`, { redirect: "manual" });
+    expect(g1.status).toBe(307);
+    expect(g1.headers.get("location")).toBe("/disabled");
+    const g2 = await fetch(`${offBase}/tasks/1/notifications?board=x`, { redirect: "manual" });
+    expect(g2.status).toBe(307);
+    expect(g2.headers.get("location")).toBe("/disabled");
+
+    // POST mutations serialize the same redirect; the action body never runs.
+    const form = new URLSearchParams();
+    form.set("platform", "telegram");
+    form.set("chat_id", "c");
+    form.set("notifier_profile", "log");
+    const p = await fetch(`${offBase}/tasks/1/notifications?board=x&/subscribe`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: form.toString(),
+      redirect: "manual",
+    });
+    expect(p.status).toBe(200); // action-response envelope
+    const pBody = (await p.json()) as { type: string; status: number; location: string };
+    expect(pBody.type).toBe("redirect");
+    expect(pBody.status).toBe(307);
+    expect(pBody.location).toBe("/disabled");
+
+    offProc.kill();
+  }, 60000);
 });
