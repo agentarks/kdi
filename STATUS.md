@@ -189,11 +189,13 @@
 
 ## KDI-UI-010: Notification Subscriptions UI — Spec
 - [x] BRD/spec drafted at `specs/sveltekit-ui/KDI-UI-010-notification-subscriptions-ui.md`
-- [ ] List global and per-task subscriptions
-- [ ] Subscribe/unsubscribe with platform, chat id, thread id, user id, and notifier profile
-- [ ] Include archived/unsubscribed toggle
-- [ ] Acceptance: covers `notify-subscribe`, `notify-list`, and `notify-unsubscribe`
-- [ ] `bun run lint`, CLI build, `bun run check:web`, and `bun run build:web` pass with isolated `KDI_DB`
+- [x] Implemented: `/notifications` board-scoped list + `/tasks/[id]/notifications` per-task list with subscribe form
+- [x] List global and per-task subscriptions (`subscriptionsJson` bridge helper, camelCase at the boundary)
+- [x] Subscribe/unsubscribe with platform, chat id, thread id, user id, and notifier profile (model `subscribe`/`unsubscribe` via bridge `subscribeJson`/`unsubscribeJson`; notifier profile validated inside `subscribe` via `getNotifier`)
+- [x] Include archived/unsubscribed toggle (`?archived=1` on both pages; unsubscribed rows dimmed)
+- [x] Gated by `FF_NOTIFY_SUBS` (disabled render + rejected writes when off) and the master `FF_SVELTEKIT_FRONTEND` flag
+- [x] Acceptance: covers `notify-subscribe`, `notify-list`, and `notify-unsubscribe` (bridge smoke `apps/web/src/lib/server/notifySubs.test.ts` + live HTTP user-loop verified)
+- [x] `bun run lint`, CLI build, `bun run check:web`, and `bun run build:web` pass with isolated `KDI_DB`; full suite 1067 pass / 0 fail
 
 ## KDI-UI-007: Dispatch Control Center — Spec
 - [x] BRD drafted at `specs/sveltekit-ui/KDI-UI-007-dispatch-control-center.md`

@@ -73,6 +73,8 @@ type Modules = {
   getWorkflowTemplate: typeof import("~/models/workflowTemplate")["getWorkflowTemplate"];
   validateStepKey: typeof import("~/models/workflowTemplate")["validateStepKey"];
   listSubscriptions: typeof import("~/models/notifySub")["listSubscriptions"];
+  subscribe: typeof import("~/models/notifySub")["subscribe"];
+  unsubscribe: typeof import("~/models/notifySub")["unsubscribe"];
   addDependency: typeof import("~/models/dependency")["addDependency"];
   getChildTasks: typeof import("~/models/dependency")["getChildTasks"];
   loadProfiles: typeof import("~/profiles")["loadProfiles"];
@@ -160,7 +162,7 @@ async function models(): Promise<Modules> {
 // Spec FR: gate the whole bridge behind FF_SVELTEKIT_FRONTEND. Using the
 // shared flag registry so the UI honors the same env/registry overrides as
 // every other KDI feature.
-import { isEnabled, FF_SVELTEKIT_FRONTEND, FF_LIST_FILTERS_SORT, FF_TENANT_NAMESPACE, FF_CREATED_BY, FF_WORKFLOW_TEMPLATES, FF_RATE_LIMIT_EXIT_CODE, FF_HEARTBEAT, FF_BOARD_METADATA, FF_BOARD_CREATE_SWITCH, FF_DEFAULT_WORKDIR, FF_BOARD_SWITCH, FF_BOARD_RENAME_HERMES, FF_BOARD_RENAME, FF_BOARD_RM_DELETE, FF_ENABLE_KANBAN_DISPATCH, FF_DISPATCH_ONCE, FF_DISPATCH_CONTROLS, FF_REAL_HARNESS_PROFILES, FF_WATCH_FILTERS, FF_TAIL_NO_FOLLOW } from "~/flags";
+import { isEnabled, FF_SVELTEKIT_FRONTEND, FF_LIST_FILTERS_SORT, FF_TENANT_NAMESPACE, FF_CREATED_BY, FF_WORKFLOW_TEMPLATES, FF_RATE_LIMIT_EXIT_CODE, FF_HEARTBEAT, FF_BOARD_METADATA, FF_BOARD_CREATE_SWITCH, FF_DEFAULT_WORKDIR, FF_BOARD_SWITCH, FF_BOARD_RENAME_HERMES, FF_BOARD_RENAME, FF_BOARD_RM_DELETE, FF_ENABLE_KANBAN_DISPATCH, FF_DISPATCH_ONCE, FF_DISPATCH_CONTROLS, FF_REAL_HARNESS_PROFILES, FF_WATCH_FILTERS, FF_TAIL_NO_FOLLOW, FF_NOTIFY_SUBS } from "~/flags";
 import {
   FF_SCHEDULED_STATUS,
   FF_PRIORITY_INTEGER,
@@ -1294,6 +1296,74 @@ export async function subscriptionsJson(
   }
   try {
     return { subscriptions: toCamel(m.listSubscriptions(taskId, includeArchived, boardId)) };
+  } catch (err) {
+    throw wrap(err);
+  }
+}
+
+// KDI-UI-010: notification subscription mutations. The model's subscribe() already
+// validates the notifier profile via getNotifier() and rejects duplicates /
+// unsupported platforms / missing tasks with the same messages as the CLI, so the
+// bridge only adds the FF_NOTIFY_SUBS gate and error normalization. ponytail: no
+// re-validation; surface the model contract verbatim.
+export interface NotifySubsFlags {
+  sveltekitFrontend: boolean;
+  notifySubs: boolean;
+}
+
+export function notifySubsFlags(): NotifySubsFlags {
+  return {
+    sveltekitFrontend: isEnabled(FF_SVELTEKIT_FRONTEND),
+    notifySubs: isEnabled(FF_NOTIFY_SUBS),
+  };
+}
+
+function requireNotifySubs(): void {
+  if (!isEnabled(FF_NOTIFY_SUBS)) {
+    throw new BridgeError("feature_disabled", 403, "Notification subscriptions feature is not enabled.");
+  }
+}
+
+export interface SubscribeInput {
+  threadId?: string;
+  userId?: string;
+  // undefined (not "") lets the model default to the platform name.
+  notifierProfile?: string;
+}
+
+export async function subscribeJson(
+  taskId: number,
+  platform: string,
+  chatId: string,
+  options: SubscribeInput = {},
+): Promise<{ subscription: CamelCase<NotifySub> }> {
+  requireNotifySubs();
+  const m = await models();
+  m.initDb();
+  try {
+    const sub = m.subscribe(taskId, platform, chatId, {
+      threadId: options.threadId,
+      userId: options.userId,
+      notifierProfile: options.notifierProfile,
+    });
+    return { subscription: toCamel(sub) };
+  } catch (err) {
+    throw wrap(err);
+  }
+}
+
+export async function unsubscribeJson(
+  taskId: number,
+  platform: string,
+  chatId: string,
+  threadId?: string,
+): Promise<{ unsubscribed: number }> {
+  requireNotifySubs();
+  const m = await models();
+  m.initDb();
+  try {
+    const count = m.unsubscribe(taskId, platform, chatId, threadId);
+    return { unsubscribed: count };
   } catch (err) {
     throw wrap(err);
   }

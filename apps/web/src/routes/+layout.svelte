@@ -11,6 +11,7 @@
     { href: "/tasks", label: "Tasks" },
     { href: "/dispatch", label: "Dispatch" },
     { href: "/activity", label: "Activity" },
+    { href: "/notifications", label: "Notifications" },
     { href: "/stats", label: "Stats" },
   ];
 
