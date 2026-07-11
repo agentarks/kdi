@@ -1,5 +1,5 @@
 import type { PageServerLoad } from "./$types";
-import { taskDetailJson, detailFlags, readCurrentBoardJson, BridgeError } from "$lib/server/bridge";
+import { taskDetailJson, detailFlags, lifecycleFlags, resolveCurrentProfile, readCurrentBoardJson, BridgeError } from "$lib/server/bridge";
 import { error } from "@sveltejs/kit";
 
 export const load: PageServerLoad = async ({ params, url }) => {
@@ -10,7 +10,7 @@ export const load: PageServerLoad = async ({ params, url }) => {
   }
   try {
     const detail = await taskDetailJson(boardSlug, id);
-    return { detail, flags: detailFlags(), boardSlug };
+    return { detail, flags: detailFlags(), lifecycle: lifecycleFlags(), currentProfile: resolveCurrentProfile(), boardSlug };
   } catch (err) {
     if (err instanceof BridgeError && (err.code === "task_not_found" || err.code === "board_not_found")) {
       throw error(404, err.message);

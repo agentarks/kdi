@@ -66,13 +66,16 @@
 - [x] Smoke test with temp HOME/KDI_DB opens a CLI-created task and asserts the panel renders title, status, and body
 - [x] `bun run lint`, CLI build, `bun run check:web`, and `bun run build:web` pass
 
-## KDI-UI-006: Task Lifecycle Actions — Spec
+## KDI-UI-006: Task Lifecycle Actions — Implemented
 - [x] BRD/spec drafted at `specs/sveltekit-ui/KDI-UI-006-task-lifecycle-actions.md`
-- [ ] Single actions: promote, promote dry-run, block, unblock, schedule, review, archive, complete, assign, reassign, claim, reclaim, heartbeat
-- [ ] Bulk actions: promote, block, unblock, schedule, archive, complete
-- [ ] Confirm destructive actions; inline reason fields for block/schedule/review/reclaim/reassign
-- [ ] Acceptance: every action maps to an existing CLI/model path and shows success/skip/error per task
-- [ ] `bun run lint`, CLI build, SvelteKit build pass
+- [x] Single actions: promote (+dry-run/force), block, unblock, schedule, review, archive, complete (+metadata gate), assign, reassign (+reclaim), claim, reclaim, heartbeat — all via `performTaskAction` in the bridge, calling the same model fns the CLI uses
+- [x] Bulk actions: promote, block, unblock, schedule, archive, complete — `performBulkAction` loops the single-task core, returns per-task results + `{attempted,succeeded,skipped,failed}` summary
+- [x] Server-side flag re-checks mirror CLI error text (`feature_disabled` 403); client gating via `lifecycleFlags()` capability map with flag/status tooltips
+- [x] Confirm destructive actions (archive/complete/reclaim/reassign-with-reclaim); inline reason/datetime/profile/result fields with native controls
+- [x] Routes: `POST /api/boards/[slug]/tasks/[id]/actions` (single) + `POST /api/boards/[slug]/tasks/actions` (bulk); board bulk toolbar + row selection (TaskCard checkbox)
+- [x] Tests: 40 bridge unit tests (all actions, flag gates, preconditions, bulk) + 3 HTTP smoke (AC-28 single loop, AC-29 bulk, AC-26 master-flag 503) — 1101/1101 pass
+- [x] AC-27 verified: no edits under `src/models`, `src/commands`, `src/flags.ts`, `src/db.ts`; all changes within `apps/web/`
+- [x] `bun run lint`, CLI build, `bun run check:web`, `bun run build:web` pass
 
 ## KDI-UI-000: SvelteKit App Shell — InDev
 - [x] Scaffolded SvelteKit app under `apps/web/` (Bun workspaces); repo root `package.json` gains `workspaces` and `dev:web` / `build:web` / `check:web` / `preview:web` scripts. CLI `build`/`lint` unchanged.

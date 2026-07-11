@@ -9,9 +9,12 @@
       taskCounts: Record<string, number>;
     };
     capabilities: KanbanCapabilities;
+    selectable?: boolean;
+    selected: Set<number>;
+    onselect?: (id: number, checked: boolean) => void;
   }
 
-  let { tasks, board, capabilities }: Props = $props();
+  let { tasks, board, capabilities, selectable = false, selected, onselect }: Props = $props();
 
   const columns = $derived.by(() => {
     const map: Record<string, KanbanTask[]> = {};
@@ -32,6 +35,9 @@
       tasks={columns[status]}
       boardSlug={board.slug}
       {capabilities}
+      {selectable}
+      {selected}
+      {onselect}
     />
   {/each}
 </div>

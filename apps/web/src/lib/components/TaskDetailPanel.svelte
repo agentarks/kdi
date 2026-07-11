@@ -1,14 +1,17 @@
 <script lang="ts">
   import { formatAge, formatDate, formatBytes, statusLabel } from "$lib/kanban";
-  import type { TaskDetail, DetailFlags, LogResponse, TaskDetailRun, TaskDetailEvent } from "$lib/types";
+  import TaskActions from "$lib/components/TaskActions.svelte";
+  import type { TaskDetail, DetailFlags, LogResponse, TaskDetailRun, TaskDetailEvent, LifecycleFlags } from "$lib/types";
 
   interface Props {
     detail: TaskDetail;
     flags: DetailFlags;
+    lifecycle: LifecycleFlags;
     boardSlug: string;
+    currentProfile: string;
   }
 
-  let { detail, flags, boardSlug }: Props = $props();
+  let { detail, flags, lifecycle, boardSlug, currentProfile }: Props = $props();
 
   const task = $derived(detail.task);
   const age = $derived(formatAge(task.createdAt));
@@ -214,6 +217,8 @@
       <span class="badge rate-limited">Rate limited until {formatDate(task.rateLimitedUntil)}</span>
     </div>
   {/if}
+
+  <TaskActions {task} flags={lifecycle} {boardSlug} {currentProfile} />
 
   <section class="detail-section" aria-labelledby="body-heading">
     <h2 id="body-heading">Body</h2>

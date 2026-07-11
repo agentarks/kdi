@@ -23,6 +23,7 @@ export interface KanbanCapabilities {
   workflowTemplates: boolean;
   rateLimitExitCode: boolean;
   heartbeat: boolean;
+  bulkOperations: boolean;
 }
 
 export interface KanbanTemplate {

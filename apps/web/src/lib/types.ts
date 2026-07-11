@@ -326,3 +326,54 @@ export interface HandoffResponse {
   worktreePath?: string;
   eventAt?: number;
 }
+
+// Task lifecycle actions (KDI-UI-006)
+
+export type LifecycleAction =
+  | "promote"
+  | "block"
+  | "unblock"
+  | "schedule"
+  | "review"
+  | "archive"
+  | "complete"
+  | "assign"
+  | "reassign"
+  | "claim"
+  | "reclaim"
+  | "heartbeat";
+
+export interface LifecycleFields {
+  reason?: string;
+  at?: number; // unix seconds (schedule)
+  force?: boolean;
+  dryRun?: boolean;
+  profile?: string;
+  reclaim?: boolean;
+  ttl?: number;
+  note?: string;
+  result?: string;
+  summary?: string;
+  metadata?: string;
+}
+
+export interface LifecycleResult {
+  taskId: number;
+  status: "success" | "skipped" | "error";
+  message: string;
+  currentStatus?: string;
+}
+
+export interface BulkLifecycleResult {
+  results: LifecycleResult[];
+  summary: { attempted: number; succeeded: number; skipped: number; failed: number };
+}
+
+export interface LifecycleFlags {
+  bulkOperations: boolean;
+  scheduledStatus: boolean;
+  reviewStatus: boolean;
+  completeMetadata: boolean;
+  assignReassign: boolean;
+  heartbeat: boolean;
+}

@@ -14,6 +14,7 @@ import {
   renameBoardJson,
   renameBoardSlugJson,
   removeBoardJson,
+  lifecycleFlags,
   BridgeError,
   bridgeError,
 } from "$lib/server/bridge";
@@ -26,6 +27,7 @@ import {
   FF_WORKFLOW_TEMPLATES,
   FF_RATE_LIMIT_EXIT_CODE,
   FF_HEARTBEAT,
+  FF_BULK_OPERATIONS,
   FF_BOARD_SWITCH,
   FF_BOARD_RENAME_HERMES,
   FF_BOARD_RENAME,
@@ -60,6 +62,7 @@ export const load: PageServerLoad = async ({ params, url }) => {
     workflowTemplates: isEnabled(FF_WORKFLOW_TEMPLATES),
     rateLimitExitCode: isEnabled(FF_RATE_LIMIT_EXIT_CODE),
     heartbeat: isEnabled(FF_HEARTBEAT),
+    bulkOperations: isEnabled(FF_BULK_OPERATIONS),
   };
 
   const filters: KanbanFilterState = {
@@ -83,6 +86,7 @@ export const load: PageServerLoad = async ({ params, url }) => {
     board,
     currentSlug,
     flags,
+    lifecycle: lifecycleFlags(),
     filters,
     currentProfile: resolveCurrentProfile(),
     capabilities,

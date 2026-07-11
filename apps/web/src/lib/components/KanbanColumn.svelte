@@ -9,9 +9,12 @@
     tasks: KanbanTask[];
     boardSlug: string;
     capabilities: KanbanCapabilities;
+    selectable?: boolean;
+    selected: Set<number>;
+    onselect?: (id: number, checked: boolean) => void;
   }
 
-  let { status, label, count, tasks, boardSlug, capabilities }: Props = $props();
+  let { status, label, count, tasks, boardSlug, capabilities, selectable = false, selected, onselect }: Props = $props();
 </script>
 
 <div class="kanban-column" data-status={status}>
@@ -21,7 +24,7 @@
   </header>
   <div class="column-cards">
     {#each tasks as task (task.id)}
-      <TaskCard {task} {capabilities} {boardSlug} />
+      <TaskCard {task} {capabilities} {boardSlug} {selectable} selected={selected.has(task.id)} {onselect} />
     {/each}
   </div>
 </div>

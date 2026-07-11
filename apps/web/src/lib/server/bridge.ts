@@ -19,7 +19,7 @@ const dev = process.env.NODE_ENV !== "production";
 // Spec FR-1: models are imported via the `~/*` alias the CLI already uses.
 import { existsSync, readFileSync, statSync, openSync, closeSync, readSync } from "node:fs";
 import type { Board, BoardMetadata, BoardWithTaskCounts, BoardStats } from "~/models/board";
-import type { BoardListRow, BoardFlags, TaskSummary, TaskDetail, DetailFlags, DispatchStatus, DispatchOnceResult, DispatchFlags, ProfileHealth, SpawnFailure, TaskCounts, ActivityFlags } from "$lib/types";
+import type { BoardListRow, BoardFlags, TaskSummary, TaskDetail, DetailFlags, DispatchStatus, DispatchOnceResult, DispatchFlags, ProfileHealth, SpawnFailure, TaskCounts, ActivityFlags, LifecycleAction, LifecycleFields, LifecycleResult, BulkLifecycleResult, LifecycleFlags } from "$lib/types";
 
 import type { Task, Task as TaskModel, CreateTaskInput } from "~/models/task";
 import type { TaskEvent, WatchFilters } from "~/models/taskEvent";
@@ -79,6 +79,19 @@ type Modules = {
   getProfile: typeof import("~/profiles")["getProfile"];
   editTask: typeof import("~/models/task")["editTask"];
   parseDuration: typeof import("~/models/task")["parseDuration"];
+  promoteTaskAdvanced: typeof import("~/models/task")["promoteTaskAdvanced"];
+  blockTask: typeof import("~/models/task")["blockTask"];
+  unblockTask: typeof import("~/models/task")["unblockTask"];
+  scheduleTask: typeof import("~/models/task")["scheduleTask"];
+  reviewTask: typeof import("~/models/task")["reviewTask"];
+  archiveTask: typeof import("~/models/task")["archiveTask"];
+  completeTask: typeof import("~/models/task")["completeTask"];
+  assignTask: typeof import("~/models/task")["assignTask"];
+  unassignTask: typeof import("~/models/task")["unassignTask"];
+  reassignTask: typeof import("~/models/task")["reassignTask"];
+  atomicClaim: typeof import("~/models/claim")["atomicClaim"];
+  reclaimTask: typeof import("~/models/claim")["reclaimTask"];
+  heartbeat: typeof import("~/models/claim")["heartbeat"];
   getTaskLogPath: typeof import("~/observability")["getTaskLogPath"];
 };
 let _models: Promise<Modules> | null = null;
@@ -95,7 +108,7 @@ async function models(): Promise<Modules> {
       // Dynamic string-literal imports via the `~/*` alias (spec FR-1). Kept
       // dynamic so bun:sqlite (pulled transitively via ~/db) stays out of the
       // build-time Node module graph; vite resolves the alias at build time.
-      const [db, board, task, taskEvent, taskRun, comment, taskAttachment, context, diagnostic, workflowTemplate, notifySub, dependency, profiles, observability] =
+      const [db, board, task, taskEvent, taskRun, comment, taskAttachment, context, diagnostic, workflowTemplate, notifySub, dependency, profiles, observability, claim] =
         await Promise.all([
           import("~/db"),
           import("~/models/board"),
@@ -111,6 +124,7 @@ async function models(): Promise<Modules> {
           import("~/models/dependency"),
           import("~/profiles"),
           import("~/observability"),
+          import("~/models/claim"),
         ]);
       // Eagerly initialize the DB singleton as soon as the server-side model
       // modules are loaded. Bridge functions also call initDb(), but this guards
@@ -132,6 +146,7 @@ async function models(): Promise<Modules> {
         ...dependency,
         ...profiles,
         ...observability,
+        ...claim,
       } as Modules;
     })();
   }
@@ -162,6 +177,10 @@ import {
   FF_RESULT_SUMMARY,
   FF_WORKTREE_HANDOFF,
   FF_TASK_ATTACHMENTS,
+  FF_BULK_OPERATIONS,
+  FF_REVIEW_STATUS,
+  FF_COMPLETE_METADATA,
+  FF_ASSIGN_REASSIGN,
 } from "~/flags";
 
 // Routes call gate() first; when the flag is off it returns the spec-defined
@@ -1367,4 +1386,335 @@ export async function bootstrapProfilesJson(slug: string, force = false): Promis
   bootstrapRealProfiles(path, force);
   const entries = doctorProfiles(path);
   return { profiles: toCamel(entries) as ProfileHealth[] };
+}
+
+// ---------------------------------------------------------------------------
+// Task lifecycle actions (KDI-UI-006)
+// ---------------------------------------------------------------------------
+//
+// Single choke point for every task mutation the UI surfaces: promote, block,
+// unblock, schedule, review, archive, complete, assign, reassign, claim,
+// reclaim, heartbeat. Each calls the SAME model function the CLI uses, re-checks
+// the SAME feature flag server-side (rejecting with the CLI error text), and
+// returns a per-task { taskId, status, message, currentStatus? } so the UI can
+// render success/skip/error uniformly. Bulk loops the single-task core.
+// ponytail: one core applier shared by single + bulk; flag/field validation
+// factored so neither path drifts from CLI semantics.
+
+export const SINGLE_LIFECYCLE_ACTIONS: ReadonlySet<LifecycleAction> = new Set([
+  "promote", "block", "unblock", "schedule", "review", "archive",
+  "complete", "assign", "reassign", "claim", "reclaim", "heartbeat",
+]);
+
+export const BULK_LIFECYCLE_ACTIONS: ReadonlySet<LifecycleAction> = new Set([
+  "promote", "block", "unblock", "schedule", "archive", "complete",
+]);
+
+export function lifecycleFlags(): LifecycleFlags {
+  return {
+    bulkOperations: isEnabled(FF_BULK_OPERATIONS),
+    scheduledStatus: isEnabled(FF_SCHEDULED_STATUS),
+    reviewStatus: isEnabled(FF_REVIEW_STATUS),
+    completeMetadata: isEnabled(FF_COMPLETE_METADATA),
+    assignReassign: isEnabled(FF_ASSIGN_REASSIGN),
+    heartbeat: isEnabled(FF_HEARTBEAT),
+  };
+}
+
+// Server-side flag re-check mirroring the CLI command gates. A flag off → hard
+// reject of the whole request (403) with the CLI error text, never a fake per-
+// task success. Client gating is UX only; this is the trust boundary.
+function validateActionFlags(action: LifecycleAction, fields: LifecycleFields): void {
+  switch (action) {
+    case "promote":
+      // force/dry-run are bulk-operations features even on a single task.
+      if ((fields.force || fields.dryRun) && !isEnabled(FF_BULK_OPERATIONS))
+        throw new BridgeError("feature_disabled", 403, "Bulk operations feature is not enabled.");
+      break;
+    case "schedule":
+      if (!isEnabled(FF_SCHEDULED_STATUS))
+        throw new BridgeError("feature_disabled", 403, "Scheduled status feature is not enabled.");
+      break;
+    case "review":
+      if (!isEnabled(FF_REVIEW_STATUS))
+        throw new BridgeError("feature_disabled", 403, "Review status feature is not enabled.");
+      break;
+    case "assign":
+    case "reassign":
+      if (!isEnabled(FF_ASSIGN_REASSIGN))
+        throw new BridgeError("feature_disabled", 403, "Assign/reassign feature is not enabled.");
+      break;
+    case "reclaim":
+      // Base reclaim is ungated; only --reason needs FF_ASSIGN_REASSIGN.
+      if (fields.reason !== undefined && !isEnabled(FF_ASSIGN_REASSIGN))
+        throw new BridgeError("feature_disabled", 403, "The --reason option requires the assign/reassign feature.");
+      break;
+    case "heartbeat":
+      if (!isEnabled(FF_HEARTBEAT))
+        throw new BridgeError("feature_disabled", 403, "Heartbeat feature is not enabled.");
+      break;
+    case "complete":
+      if (fields.metadata !== undefined && !isEnabled(FF_COMPLETE_METADATA))
+        throw new BridgeError("feature_disabled", 403, "Complete --metadata is not enabled.");
+      break;
+    // block, unblock, archive, claim: no per-action flag (mirror CLI).
+  }
+}
+
+// Required-field / value validation at the trust boundary.
+function validateActionFields(action: LifecycleAction, fields: LifecycleFields): void {
+  switch (action) {
+    case "block":
+      if (!fields.reason || fields.reason.trim() === "")
+        throw new BridgeError("invalid_input", 400, "Block reason is required.");
+      break;
+    case "schedule": {
+      if (typeof fields.at !== "number" || !Number.isFinite(fields.at))
+        throw new BridgeError("invalid_input", 400, "Scheduled time is required.");
+      if (fields.at <= Math.floor(Date.now() / 1000))
+        throw new BridgeError("invalid_input", 400, "Scheduled time must be in the future");
+      break;
+    }
+    case "assign":
+    case "reassign":
+      if (typeof fields.profile !== "string" || fields.profile.trim() === "")
+        throw new BridgeError("invalid_input", 400, "Profile is required.");
+      break;
+    case "complete":
+      if (fields.metadata !== undefined) {
+        try {
+          JSON.parse(fields.metadata);
+        } catch {
+          throw new BridgeError("invalid_input", 400, "Metadata must be valid JSON.");
+        }
+      }
+      break;
+  }
+}
+
+function errMsg(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+function success(taskId: number, message: string, currentStatus?: string): LifecycleResult {
+  return { taskId, status: "success", message, currentStatus };
+}
+function skipped(taskId: number, message: string, currentStatus?: string): LifecycleResult {
+  return { taskId, status: "skipped", message, currentStatus };
+}
+function errored(taskId: number, message: string, currentStatus?: string): LifecycleResult {
+  return { taskId, status: "error", message, currentStatus };
+}
+
+// Core per-task applier. No flag checks (done once per request), no board
+// membership check (caller does it) — just precondition + model call + result
+// mapping. Shared by single and bulk so semantics never drift.
+function applyTaskAction(
+  m: Awaited<ReturnType<typeof models>>,
+  id: number,
+  action: LifecycleAction,
+  fields: LifecycleFields,
+): LifecycleResult {
+  switch (action) {
+    case "promote": {
+      const r = m.promoteTaskAdvanced(id, { force: fields.force, dryRun: fields.dryRun });
+      switch (r.status) {
+        case "promoted": return success(id, `Promoted task ${id} to ready.`, "ready");
+        case "would_promote": return success(id, `Dry run: would promote task ${id} to ready.`, "todo");
+        case "not_found": return skipped(id, "not_found");
+        case "archived": return skipped(id, "archived");
+        case "wrong_status": return skipped(id, `wrong_status (current: ${r.current})`, r.current);
+        case "blocked_by_dependencies": return skipped(id, "blocked_by_dependencies");
+      }
+      return errored(id, "unknown promote verdict");
+    }
+    case "block": {
+      const t = m.showTask(id);
+      if (!t) return skipped(id, "not_found");
+      if (t.archived_at !== null) return skipped(id, "already archived", "archived");
+      if (t.status === "blocked") return skipped(id, "already blocked", "blocked");
+      try {
+        const x = m.blockTask(id, fields.reason!);
+        return success(id, `Blocked task ${id}.`, x.status);
+      } catch (e) {
+        return errored(id, errMsg(e));
+      }
+    }
+    case "unblock": {
+      const t = m.showTask(id);
+      if (!t) return skipped(id, "not_found");
+      if (t.archived_at !== null) return skipped(id, "already archived", "archived");
+      if (t.status !== "blocked" && t.status !== "scheduled")
+        return skipped(id, `wrong_status (current: ${t.status})`, t.status);
+      // scheduled→ready needs the scheduled-status feature (mirror CLI per-task guard).
+      if (t.status === "scheduled" && !isEnabled(FF_SCHEDULED_STATUS))
+        return skipped(id, "scheduled status feature is not enabled", t.status);
+      try {
+        const x = m.unblockTask(id, fields.reason);
+        return success(id, x.status === "ready" ? `Task ${id} is now ready.` : `Unblocked task ${id}.`, x.status);
+      } catch (e) {
+        return errored(id, errMsg(e));
+      }
+    }
+    case "schedule": {
+      const t = m.showTask(id);
+      if (!t) return skipped(id, "not_found");
+      if (t.archived_at !== null) return skipped(id, "already archived", "archived");
+      try {
+        const x = m.scheduleTask(id, fields.at!, fields.reason);
+        return success(id, `Scheduled task ${id} for ${new Date(fields.at! * 1000).toISOString()}.`, x.status);
+      } catch (e) {
+        return errored(id, errMsg(e));
+      }
+    }
+    case "review": {
+      const t = m.showTask(id);
+      if (!t) return skipped(id, "not_found");
+      if (t.archived_at !== null) return skipped(id, "already archived", "archived");
+      if (t.status === "review") return skipped(id, "already in review", "review");
+      try {
+        const x = m.reviewTask(id, fields.reason);
+        return success(id, `Marked task ${id} as under review.`, x.status);
+      } catch (e) {
+        return errored(id, errMsg(e));
+      }
+    }
+    case "archive": {
+      const t = m.showTask(id);
+      if (!t) return skipped(id, "not_found");
+      if (t.archived_at !== null) return skipped(id, "already archived", "archived");
+      try {
+        m.archiveTask(id);
+        return success(id, `Archived task ${id}.`, "archived");
+      } catch (e) {
+        return errored(id, errMsg(e));
+      }
+    }
+    case "complete": {
+      const t = m.showTask(id);
+      if (!t) return skipped(id, "not_found");
+      if (t.archived_at !== null) return skipped(id, "already archived", "archived");
+      try {
+        const x = m.completeTask(id, {
+          result: fields.result,
+          summary: fields.summary,
+          metadata: fields.metadata,
+        });
+        return success(id, `Completed task ${id}.`, x.status);
+      } catch (e) {
+        return errored(id, errMsg(e));
+      }
+    }
+    case "assign": {
+      const t = m.showTask(id);
+      if (!t) return skipped(id, "not_found");
+      if (t.archived_at !== null) return skipped(id, "already archived", "archived");
+      const profile = fields.profile!;
+      try {
+        if (profile.toLowerCase() === "none") {
+          m.unassignTask(id);
+          return success(id, `Unassigned task ${id}.`);
+        }
+        m.assignTask(id, profile);
+        return success(id, `Assigned task ${id} to ${profile}.`);
+      } catch (e) {
+        return errored(id, errMsg(e));
+      }
+    }
+    case "reassign": {
+      const t = m.showTask(id);
+      if (!t) return skipped(id, "not_found");
+      if (t.archived_at !== null) return skipped(id, "already archived", "archived");
+      const profile = fields.profile!;
+      const target = profile.toLowerCase() === "none" ? null : profile;
+      try {
+        m.reassignTask(id, target, { reclaim: fields.reclaim, reason: fields.reason });
+        return success(id, target === null ? `Unassigned task ${id}.` : `Reassigned task ${id} to ${target}.`);
+      } catch (e) {
+        return errored(id, errMsg(e));
+      }
+    }
+    case "claim": {
+      const t = m.showTask(id);
+      if (!t) return skipped(id, "not_found");
+      if (t.archived_at !== null) return skipped(id, "already archived", "archived");
+      if (t.status !== "ready") return skipped(id, `wrong_status (current: ${t.status})`, t.status);
+      const profile = fields.profile?.trim() || resolveCurrentProfile();
+      const r = m.atomicClaim(id, profile, fields.ttl);
+      if (!r.success) return skipped(id, "not ready or already claimed", t.status);
+      return success(id, `Claimed task ${id}.`, "running");
+    }
+    case "reclaim": {
+      const t = m.showTask(id);
+      if (!t) return skipped(id, "not_found");
+      if (t.archived_at !== null) return skipped(id, "already archived", "archived");
+      if (t.status !== "running") return skipped(id, `wrong_status (current: ${t.status})`, t.status);
+      if (t.claim_lock === null) return skipped(id, "no active claim", t.status);
+      const ok = m.reclaimTask(id, fields.reason);
+      if (!ok) return skipped(id, "not running or no active claim", t.status);
+      return success(id, `Reclaimed task ${id}.`, "ready");
+    }
+    case "heartbeat": {
+      const t = m.showTask(id);
+      if (!t) return skipped(id, "not_found");
+      if (t.archived_at !== null) return skipped(id, "already archived", "archived");
+      if (t.status !== "running") return skipped(id, `wrong_status (current: ${t.status})`, t.status);
+      const ok = m.heartbeat(id, fields.note);
+      if (!ok) return skipped(id, "not running", t.status);
+      return success(id, `Heartbeat recorded for task ${id}.`);
+    }
+  }
+}
+
+export async function performTaskAction(
+  slug: string,
+  id: number,
+  action: LifecycleAction,
+  fields: LifecycleFields = {},
+): Promise<{ result: LifecycleResult }> {
+  if (!SINGLE_LIFECYCLE_ACTIONS.has(action))
+    throw new BridgeError("invalid_action", 400, `Action "${action}" is not a single-task lifecycle action.`);
+  validateActionFlags(action, fields);
+  validateActionFields(action, fields);
+  await assertTaskOnBoard(slug, id);
+  const m = await models();
+  return { result: applyTaskAction(m, id, action, fields) };
+}
+
+export async function performBulkAction(
+  slug: string,
+  action: LifecycleAction,
+  taskIds: number[],
+  fields: LifecycleFields = {},
+): Promise<BulkLifecycleResult> {
+  if (!BULK_LIFECYCLE_ACTIONS.has(action))
+    throw new BridgeError("invalid_action", 400, `Action "${action}" is not bulk-capable.`);
+  if (!isEnabled(FF_BULK_OPERATIONS))
+    throw new BridgeError("feature_disabled", 403, "Bulk operations feature is not enabled.");
+  if (!Array.isArray(taskIds) || taskIds.length === 0)
+    throw new BridgeError("invalid_input", 400, "taskIds must be a non-empty array.");
+  // Bulk complete supports only result (mirror CLI).
+  if (action === "complete" && (fields.summary !== undefined || fields.metadata !== undefined))
+    throw new BridgeError("invalid_input", 400, "Bulk complete only supports result.");
+  validateActionFlags(action, fields);
+  validateActionFields(action, fields);
+  const board = await resolveBoard(slug);
+  const m = await models();
+  const results: LifecycleResult[] = [];
+  for (const id of taskIds) {
+    // Board membership per task: missing/off-board tasks skip, not abort.
+    const t = m.showTask(id);
+    if (!t || t.board_id !== board.id) {
+      results.push(skipped(id, "not_found"));
+      continue;
+    }
+    results.push(applyTaskAction(m, id, action, fields));
+  }
+  const summary = {
+    attempted: results.length,
+    succeeded: results.filter((r) => r.status === "success").length,
+    skipped: results.filter((r) => r.status === "skipped").length,
+    failed: results.filter((r) => r.status === "error").length,
+  };
+  return { results, summary };
 }
