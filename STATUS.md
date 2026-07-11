@@ -134,13 +134,39 @@
 - [ ] UI smoke with temp HOME/KDI_DB asserts list matches `kdi list --status triage` and actions update task states
 - [ ] `bun run lint`, CLI build, SvelteKit build pass with isolated `KDI_DB`
 
-## KDI-UI-008: Live Activity View — Spec
+## KDI-UI-008: Live Activity View — Done
 - [x] BRD/spec drafted at `specs/sveltekit-ui/KDI-UI-008-live-activity-view.md`
-- [ ] Board-wide activity stream with filters for assignee, tenant, and event kinds
-- [ ] Per-task event stream and worker log view
-- [ ] Poll first, with pause/resume and manual refresh
-- [ ] Acceptance: covers `watch`, `tail`, and `log` without requiring a WebSocket server
-- [ ] `bun run lint`, CLI build, `bun run check:web`, and `bun run build:web` pass with isolated `KDI_DB`
+- [x] `/activity` page renders a board-wide live event stream with pause/resume
+      and manual refresh
+- [x] Filter controls for assignee, tenant, kinds, and poll interval when
+      `FF_WATCH_FILTERS=true`
+- [x] Per-task event tail and worker log panel reusing KDI-UI-001/005 routes
+- [x] Server-side filter gating in `boardEventsJson` (FF_WATCH_FILTERS, FF_TENANT_NAMESPACE):
+      rejects assignee/kinds/tenant with `400 feature_disabled` when the flag is off
+      (AC-16); events are scoped to the resolved board so `/api/boards/a/events`
+      cannot disclose board B events
+- [x] Poll interval clamped to min 0.5s and NaN-guarded; state + shareable URL are
+      normalized, not just the scheduler (AC-17)
+- [x] Distinct "No matching events" (filters active) vs "No events yet" empty states,
+      plus distinct error + retry states so 5xx/network failures are not masked as
+      "Task not found" / "No events yet" / "No log captured yet" (AC-11, AC-18)
+- [x] Overlapping filter/task requests are generation-guarded so stale responses
+      cannot populate a newer task pane or reinsert prior-filter events
+- [x] `getEventsAfter` honors an optional limit; the route bounds `since` queries to
+      1–200 so a resumed tab cannot pull an unbounded backlog
+- [x] Smoke test with temp HOME/KDI_DB creates a task via the CLI, generates events
+      (create, promote), and asserts the activity stream reads them (AC-14)
+- [x] `bun run lint`, CLI build, `bun run check:web`, and `bun run build:web` pass
+      with isolated `KDI_DB`; full suite `bun run test` = 1058 pass / 0 fail and
+      terminates cleanly (HTTP smoke spawns the dev server in its own process group)
+- [x] Hydrated-browser regression (Playwright `bun run test:web:e2e`, `@playwright/test@1.61.1`):
+      AC-14 proves CLI-written events render after client-side fetch; P1-1 proves
+      a stale board-A response (route-intercepted and held, then released after
+      navigating to board B) cannot populate board B — verified to fail without
+      the boardGen guard. Surfaced and fixed a real hydration bug (the poll
+      `$effect` read+wrote the timer `$state`, an infinite
+      `effect_update_depth_exceeded` loop on hydration; timer handles are now
+      plain non-reactive vars).
 
 ## KDI-UI-009: Stats and Diagnostics UI — Spec
 - [x] BRD/spec drafted at `specs/sveltekit-ui/KDI-UI-009-stats-diagnostics-ui.md`

@@ -19,10 +19,10 @@ const dev = process.env.NODE_ENV !== "production";
 // Spec FR-1: models are imported via the `~/*` alias the CLI already uses.
 import { existsSync, readFileSync, statSync, openSync, closeSync, readSync } from "node:fs";
 import type { Board, BoardMetadata, BoardWithTaskCounts, BoardStats } from "~/models/board";
-import type { BoardListRow, BoardFlags, TaskSummary, TaskDetail, DetailFlags, DispatchStatus, DispatchOnceResult, DispatchFlags, ProfileHealth, SpawnFailure, TaskCounts } from "$lib/types";
+import type { BoardListRow, BoardFlags, TaskSummary, TaskDetail, DetailFlags, DispatchStatus, DispatchOnceResult, DispatchFlags, ProfileHealth, SpawnFailure, TaskCounts, ActivityFlags } from "$lib/types";
 
 import type { Task, Task as TaskModel, CreateTaskInput } from "~/models/task";
-import type { TaskEvent } from "~/models/taskEvent";
+import type { TaskEvent, WatchFilters } from "~/models/taskEvent";
 import type { TaskRun } from "~/models/taskRun";
 import type { Comment } from "~/models/comment";
 import type { TaskAttachment } from "~/models/taskAttachment";
@@ -30,7 +30,6 @@ import type { TaskContext } from "~/models/context";
 import type { WorkflowTemplate } from "~/models/workflowTemplate";
 import type { NotifySub } from "~/models/notifySub";
 import type { DiagnosticFinding, DiagnosticSeverity } from "~/models/diagnostic";
-
 // Runtime profile imports stay server-side and do not pull `bun:sqlite`.
 import { loadProfiles, doctorProfiles, bootstrapRealProfiles, defaultProfilesPath, type Profile } from "~/profiles";
 
@@ -146,7 +145,7 @@ async function models(): Promise<Modules> {
 // Spec FR: gate the whole bridge behind FF_SVELTEKIT_FRONTEND. Using the
 // shared flag registry so the UI honors the same env/registry overrides as
 // every other KDI feature.
-import { isEnabled, FF_SVELTEKIT_FRONTEND, FF_LIST_FILTERS_SORT, FF_TENANT_NAMESPACE, FF_CREATED_BY, FF_WORKFLOW_TEMPLATES, FF_RATE_LIMIT_EXIT_CODE, FF_HEARTBEAT, FF_BOARD_METADATA, FF_BOARD_CREATE_SWITCH, FF_DEFAULT_WORKDIR, FF_BOARD_SWITCH, FF_BOARD_RENAME_HERMES, FF_BOARD_RENAME, FF_BOARD_RM_DELETE, FF_ENABLE_KANBAN_DISPATCH, FF_DISPATCH_ONCE, FF_DISPATCH_CONTROLS, FF_REAL_HARNESS_PROFILES } from "~/flags";
+import { isEnabled, FF_SVELTEKIT_FRONTEND, FF_LIST_FILTERS_SORT, FF_TENANT_NAMESPACE, FF_CREATED_BY, FF_WORKFLOW_TEMPLATES, FF_RATE_LIMIT_EXIT_CODE, FF_HEARTBEAT, FF_BOARD_METADATA, FF_BOARD_CREATE_SWITCH, FF_DEFAULT_WORKDIR, FF_BOARD_SWITCH, FF_BOARD_RENAME_HERMES, FF_BOARD_RENAME, FF_BOARD_RM_DELETE, FF_ENABLE_KANBAN_DISPATCH, FF_DISPATCH_ONCE, FF_DISPATCH_CONTROLS, FF_REAL_HARNESS_PROFILES, FF_WATCH_FILTERS, FF_TAIL_NO_FOLLOW } from "~/flags";
 import {
   FF_SCHEDULED_STATUS,
   FF_PRIORITY_INTEGER,
@@ -577,6 +576,15 @@ export function boardUiFlags(): BoardFlags {
   };
 }
 
+export function activityFlags(): ActivityFlags {
+  return {
+    watchFilters: isEnabled(FF_WATCH_FILTERS),
+    tailNoFollow: isEnabled(FF_TAIL_NO_FOLLOW),
+    workerLogCapture: isEnabled(FF_WORKER_LOG_CAPTURE),
+    tenantNamespace: isEnabled(FF_TENANT_NAMESPACE),
+  };
+}
+
 export async function assigneesJson(slug: string): Promise<{ assignees: Record<string, number> }> {
   const board = await resolveBoard(slug);
   const m = await models();
@@ -979,7 +987,8 @@ function loadParentSummaries(m: Awaited<ReturnType<typeof models>>, childId: num
      FROM tasks t
      JOIN dependencies d ON d.parent_id = t.id
      WHERE d.child_id = ? AND t.archived_at IS NULL
-     ORDER BY t.updated_at DESC`
+     ORDER BY t.updated_at DESC
+     LIMIT 10`
   ).all(childId) as Array<{
     id: number;
     title: string;
@@ -1179,17 +1188,45 @@ export async function assertTaskOnBoard(slug: string, id: number): Promise<void>
 export async function boardEventsJson(
   slug: string,
   params: URLSearchParams,
-): Promise<{ events: CamelCase<TaskEvent>[] }> {
-  await resolveBoard(slug);
+): Promise<{ events: CamelCase<TaskEvent>[]; since: number | null; board: string }> {
+  const board = await resolveBoard(slug);
   const m = await models();
-  const assignee = params.get("assignee") ?? undefined;
-  const tenant = params.get("tenant") ?? undefined;
-  const kinds = params.get("kinds") ? params.get("kinds")!.split(",") : undefined;
-  const filters = { assignee, tenant, kinds };
+
+  const watchFilters = isEnabled(FF_WATCH_FILTERS);
+  const tenantNamespace = isEnabled(FF_TENANT_NAMESPACE);
+  const hasAssignee = params.get("assignee") !== null;
+  const hasKinds = params.get("kinds") !== null;
+  const hasTenant = params.get("tenant") !== null;
+
+  // AC-16: reject filter params the backend cannot honor with 400 feature_disabled,
+  // matching the CLI. Silently dropping them would let the UI believe a filter is
+  // active while the server returns unfiltered (and here, board-scoped-only) rows.
+  if ((hasAssignee || hasKinds) && !watchFilters) {
+    throw new BridgeError("feature_disabled", 400, "Watch filters feature is not enabled");
+  }
+  if (hasTenant && !(watchFilters && tenantNamespace)) {
+    throw new BridgeError("feature_disabled", 400, "Tenant namespace feature is not enabled");
+  }
+
+  // Board scoping is mandatory so /api/boards/a/events never discloses board B.
+  const filters: WatchFilters = { boardId: board.id };
+  if (watchFilters) {
+    if (hasAssignee) filters.assignee = params.get("assignee") ?? undefined;
+    if (hasTenant) filters.tenant = params.get("tenant") ?? undefined;
+    if (hasKinds) filters.kinds = params.get("kinds")!.split(",");
+  }
+
   const since = params.get("since");
-  const limit = params.get("limit") ? Number(params.get("limit")) : 50;
-  const events = since !== null ? m.getEventsAfter(Number(since), filters) : m.getRecentEvents(limit, filters);
-  return { events: toCamel(events) };
+  const sinceId = since !== null ? Number(since) : null;
+  // Bound the result set so a resumed tab cannot pull an unbounded backlog.
+  let limit = params.get("limit") !== null ? Number(params.get("limit")) : 50;
+  if (!Number.isFinite(limit) || limit < 1) limit = 50;
+  if (limit > 200) limit = 200;
+
+  const events = sinceId !== null
+    ? m.getEventsAfter(sinceId, filters, limit)
+    : m.getRecentEvents(limit, filters);
+  return { events: toCamel(events), since: sinceId, board: slug };
 }
 
 export async function diagnosticsJson(

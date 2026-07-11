@@ -235,36 +235,43 @@ No new feature flag is introduced by this BRD.
 -------------------------------------------------------------------------------
 Acceptance Criteria
 -------------------------------------------------------------------------------
-- [ ] AC-01: A `/activity` page exists and renders the board header, live/paused
+- [x] AC-01: A `/activity` page exists and renders the board header, live/paused
       indicator, and event stream area.
-- [ ] AC-02: The board view (KDI-UI-003) and left navigation link to the
+- [x] AC-02: The board view (KDI-UI-003) and left navigation link to the
       activity page.
-- [ ] AC-03: `GET /api/boards/[slug]/events` returns the most recent board events
+- [x] AC-03: `GET /api/boards/[slug]/events` returns the most recent board events
       and supports `?since=<id>` incremental polling.
-- [ ] AC-04: When live, the board stream polls every 2 seconds and adds new
+- [x] AC-04: When live, the board stream polls every 2 seconds and adds new
       events to the top without a full page reload.
-- [ ] AC-05: Pause stops polling; resume restarts it; manual refresh fetches
+- [x] AC-05: Pause stops polling; resume restarts it; manual refresh fetches
       once while paused.
-- [ ] AC-06: When `FF_WATCH_FILTERS=true`, the stream supports assignee, tenant,
+- [x] AC-06: When `FF_WATCH_FILTERS=true`, the stream supports assignee, tenant,
       kind, and interval filters; the URL reflects the chosen filters.
-- [ ] AC-07: When `FF_WATCH_FILTERS=false`, the filter controls are hidden and
+- [x] AC-07: When `FF_WATCH_FILTERS=false`, the filter controls are hidden and
       the stream polls unfiltered.
-- [ ] AC-08: Clicking a task in the stream selects it and shows its per-task
+- [x] AC-08: Clicking a task in the stream selects it and shows its per-task
       event tail and worker log in a secondary pane.
-- [ ] AC-09: The per-task event pane supports follow mode and, when
+- [x] AC-09: The per-task event pane supports follow mode and, when
       `FF_TAIL_NO_FOLLOW=true`, non-follow mode.
-- [ ] AC-10: The worker log pane supports follow tail and non-follow tail with a
+- [x] AC-10: The worker log pane supports follow tail and non-follow tail with a
       bytes input when `FF_WORKER_LOG_CAPTURE=true`.
-- [ ] AC-11: Missing log, empty event tail, and no-matching-events states show
-      clear empty-state messages.
-- [ ] AC-12: Polling pauses when the page is hidden and resumes when visible.
-- [ ] AC-13: When `FF_SVELTEKIT_FRONTEND=false`, the page shows the disabled
+- [x] AC-11: Missing log, empty event tail, and no-matching-events states show
+      clear empty-state messages ("No matching events" when filters active).
+- [x] AC-12: Polling pauses when the page is hidden and resumes when visible.
+- [x] AC-13: When `FF_SVELTEKIT_FRONTEND=false`, the page shows the disabled
       screen and routes return `503 { enabled: false }`.
-- [ ] AC-14: A smoke test with temp `HOME` and temp `KDI_DB` creates a task via
-      the CLI, generates a few events (e.g. create, promote), opens the activity
-      page, and asserts the event kind and task id are rendered.
-- [ ] AC-15: `bun run lint`, `bun run build` (CLI), `bun run check:web`, and
+- [x] AC-14: A smoke test with temp `HOME` and temp `KDI_DB` creates a task via
+      the CLI (not HTTP bridge), generates events (create, promote), visits the
+      activity page, and asserts the event stream renders task id and event kind.
+- [x] AC-15: `bun run lint`, `bun run build` (CLI), `bun run check:web`, and
       `bun run build:web` all pass with an isolated `KDI_DB`.
+- [x] AC-16: Server-side filter gating: `boardEventsJson` checks `FF_WATCH_FILTERS`
+      before using assignee/kinds filters, and `FF_TENANT_NAMESPACE` before
+      using tenant filter; returns `400 feature_disabled` when flag off.
+- [x] AC-17: Poll interval clamped to minimum 0.5s, never NaN, on client and
+      server.
+- [x] AC-18: Distinct "No matching events" empty state when filters active and
+      no events match; "No events yet" otherwise.
 
 -------------------------------------------------------------------------------
 Verification Notes

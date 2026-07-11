@@ -8,8 +8,8 @@
 // the route adapters are ~5 lines of Request->bridge mapping and add no logic.
 
 import { describe, it, expect, beforeEach, afterEach, afterAll } from "bun:test";
-import { rmSync, mkdirSync, existsSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { rmSync, mkdirSync, existsSync, readFileSync, writeFileSync, readdirSync, statSync } from "node:fs";
+import { join, dirname } from "node:path";
 
 import {
   listBoardsJson,
@@ -41,6 +41,7 @@ import {
   gate,
   BridgeError,
   listProfilesJson,
+  activityFlags,
 } from "./bridge";
 // Direct model import is the CLI source of truth used to validate the bridge
 // wrapped it faithfully. Uses the `~/*` alias (spec FR-1); `bun test` from the
@@ -60,6 +61,9 @@ const FF_KEYS = [
   "FF_WORKFLOW_TEMPLATES",
   "FF_RATE_LIMIT_EXIT_CODE",
   "FF_HEARTBEAT",
+  "FF_WATCH_FILTERS",
+  "FF_TAIL_NO_FOLLOW",
+  "FF_WORKER_LOG_CAPTURE",
 ];
 
 let tmpHome: string;
@@ -381,6 +385,91 @@ describe("KDI-UI-003 filter gating", () => {
     clearOverrides();
     const { slug } = await freshBoardWithTask();
     await expectBridgeError(listTasksJson(slug, new URLSearchParams({ mine: "true", assignee: "ralph" })), "invalid_input", 400);
+  });
+});
+
+// KDI-UI-008: live activity view bridge helpers and worker-log reader.
+describe("KDI-UI-008 live activity view", () => {
+  it("activityFlags() reflects the registered sub-feature flags", () => {
+    const flags = activityFlags();
+    expect(typeof flags.watchFilters).toBe("boolean");
+    expect(typeof flags.tailNoFollow).toBe("boolean");
+    expect(typeof flags.workerLogCapture).toBe("boolean");
+    expect(typeof flags.tenantNamespace).toBe("boolean");
+  });
+
+  it("boardEventsJson filters by assignee and kind", async () => {
+    const slug = await freshBoard("filtered");
+    const { task } = await createTaskJson(slug, { title: "filter me", assignee: "ralph" });
+    await createTaskJson(slug, { title: "other task", assignee: "other" });
+    const events = await boardEventsJson(slug, new URLSearchParams({ assignee: "ralph", kinds: "created" }));
+    expect(events.events.length).toBe(1);
+    expect(events.events[0].taskId).toBe(task.id);
+    expect(events.events[0].kind).toBe("created");
+  });
+
+  it("taskEventsJson with since returns only newer events", async () => {
+    const slug = await freshBoard("since");
+    const { task } = await createTaskJson(slug, { title: "since" });
+    const first = await taskEventsJson(slug, task.id, new URLSearchParams());
+    expect(first.events.length).toBeGreaterThan(0);
+    const after = await taskEventsJson(
+      slug,
+      task.id,
+      new URLSearchParams({ since: String(first.events[0].id) }),
+    );
+    expect(after.events.length).toBe(0);
+  });
+
+  // P1-1: a board-scoped request must never disclose another board's events.
+  it("boardEventsJson is scoped to the resolved board and echoes board/since", async () => {
+    const slugA = await freshBoard("board-a");
+    const slugB = await freshBoard("board-b");
+    const { task: tA } = await createTaskJson(slugA, { title: "on A" });
+    const { task: tB } = await createTaskJson(slugB, { title: "on B" });
+
+    const res = await boardEventsJson(slugA, new URLSearchParams());
+    expect(res.board).toBe(slugA);
+    expect(res.since).toBeNull();
+    const taskIds = res.events.map((e) => e.taskId);
+    expect(taskIds).toContain(tA.id);
+    expect(taskIds).not.toContain(tB.id);
+  });
+
+  // P1-2 (AC-16): disabled filters are rejected with 400 feature_disabled, not dropped.
+  it("boardEventsJson rejects assignee/kinds with 400 when FF_WATCH_FILTERS is off", async () => {
+    const slug = await freshBoard("gated");
+    process.env.FF_WATCH_FILTERS = "false";
+    try {
+      await expectBridgeError(boardEventsJson(slug, new URLSearchParams({ assignee: "x" })), "feature_disabled", 400);
+      await expectBridgeError(boardEventsJson(slug, new URLSearchParams({ kinds: "created" })), "feature_disabled", 400);
+    } finally {
+      delete process.env.FF_WATCH_FILTERS;
+    }
+  });
+
+  it("boardEventsJson rejects tenant with 400 unless both watch + tenant flags are on", async () => {
+    const slug = await freshBoard("gated-tenant");
+    // FF_WATCH_FILTERS defaults on; turn the tenant flag off.
+    process.env.FF_TENANT_NAMESPACE = "false";
+    try {
+      await expectBridgeError(boardEventsJson(slug, new URLSearchParams({ tenant: "t1" })), "feature_disabled", 400);
+    } finally {
+      delete process.env.FF_TENANT_NAMESPACE;
+    }
+  });
+
+  // P1-3 + P2-2: incremental polls are bounded and the cursor is echoed.
+  it("boardEventsJson applies limit to incremental (since) queries", async () => {
+    const slug = await freshBoard("since-limit");
+    await createTaskJson(slug, { title: "t1" });
+    await createTaskJson(slug, { title: "t2" });
+    await createTaskJson(slug, { title: "t3" });
+    // Three "created" events exist; since=0 with limit=2 must cap the backlog.
+    const res = await boardEventsJson(slug, new URLSearchParams({ since: "0", limit: "2" }));
+    expect(res.since).toBe(0);
+    expect(res.board).toBe(slug);
+    expect(res.events.length).toBe(2);
   });
 });
 

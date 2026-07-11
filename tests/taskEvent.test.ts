@@ -241,5 +241,51 @@ describe("taskEvent model", () => {
       expect(events.length).toBe(1);
       expect(events[0].kind).toBe("blocked");
     });
+
+    // P1-1: a board-scoped request must never disclose another board's events.
+    it("getRecentEvents scopes by boardId (no cross-board leak)", () => {
+      const boardA = createBoard("alpha", "/tmp/alpha");
+      const boardB = createBoard("beta", "/tmp/beta");
+      const tA = createTask({ board_id: boardA.id, title: "A" });
+      const tB = createTask({ board_id: boardB.id, title: "B" });
+      addEvent(tB.id, "created");
+
+      const events = getRecentEvents(10, { boardId: boardA.id });
+      expect(events.some((e) => e.task_id === tB.id)).toBe(false);
+      for (const e of events) {
+        expect(e.task_id).toBe(tA.id);
+      }
+    });
+
+    it("getEventsAfter scopes by boardId", () => {
+      const boardA = createBoard("alpha", "/tmp/alpha");
+      const boardB = createBoard("beta", "/tmp/beta");
+      const tA = createTask({ board_id: boardA.id, title: "A" });
+      const tB = createTask({ board_id: boardB.id, title: "B" });
+      const first = addEvent(tA.id, "created");
+      addEvent(tB.id, "promoted");
+      addEvent(tA.id, "promoted");
+
+      const events = getEventsAfter(first.id, { boardId: boardA.id });
+      for (const e of events) {
+        expect(e.task_id).toBe(tA.id);
+      }
+      expect(events.some((e) => e.task_id === tB.id)).toBe(false);
+    });
+
+    // P1-3: a resumed poll must not pull an unbounded backlog.
+    it("getEventsAfter honors an optional limit", () => {
+      const board = createBoard("alpha", "/tmp/alpha");
+      const task = createTask({ board_id: board.id, title: "Test" });
+      const first = addEvent(task.id, "created");
+      addEvent(task.id, "promoted");
+      addEvent(task.id, "blocked");
+      addEvent(task.id, "unblocked");
+
+      // With a limit the backlog is capped...
+      expect(getEventsAfter(first.id, {}, 2).length).toBe(2);
+      // ...and without one the CLI keeps its unbounded tail behavior.
+      expect(getEventsAfter(first.id).length).toBeGreaterThanOrEqual(3);
+    });
   });
 });

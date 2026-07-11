@@ -18,11 +18,16 @@
 
 import { describe, it, expect, afterAll } from "bun:test";
 import { rmSync, mkdirSync, existsSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
 import { showTask } from "~/models/task";
 import { initDb, closeDb } from "~/db";
+import { getTaskLogPath } from "~/observability";
 
-const WORKTREE_ROOT = join(import.meta.dirname, "..", "..", "..", ".."); // repo root
+// One level deeper than the KDI-UI-001 comment implied: this file lives at
+// apps/web/src/lib/server, so the repo root is five dirs up. (`bun run
+// dev:web` tolerated the old four-up path because bun walks up to the nearest
+// package.json, but an explicit src/index.ts path needs the real root.)
+const WORKTREE_ROOT = join(import.meta.dirname, "..", "..", "..", "..", ".."); // repo root
 
 let proc: ReturnType<typeof Bun.spawn> | null = null;
 let tmpHome: string;
@@ -33,7 +38,7 @@ function randomPort(): string {
   return String(50000 + Math.floor(Math.random() * 15000));
 }
 
-async function waitAlive(timeoutMs = 30000): Promise<void> {
+async function waitAlive(timeoutMs = 60000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
@@ -50,7 +55,10 @@ async function waitAlive(timeoutMs = 30000): Promise<void> {
 async function stopServer(): Promise<void> {
   if (proc) {
     try {
-      proc.kill(9);
+      // Kill the entire process group: `bun run dev:web` parents a Vite dev
+      // server that spawns its own children. Killing only the bun parent
+      // orphans them and keeps the test process alive (the 20-min hang).
+      process.kill(-proc.pid, 9);
       await proc.exited;
     } catch {
       /* already gone */
@@ -80,6 +88,9 @@ async function startServer(enabled: boolean): Promise<void> {
   proc = Bun.spawn({
     cmd: ["bun", "run", "dev:web", "--port", port],
     cwd: WORKTREE_ROOT,
+    // POSIX setsid(): proc.pid becomes the process-group leader so stopServer
+    // can reap the whole Vite tree, not just the bun parent.
+    detached: true,
     env: {
       ...process.env,
       HOME: tmpHome,
@@ -93,13 +104,46 @@ async function startServer(enabled: boolean): Promise<void> {
   await waitAlive();
 }
 
+// Run the kdi CLI as a subprocess against the isolated HOME/KDI_DB. Used by
+// AC-14 to prove the activity view reads events the CLI wrote (not just data
+// created through the HTTP bridge). Async with a per-call kill timer so a slow
+// `bun src/index.ts` cold-start under full-suite load can't monopolize the test.
+async function runCli(args: string[]): Promise<{ stdout: string; code: number }> {
+  const child = Bun.spawn({
+    cmd: ["bun", join(WORKTREE_ROOT, "src/index.ts"), ...args],
+    cwd: WORKTREE_ROOT,
+    env: {
+      ...process.env,
+      HOME: tmpHome,
+      KDI_DB: join(tmpHome, "kdi.sqlite"),
+      FF_SVELTEKIT_FRONTEND: "true",
+    },
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const timer = setTimeout(() => {
+    try { child.kill(9); } catch { /* already gone */ }
+  }, 40000);
+  try {
+    const code = await child.exited;
+    const stdout = (await new Response(child.stdout).text()).trim();
+    if (code !== 0) {
+      const stderr = (await new Response(child.stderr).text()).trim();
+      throw new Error(`kdi ${args.join(" ")} exited ${code}\nstdout: ${stdout}\nstderr: ${stderr}`);
+    }
+    return { stdout, code };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 afterAll(async () => {
   await stopServer();
   if (tmpHome && existsSync(tmpHome)) rmSync(tmpHome, { recursive: true, force: true });
 });
 
 describe("KDI-UI-001 HTTP smoke (dev server, isolated HOME/KDI_DB)", () => {
-  it("POST/GET boards + tasks over HTTP, flag-off disables writes, logs 501", async () => {
+  it("POST/GET boards + tasks over HTTP, flag-off disables writes, activity + logs render", async () => {
     // Close any DB handle left open by earlier tests in this process before
     // the dev server tries to open the same KDI_DB file.
     closeDb();
@@ -150,11 +194,27 @@ describe("KDI-UI-001 HTTP smoke (dev server, isolated HOME/KDI_DB)", () => {
     const shown = (await r4.json()) as { task: Record<string, unknown> };
     expect(shown.task.title).toBe("HTTP task");
 
-    // logs route is the spec's prescribed model-gap escape hatch -> 501.
-    const r5 = await fetch(`${baseUrl}/api/boards/smoke/tasks/${taskId}/logs`, { signal: AbortSignal.timeout(10000) });
-    expect(r5.status).toBe(501);
-    const logs = (await r5.json()) as { error: string; reason?: string };
-    expect(logs.error).toBe("not_implemented");
+    // GET /api/boards/smoke/tasks/<id>/log returns the worker log tail
+    const logPath = getTaskLogPath("smoke", taskId);
+    mkdirSync(dirname(logPath), { recursive: true });
+    writeFileSync(logPath, "worker log line 1\nworker log line 2\n");
+    const r5 = await fetch(`${baseUrl}/api/boards/smoke/tasks/${taskId}/log?tail=30`, { signal: AbortSignal.timeout(10000) });
+    expect(r5.status).toBe(200);
+    const logs = (await r5.json()) as { present: boolean; content: string };
+    expect(logs.present).toBe(true);
+    expect(logs.content).toContain("worker log line 2");
+
+    // KDI-UI-008: activity page and event stream endpoints
+    const rActivity = await fetch(`${baseUrl}/activity?board=smoke`, { signal: AbortSignal.timeout(10000) });
+    expect(rActivity.status).toBe(200);
+    const activityHtml = await rActivity.text();
+    expect(activityHtml.includes("Activity")).toBe(true);
+    expect(activityHtml.includes("smoke")).toBe(true);
+
+    const rEvents = await fetch(`${baseUrl}/api/boards/smoke/events`, { signal: AbortSignal.timeout(10000) });
+    expect(rEvents.status).toBe(200);
+    const eventsJson = (await rEvents.json()) as { events: Array<{ kind: string; taskId: number }> };
+    expect(eventsJson.events.some((e) => e.kind === "created" && e.taskId === taskId)).toBe(true);
 
     // Stop the dev server before reading the same DB from this process.
     // bun:sqlite WAL tolerates multiple readers, but concurrent open handles
@@ -287,4 +347,54 @@ describe("KDI-UI-001 HTTP smoke (dev server, isolated HOME/KDI_DB)", () => {
 
     await stopServer();
   }, 60000);
+
+  // AC-14: events must originate from the CLI and be readable by the activity
+  // view against the same DB. The stream hydrates client-side (BRD NFR), so we
+  // assert the SSR board header plus the events endpoint the page fetches.
+  it("AC-14: CLI-created task events render in the activity view", async () => {
+    closeDb();
+    if (!tmpHome) {
+      tmpHome = `/tmp/kdi-ui001-http-${process.pid}-${Math.random().toString(36).slice(2)}`;
+      mkdirSync(tmpHome, { recursive: true });
+    }
+
+    // 1. Create board + task + promote via the CLI (NOT the HTTP bridge). Each
+    //    emits a board event ("created", "promoted") into the shared KDI_DB.
+    let cli = await runCli(["boards", "create", "ac14", "--workdir", tmpHome]);
+    expect(cli.code).toBe(0);
+    cli = await runCli(["create", "CLI task", "--board", "ac14"]);
+    expect(cli.code).toBe(0);
+    const taskId = Number(cli.stdout);
+    expect(Number.isInteger(taskId) && taskId > 0).toBe(true);
+    cli = await runCli(["promote", String(taskId)]);
+    expect(cli.code).toBe(0);
+
+    // 2. Start the dev server against the SAME DB the CLI just wrote to.
+    await startServer(true);
+
+    // 3. The activity page SSR-renders the board header for the CLI board.
+    const rActivity = await fetch(`${baseUrl}/activity?board=ac14`, { signal: AbortSignal.timeout(10000) });
+    expect(rActivity.status).toBe(200);
+    const activityHtml = await rActivity.text();
+    expect(activityHtml).toContain("Activity");
+    expect(activityHtml).toContain("ac14");
+
+    // 4. The event stream the activity page hydrates from returns the CLI
+    //    task's "created" and "promoted" events, proving the UI reads the same
+    //    events the CLI wrote (and the response carries the board + since cursor).
+    const rEvents = await fetch(`${baseUrl}/api/boards/ac14/events`, { signal: AbortSignal.timeout(10000) });
+    expect(rEvents.status).toBe(200);
+    const eventsJson = (await rEvents.json()) as {
+      events: Array<{ kind: string; taskId: number }>;
+      board: string;
+      since: number | null;
+    };
+    expect(eventsJson.board).toBe("ac14");
+    expect(eventsJson.since).toBeNull();
+    const kinds = eventsJson.events.filter((e) => e.taskId === taskId).map((e) => e.kind);
+    expect(kinds).toContain("created");
+    expect(kinds).toContain("promoted");
+
+    await stopServer();
+  }, 120000);
 });
