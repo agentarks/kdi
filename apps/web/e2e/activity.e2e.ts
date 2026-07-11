@@ -212,14 +212,22 @@ test("P1-1: a stale board-A response cannot populate board B after navigation", 
   });
   await expect(page.locator("code")).toContainText("boardB");
 
+  // Register the completion barrier before releasing boardA. This proves the
+  // assertion below runs only after its held response reaches the browser.
+  const boardAResponse = page.waitForResponse(
+    (response) =>
+      response.url().includes("/api/boards/boardA/events") && response.request().method() === "GET",
+  );
+
   // Now release boardA's held response. This is the decisive moment: without
   // the boardGen guard, the late A response resolves and writes A's 'created'
   // event into B's stream.
   releaseA();
 
-  // Give the held response time to resolve and (if unguarded) render. boardB
-  // must stay empty.
-  await page.waitForTimeout(1000);
+  // Wait for the complete response body, then allow the fetch continuation and
+  // Svelte's resulting DOM update one render turn. boardB must stay empty.
+  await (await boardAResponse).finished();
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
   await expect(page.locator(".event-row")).toHaveCount(0);
   await expect(page.locator(".event-row .badge", { hasText: "created" })).toHaveCount(0);
 });
