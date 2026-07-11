@@ -1,8 +1,11 @@
 import type { PageServerLoad } from "./$types";
-import { taskDetailJson, detailFlags, lifecycleFlags, resolveCurrentProfile, readCurrentBoardJson, BridgeError } from "$lib/server/bridge";
+import { taskDetailJson, detailFlags, lifecycleFlags, resolveCurrentProfile, readCurrentBoardJson, isSvelteKitEnabled, BridgeError } from "$lib/server/bridge";
 import { error } from "@sveltejs/kit";
 
 export const load: PageServerLoad = async ({ params, url }) => {
+  if (!isSvelteKitEnabled()) {
+    throw error(404, "UI disabled");
+  }
   const id = Number(params.id);
   const boardSlug = url.searchParams.get("board") ?? (await readCurrentBoardJson());
   if (!boardSlug) {

@@ -1,4 +1,4 @@
-import { fail, redirect } from "@sveltejs/kit";
+import { error, fail, redirect } from "@sveltejs/kit";
 import type { PageServerLoad, Actions } from "./$types";
 import {
   showBoardJson,
@@ -15,6 +15,7 @@ import {
   renameBoardSlugJson,
   removeBoardJson,
   lifecycleFlags,
+  isSvelteKitEnabled,
   BridgeError,
   bridgeError,
 } from "$lib/server/bridge";
@@ -36,6 +37,9 @@ import {
 import type { KanbanTask, KanbanFilterState, KanbanCapabilities, KanbanTemplate } from "$lib/kanban";
 
 export const load: PageServerLoad = async ({ params, url }) => {
+  if (!isSvelteKitEnabled()) {
+    throw error(404, "UI disabled");
+  }
   const slug = params.slug;
   const search = url.searchParams;
 
