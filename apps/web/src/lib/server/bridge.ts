@@ -1489,6 +1489,12 @@ function validateActionFields(action: LifecycleAction, fields: LifecycleFields):
         }
       }
       break;
+    case "claim":
+      if (fields.ttl !== undefined) {
+        if (typeof fields.ttl !== "number" || isNaN(fields.ttl) || fields.ttl <= 0 || !Number.isInteger(fields.ttl))
+          throw new BridgeError("invalid_input", 400, "TTL must be a positive integer");
+      }
+      break;
   }
 }
 

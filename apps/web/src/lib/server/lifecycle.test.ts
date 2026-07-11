@@ -289,6 +289,17 @@ describe("KDI-UI-006 single-task actions", () => {
     const slug = await freshBoard();
     await expectBridgeError(performTaskAction(slug, 1, "frobnicate" as LifecycleAction), "invalid_action", 400);
   });
+
+  it("claim TTL must be a positive integer (matching CLI)", async () => {
+    const slug = await freshBoard();
+    const { task } = await createTaskJson(slug, { title: "CL", initialStatus: "ready" });
+    await expectBridgeError(act(slug, task.id, "claim", { ttl: 0 }), "invalid_input", 400);
+    await expectBridgeError(act(slug, task.id, "claim", { ttl: -5 }), "invalid_input", 400);
+    await expectBridgeError(act(slug, task.id, "claim", { ttl: 1.5 }), "invalid_input", 400);
+    // valid TTL still works
+    const r = await act(slug, task.id, "claim", { ttl: 300 });
+    expect(r.status).toBe("success");
+  });
 });
 
 describe("KDI-UI-006 server-side flag gates (AC-25)", () => {

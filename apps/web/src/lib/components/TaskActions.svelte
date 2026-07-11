@@ -53,7 +53,6 @@
   let dryRunResult = $state<LifecycleResult | null>(null);
 
   const archived = $derived(task.archivedAt !== null);
-
   // Per-action enable conditions (FR-27). Client gating is UX only; the server
   // re-checks. Disabled controls get a flag/status tooltip.
   const can = $derived<Record<LifecycleAction, boolean>>({
@@ -89,10 +88,6 @@
     }
   }
 
-  const needsConfirm = $derived(active ? !!SINGLE_BUTTONS.find((b) => b.action === active)?.needsConfirm : false);
-  // reassign only needs confirm when reclaim is checked
-  const confirmRequired = $derived(needsConfirm || (active === "reassign" && reclaim));
-
   function resetFields() {
     reason = ""; atLocal = ""; profile = ""; reclaim = false; ttl = "";
     note = ""; resultText = ""; summary = ""; metadata = "";
@@ -101,7 +96,10 @@
 
   function open(action: LifecycleAction) {
     resetFields();
-    if (action === "assign" || action === "reassign") profile = task.assignee ?? currentProfile;
+    // FR-16: assign defaults to the current user; reassign shows the existing
+    // assignee so the operator sees the current state before changing it.
+    if (action === "assign") profile = currentProfile;
+    else if (action === "reassign") profile = task.assignee ?? currentProfile;
     active = action;
     dialog?.open();
   }
@@ -166,6 +164,9 @@
   }
 
   const noteOver = $derived(note.length > 4096);
+
+  // FR-9: the UI rejects times in the past before calling the model.
+  const atInPast = $derived(atLocal !== "" && toUnix(atLocal) <= Math.floor(Date.now() / 1000));
 </script>
 
 <section class="detail-section" aria-labelledby="actions-heading">
@@ -223,11 +224,12 @@
   {:else if active === "schedule"}
     <div class="form-group"><label for="sched-at">At (required, future)</label>
       <input id="sched-at" type="datetime-local" bind:value={atLocal} /></div>
+      {#if atLocal && atInPast}<span class="error">Scheduled time must be in the future.</span>{/if}
     <div class="form-group"><label for="sched-reason">Reason (optional)</label>
       <textarea id="sched-reason" bind:value={reason} rows="2"></textarea></div>
     <div class="dialog-actions">
       <button type="button" class="btn" onclick={() => dialog?.close()}>Cancel</button>
-      <button type="button" class="btn btn--primary" onclick={submit} disabled={busy || !atLocal}>Schedule</button>
+      <button type="button" class="btn btn--primary" onclick={submit} disabled={busy || !atLocal || atInPast}>Schedule</button>
     </div>
   {:else if active === "review"}
     <div class="form-group"><label for="review-reason">Reason (optional)</label>
