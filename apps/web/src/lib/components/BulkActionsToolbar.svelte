@@ -87,7 +87,8 @@
   }
 
   const canSchedule = $derived(flags.scheduledStatus);
-  const confirmRequired = $derived(active === "archive");
+  // FR-9/FR-10: reject past times client-side before calling the model.
+  const atInPast = $derived(atLocal !== "" && toUnix(atLocal) <= Math.floor(Date.now() / 1000));
 </script>
 
 <div class="bulk-toolbar">
@@ -152,11 +153,12 @@
   {:else if active === "schedule"}
     <div class="form-group"><label for="bulk-sched-at">At (required, future, applies to all)</label>
       <input id="bulk-sched-at" type="datetime-local" bind:value={atLocal} /></div>
+      {#if atLocal && atInPast}<span class="error">Scheduled time must be in the future.</span>{/if}
     <div class="form-group"><label for="bulk-sched-reason">Reason (optional)</label>
       <textarea id="bulk-sched-reason" bind:value={reason} rows="2"></textarea></div>
     <div class="dialog-actions">
       <button type="button" class="btn" onclick={() => dialog?.close()}>Cancel</button>
-      <button type="button" class="btn btn--primary" onclick={submit} disabled={busy || !atLocal}>Schedule {selected.length}</button>
+      <button type="button" class="btn btn--primary" onclick={submit} disabled={busy || !atLocal || atInPast}>Schedule {selected.length}</button>
     </div>
   {:else if active === "archive"}
     <p class="stack-sm warn-text">Archive {selected.length} task(s)? This is one-way — no UI restore exists.</p>
