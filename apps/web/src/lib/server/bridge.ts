@@ -1331,13 +1331,20 @@ export interface SubscribeInput {
   notifierProfile?: string;
 }
 
+// Shape mirrors editTaskJson(slug, id, ...): the bridge verifies board membership
+// via assertTaskOnBoard so mutations stay consistent with the resolved board,
+// matching every other task-scoped write helper. The model's subscribe()/
+// unsubscribe() are not board-scoped, so this is where the UI's board context is
+// enforced (FR-18).
 export async function subscribeJson(
+  slug: string,
   taskId: number,
   platform: string,
   chatId: string,
   options: SubscribeInput = {},
 ): Promise<{ subscription: CamelCase<NotifySub> }> {
   requireNotifySubs();
+  await assertTaskOnBoard(slug, taskId);
   const m = await models();
   m.initDb();
   try {
@@ -1353,12 +1360,14 @@ export async function subscribeJson(
 }
 
 export async function unsubscribeJson(
+  slug: string,
   taskId: number,
   platform: string,
   chatId: string,
   threadId?: string,
 ): Promise<{ unsubscribed: number }> {
   requireNotifySubs();
+  await assertTaskOnBoard(slug, taskId);
   const m = await models();
   m.initDb();
   try {

@@ -22,11 +22,18 @@ function getField(data: FormData, name: string): string {
   return v === null ? "" : v.toString().trim();
 }
 
+// Board resolution chain shared by load + both actions (FR-17): ?board= ->
+// current board -> "default". One helper so the action mutations resolve the
+// same board the load did, before assertTaskOnBoard runs inside the bridge.
+async function resolveBoardSlug(url: URL): Promise<string> {
+  return url.searchParams.get("board") ?? (await readCurrentBoardJson()) ?? "default";
+}
+
 export const load: PageServerLoad = async ({ params, url }) => {
   if (!isSvelteKitEnabled()) throw error(404, "UI disabled");
   const flags = notifySubsFlags();
   const id = Number(params.id);
-  const boardSlug = url.searchParams.get("board") ?? (await readCurrentBoardJson()) ?? "default";
+  const boardSlug = await resolveBoardSlug(url);
   const includeArchived = url.searchParams.get("archived") === "1";
 
   if (!flags.notifySubs) {
@@ -51,11 +58,12 @@ export const load: PageServerLoad = async ({ params, url }) => {
 };
 
 export const actions: Actions = {
-  subscribe: async ({ request, params }) => {
+  subscribe: async ({ request, params, url }) => {
     const taskId = Number(params.id);
     if (!isSvelteKitEnabled() || !notifySubsFlags().notifySubs) {
       return fail(403, { error: "Notification subscriptions feature is not enabled." });
     }
+    const boardSlug = await resolveBoardSlug(url);
     const data = await request.formData();
     const platform = getField(data, "platform").toLowerCase();
     const chatId = getField(data, "chat_id");
@@ -73,7 +81,7 @@ export const actions: Actions = {
 
     try {
       // Empty notifier profile -> undefined so the model defaults to the platform.
-      await subscribeJson(taskId, platform, chatId, {
+      await subscribeJson(boardSlug, taskId, platform, chatId, {
         threadId: threadId || undefined,
         userId: userId || undefined,
         notifierProfile: notifierProfileRaw || undefined,
@@ -84,11 +92,12 @@ export const actions: Actions = {
     }
   },
 
-  unsubscribe: async ({ request, params }) => {
+  unsubscribe: async ({ request, params, url }) => {
     const taskId = Number(params.id);
     if (!isSvelteKitEnabled() || !notifySubsFlags().notifySubs) {
       return fail(403, { error: "Notification subscriptions feature is not enabled." });
     }
+    const boardSlug = await resolveBoardSlug(url);
     const data = await request.formData();
     const platform = getField(data, "platform");
     const chatId = getField(data, "chat_id");
@@ -97,7 +106,7 @@ export const actions: Actions = {
 
     if (!Number.isInteger(taskId) || taskId <= 0) return fail(400, { error: "Invalid task id." });
     try {
-      const { unsubscribed } = await unsubscribeJson(taskId, platform, chatId, threadId);
+      const { unsubscribed } = await unsubscribeJson(boardSlug, taskId, platform, chatId, threadId);
       return { ok: true, unsubscribed };
     } catch (err) {
       return fail(400, { error: err instanceof Error ? err.message : String(err) });

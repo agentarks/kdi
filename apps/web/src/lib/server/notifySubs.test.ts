@@ -78,7 +78,7 @@ describe("KDI-UI-010 notification subscriptions bridge", () => {
 
   it("subscribe + list round-trip (per-task and board-scoped) with camelCase keys", async () => {
     const { slug, taskId } = await seedBoardAndTask();
-    const { subscription } = await subscribeJson(taskId, "telegram", "chat-1", {
+    const { subscription } = await subscribeJson(slug, taskId, "telegram", "chat-1", {
       notifierProfile: "log",
     });
     expect(subscription.taskId).toBe(taskId);
@@ -97,41 +97,41 @@ describe("KDI-UI-010 notification subscriptions bridge", () => {
   });
 
   it("empty notifier profile defaults to the platform name and is validated", async () => {
-    const { taskId } = await seedBoardAndTask();
+    const { slug, taskId } = await seedBoardAndTask();
     // platform telegram -> default profile "telegram" -> missing bot_token.
     await expect(
-      subscribeJson(taskId, "telegram", "chat-1", { notifierProfile: undefined }),
+      subscribeJson(slug, taskId, "telegram", "chat-1", { notifierProfile: undefined }),
     ).rejects.toThrow(/missing required config key 'bot_token'/);
   });
 
   it("rejects a missing notifier profile with the CLI message", async () => {
-    const { taskId } = await seedBoardAndTask();
+    const { slug, taskId } = await seedBoardAndTask();
     await expect(
-      subscribeJson(taskId, "telegram", "chat-1", { notifierProfile: "nope" }),
+      subscribeJson(slug, taskId, "telegram", "chat-1", { notifierProfile: "nope" }),
     ).rejects.toThrow(/Notifier profile 'nope' not found/);
   });
 
   it("rejects an unsupported platform with the CLI message", async () => {
-    const { taskId } = await seedBoardAndTask();
+    const { slug, taskId } = await seedBoardAndTask();
     await expect(
-      subscribeJson(taskId, "carrier-pigeon", "chat-1", { notifierProfile: "log" }),
+      subscribeJson(slug, taskId, "carrier-pigeon", "chat-1", { notifierProfile: "log" }),
     ).rejects.toThrow(/Unsupported platform\. Valid platforms: telegram, slack, discord, webhook/);
   });
 
   it("rejects duplicate no-thread and thread-scoped subscriptions", async () => {
-    const { taskId } = await seedBoardAndTask();
-    await subscribeJson(taskId, "slack", "chat-2", { notifierProfile: "log" });
+    const { slug, taskId } = await seedBoardAndTask();
+    await subscribeJson(slug, taskId, "slack", "chat-2", { notifierProfile: "log" });
     await expect(
-      subscribeJson(taskId, "slack", "chat-2", { notifierProfile: "log" }),
+      subscribeJson(slug, taskId, "slack", "chat-2", { notifierProfile: "log" }),
     ).rejects.toThrow(/already exists \(no thread\)/);
 
     // Thread-scoped is distinct and coexists.
-    await subscribeJson(taskId, "slack", "chat-2", {
+    await subscribeJson(slug, taskId, "slack", "chat-2", {
       notifierProfile: "log",
       threadId: "t1",
     });
     await expect(
-      subscribeJson(taskId, "slack", "chat-2", {
+      subscribeJson(slug, taskId, "slack", "chat-2", {
         notifierProfile: "log",
         threadId: "t1",
       }),
@@ -142,14 +142,14 @@ describe("KDI-UI-010 notification subscriptions bridge", () => {
   });
 
   it("thread-scoped unsubscribe leaves the no-thread subscription (AC-12)", async () => {
-    const { taskId } = await seedBoardAndTask();
-    await subscribeJson(taskId, "discord", "chat-3", { notifierProfile: "log" });
-    await subscribeJson(taskId, "discord", "chat-3", {
+    const { slug, taskId } = await seedBoardAndTask();
+    await subscribeJson(slug, taskId, "discord", "chat-3", { notifierProfile: "log" });
+    await subscribeJson(slug, taskId, "discord", "chat-3", {
       notifierProfile: "log",
       threadId: "t1",
     });
 
-    const { unsubscribed } = await unsubscribeJson(taskId, "discord", "chat-3", "t1");
+    const { unsubscribed } = await unsubscribeJson(slug, taskId, "discord", "chat-3", "t1");
     expect(unsubscribed).toBe(1);
 
     const active = await subscriptionsJson(qs({ taskId: String(taskId) }));
@@ -166,14 +166,14 @@ describe("KDI-UI-010 notification subscriptions bridge", () => {
   });
 
   it("no-thread unsubscribe removes all active subs for task/platform/chat (AC-13)", async () => {
-    const { taskId } = await seedBoardAndTask();
-    await subscribeJson(taskId, "webhook", "chat-4", { notifierProfile: "log" });
-    await subscribeJson(taskId, "webhook", "chat-4", {
+    const { slug, taskId } = await seedBoardAndTask();
+    await subscribeJson(slug, taskId, "webhook", "chat-4", { notifierProfile: "log" });
+    await subscribeJson(slug, taskId, "webhook", "chat-4", {
       notifierProfile: "log",
       threadId: "t1",
     });
 
-    const { unsubscribed } = await unsubscribeJson(taskId, "webhook", "chat-4");
+    const { unsubscribed } = await unsubscribeJson(slug, taskId, "webhook", "chat-4");
     expect(unsubscribed).toBe(2);
 
     const active = await subscriptionsJson(qs({ taskId: String(taskId) }));
@@ -181,8 +181,8 @@ describe("KDI-UI-010 notification subscriptions bridge", () => {
   });
 
   it("unsubscribe on a non-existent active sub surfaces the CLI error", async () => {
-    const { taskId } = await seedBoardAndTask();
-    await expect(unsubscribeJson(taskId, "telegram", "ghost")).rejects.toThrow(
+    const { slug, taskId } = await seedBoardAndTask();
+    await expect(unsubscribeJson(slug, taskId, "telegram", "ghost")).rejects.toThrow(
       /No active subscription found/,
     );
   });
@@ -192,15 +192,34 @@ describe("KDI-UI-010 notification subscriptions bridge", () => {
     isolate(false);
     expect(notifySubsFlags().notifySubs).toBe(false);
 
-    const { taskId } = await seedBoardAndTask();
+    const { slug, taskId } = await seedBoardAndTask();
     await expectCode(
-      subscribeJson(taskId, "telegram", "chat", { notifierProfile: "log" }),
+      subscribeJson(slug, taskId, "telegram", "chat", { notifierProfile: "log" }),
       "feature_disabled",
     );
-    await expectCode(unsubscribeJson(taskId, "telegram", "chat"), "feature_disabled");
+    await expectCode(unsubscribeJson(slug, taskId, "telegram", "chat"), "feature_disabled");
 
     // Read-only list still works (no mutation); the disabled gate is on writes.
     const list = await subscriptionsJson(qs({ taskId: String(taskId) }));
+    expect(list.subscriptions.length).toBe(0);
+  });
+
+  it("assertTaskOnBoard: a task from another board is rejected (FR-18 consistency)", async () => {
+    // Two boards, task on board A; targeting it via board B's slug must 404.
+    await createBoardJson({ slug: "boardA", workdir: tmpHome });
+    await createBoardJson({ slug: "boardB", workdir: tmpHome });
+    const { task } = await createTaskJson("boardA", { title: "on A" });
+
+    await expectCode(
+      subscribeJson("boardB", task.id, "telegram", "c", { notifierProfile: "log" }),
+      "task_not_found",
+    );
+    await expectCode(
+      unsubscribeJson("boardB", task.id, "telegram", "c"),
+      "task_not_found",
+    );
+    // Nothing was created.
+    const list = await subscriptionsJson(qs({ taskId: String(task.id) }));
     expect(list.subscriptions.length).toBe(0);
   });
 });

@@ -48,12 +48,13 @@ export const actions: Actions = {
     const chatId = String(data.get("chat_id") ?? "");
     const threadIdRaw = data.get("thread_id");
     const threadId = threadIdRaw !== null && String(threadIdRaw) !== "" ? String(threadIdRaw) : undefined;
+    const boardSlug = url.searchParams.get("board") ?? (await readCurrentBoardJson()) ?? "default";
 
     if (!Number.isInteger(taskId) || taskId <= 0) {
       return fail(400, { error: "Invalid task id." });
     }
     try {
-      const { unsubscribed } = await unsubscribeJson(taskId, platform, chatId, threadId);
+      const { unsubscribed } = await unsubscribeJson(boardSlug, taskId, platform, chatId, threadId);
       return { ok: true, unsubscribed };
     } catch (err) {
       return fail(400, { error: err instanceof Error ? err.message : String(err) });
