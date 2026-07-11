@@ -290,7 +290,9 @@ describe("KDI-UI-001 server data bridge", () => {
         f.endsWith("lib/server/task-detail.test.ts") ||
         f.endsWith("lib/server/task-detail.http.test.ts") ||
         f.endsWith("lib/server/task-lifecycle-actions.test.ts") ||
-        f.endsWith("lib/server/task-lifecycle-actions.http.test.ts");
+        f.endsWith("lib/server/task-lifecycle-actions.http.test.ts") ||
+        f.endsWith("lib/server/notifySubs.test.ts") ||
+        f.endsWith("lib/server/notifySubs.http.test.ts");
       if (isBridge) {
         bridgeSeen = true;
         continue;
