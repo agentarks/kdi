@@ -36,9 +36,9 @@
   // newer filter set or a different selected task. boardGen bumps on filter
   // apply; task panes guard on selectedTaskId captured at call time.
   let boardGen = 0;
-  let boardTimer = $state<ReturnType<typeof setTimeout> | null>(null);
-  let taskEventsTimer = $state<ReturnType<typeof setTimeout> | null>(null);
-  let taskLogTimer = $state<ReturnType<typeof setTimeout> | null>(null);
+  let boardTimer: ReturnType<typeof setTimeout> | null = null;
+  let taskEventsTimer: ReturnType<typeof setTimeout> | null = null;
+  let taskLogTimer: ReturnType<typeof setTimeout> | null = null;
 
   function payloadPreview(payload: string | null): string {
     if (!payload) return "";
@@ -254,6 +254,28 @@
     if (flags.workerLogCapture) fetchTaskLog();
   }
 
+  // Reset everything tied to a board when the board changes via client
+  // navigation (?board=a -> ?board=b). Without this, board A's events and
+  // last-event cursor seed board B's first poll, and A's selected task can
+  // linger in the pane. Bumping boardGen also invalidates any in-flight board
+  // fetch so it cannot repopulate the new board with stale rows.
+  function resetForBoardChange() {
+    boardGen++;
+    stopBoardPoll();
+    stopTaskEventsPoll();
+    stopTaskLogPoll();
+    events = [];
+    streamError = null;
+    selectedTaskId = null;
+    selectedTask = null;
+    taskLoading = false;
+    taskEvents = [];
+    taskLog = null;
+    taskError = null;
+    taskEventsError = null;
+    logError = null;
+  }
+
   onMount(() => {
     hidden = document.hidden;
     const listener = () => {
@@ -289,6 +311,19 @@
     if (!browser || !board || selectedTaskId === null || !flags.workerLogCapture) return;
     scheduleTaskLogPoll();
     return () => stopTaskLogPoll();
+  });
+
+  // Watch the board slug for client-side navigation between boards. The first
+  // run records the initial board (onMount handles its first fetch); later runs
+  // reset activity/task state and re-seed the stream when the slug changes.
+  let prevBoardSlug: string | undefined;
+  $effect(() => {
+    const slug = board?.slug;
+    if (prevBoardSlug !== undefined && prevBoardSlug !== slug) {
+      resetForBoardChange();
+      if (slug && live && !hidden) fetchBoardEvents();
+    }
+    prevBoardSlug = slug;
   });
 </script>
 
@@ -351,8 +386,14 @@
     {/if}
 
     {#if streamError}
-      <p class="error">{streamError} <button class="btn" type="button" onclick={fetchBoardEvents}>Retry</button></p>
+      <p class="error" role="status">{streamError} <button class="btn" type="button" onclick={fetchBoardEvents}>Retry</button></p>
     {/if}
+
+    <!-- Screen-reader status: announces refresh errors and new board activity.
+         Visually hidden; aria-live=polite keeps it from interrupting. -->
+    <p class="sr-only" aria-live="polite" role="status">
+      {streamError ? `Activity error: ${streamError}` : events.length > 0 ? `${events.length} event${events.length === 1 ? "" : "s"} shown.` : "No events."}
+    </p>
 
     <div class="activity-grid">
       <section class="stream" aria-labelledby="stream-heading">
@@ -496,6 +537,17 @@
 {/if}
 
 <style>
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
   .activity-grid {
     display: grid;
     grid-template-columns: 1fr 360px;

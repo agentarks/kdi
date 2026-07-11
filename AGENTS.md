@@ -35,10 +35,12 @@ The operator UI is an optional SvelteKit workspace under `apps/web/`, wired thro
 | vite | 8.1.0 |
 | @sveltejs/adapter-node | 5.5.7 |
 | svelte-check | 4.7.1 |
+| @playwright/test | 1.61.1 |
 
 Root scripts (CLI verification commands are unchanged):
 - `bun run dev:web` / `bun run build:web` / `bun run check:web` / `bun run preview:web` operate on `apps/web`.
 - `bun run build` still compiles the CLI binary; `bun run lint` still runs `tsc --noEmit` on the CLI `src/` only.
+- `bun run test:web:e2e` runs the Playwright hydrated-browser suite in `apps/web` (scoped to `e2e/*.e2e.ts`, separate from `bun run test`). Requires `bunx playwright install chromium` once (KDI-UI-008 AC-14).
 ## Operating Rules
 
 - Work from a feature branch. Open PRs for every change. Never push directly to `main`.
