@@ -8,6 +8,7 @@ import {
   performTaskAction,
   performBulkAction,
   lifecycleFlags,
+  postCommentJson,
   createBoardJson,
   createTaskJson,
   BridgeError,
@@ -457,5 +458,41 @@ describe("KDI-UI-006 bulk actions", () => {
       expect(typeof r.taskId).toBe("number");
       expect(typeof r.message).toBe("string");
     }
+  });
+});
+
+describe("KDI-UI-006 postCommentJson (reusable for KDI-UI-009)", () => {
+  it("adds a comment with the current profile when FF_COMMENT_ENHANCEMENTS is on", async () => {
+    const slug = await freshBoard();
+    const { task } = await createTaskJson(slug, { title: "C" });
+    const { comment } = await postCommentJson(slug, task.id, { text: "hello" });
+    expect(comment.taskId).toBe(task.id);
+    expect(comment.text).toBe("hello");
+    expect(comment.author).toBe("user"); // KDI_PROFILE default in test env
+  });
+
+  it("accepts an explicit author when FF_COMMENT_ENHANCEMENTS is on", async () => {
+    const slug = await freshBoard();
+    const { task } = await createTaskJson(slug, { title: "C" });
+    const { comment } = await postCommentJson(slug, task.id, { text: "note", author: "ralph" });
+    expect(comment.author).toBe("ralph");
+  });
+
+  it("rejects empty text", async () => {
+    const slug = await freshBoard();
+    const { task } = await createTaskJson(slug, { title: "C" });
+    await expectBridgeError(postCommentJson(slug, task.id, { text: "   " }), "invalid_input", 400);
+  });
+
+  it("rejects explicit author when FF_COMMENT_ENHANCEMENTS is off (CLI gate)", async () => {
+    flagOff("FF_COMMENT_ENHANCEMENTS");
+    const slug = await freshBoard();
+    const { task } = await createTaskJson(slug, { title: "C" });
+    await expectBridgeError(postCommentJson(slug, task.id, { text: "x", author: "ralph" }), "feature_disabled", 403);
+  });
+
+  it("404 when task not on board", async () => {
+    const slug = await freshBoard();
+    await expectBridgeError(postCommentJson(slug, 9999, { text: "x" }), "task_not_found", 404);
   });
 });

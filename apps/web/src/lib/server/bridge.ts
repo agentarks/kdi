@@ -66,6 +66,7 @@ type Modules = {
   getRun: typeof import("~/models/taskRun")["getRun"];
   getRecentBoardRunFailures: typeof import("~/models/taskRun")["getRecentBoardRunFailures"];
   getComments: typeof import("~/models/comment")["getComments"];
+  addComment: typeof import("~/models/comment")["addComment"];
   listAttachments: typeof import("~/models/taskAttachment")["listAttachments"];
   buildTaskContext: typeof import("~/models/context")["buildTaskContext"];
   runDiagnostics: typeof import("~/models/diagnostic")["runDiagnostics"];
@@ -1723,4 +1724,46 @@ export async function performBulkAction(
     failed: results.filter((r) => r.status === "error").length,
   };
   return { results, summary };
+}
+
+// ---------------------------------------------------------------------------
+// Task comment (KDI-UI-006 reusable foundation for KDI-UI-009 diagnostics)
+// ---------------------------------------------------------------------------
+//
+// postCommentJson is a standalone bridge helper (not a lifecycle action — it
+// doesn't mutate task status) so KDI-UI-009's diagnostics shortcuts can add a
+// comment note to a task from their own routes without re-plumbing the model
+// import. Mirrors the CLI comment command: --author requires FF_COMMENT_ENHANCEMENTS,
+// and when that flag is on the author defaults to the current profile.
+
+export interface PostCommentInput {
+  text: string;
+  author?: string;
+}
+
+export async function postCommentJson(
+  slug: string,
+  id: number,
+  input: PostCommentInput,
+): Promise<{ comment: CamelCase<Comment> }> {
+  if (typeof input.text !== "string" || input.text.trim() === "")
+    throw new BridgeError("invalid_input", 400, "Comment text is required.");
+  await assertTaskOnBoard(slug, id);
+  const m = await models();
+  // author follows the CLI gate: override requires FF_COMMENT_ENHANCEMENTS;
+  // when the flag is on, default to the current profile.
+  const author =
+    input.author !== undefined
+      ? isEnabled(FF_COMMENT_ENHANCEMENTS)
+        ? input.author.trim() || undefined
+        : (() => { throw new BridgeError("feature_disabled", 403, "Comment enhancements feature is not enabled."); })()
+      : isEnabled(FF_COMMENT_ENHANCEMENTS)
+        ? resolveCurrentProfile()
+        : undefined;
+  try {
+    const comment = m.addComment({ task_id: id, text: input.text, author });
+    return { comment: toCamel(comment) };
+  } catch (err) {
+    throw wrap(err);
+  }
 }
