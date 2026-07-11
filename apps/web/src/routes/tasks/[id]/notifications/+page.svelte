@@ -22,6 +22,7 @@
   const task = $derived(data.task);
   const subscriptions = $derived((data.subscriptions ?? []) as Subscription[]);
   const includeArchived = $derived(data.includeArchived === true);
+  const subscribed = $derived((form as { subscribed?: boolean } | null)?.subscribed === true);
   const platforms = ["telegram", "slack", "discord", "webhook"] as const;
 
   let values = $state({
@@ -33,9 +34,11 @@
   });
 
   $effect(() => {
-    const f = form as ({ values?: Record<string, string> } | null);
-    if (f?.values) {
-      values = { ...values, ...f.values };
+    const f = form as ({ values?: Record<string, string>; subscribed?: boolean } | null);
+    if (f?.subscribed) {
+      values = { platform: "telegram", chat_id: "", thread_id: "", user_id: "", notifier_profile: "" };
+    } else if (f?.values) {
+      values = { ...f.values } as typeof values;
     }
   });
 
@@ -72,6 +75,8 @@
       <h2>Subscribe</h2>
       {#if form?.error}
         <p class="error" role="alert">{form.error}</p>
+      {:else if subscribed}
+        <p class="success" role="status">Subscribed.</p>
       {/if}
       <form method="POST" action="?/subscribe" use:enhance class="stack-sm subscribe-form">
         <div class="field">

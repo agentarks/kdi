@@ -47,7 +47,7 @@ export const load: PageServerLoad = async ({ params, url }) => {
   paramsQs.set("taskId", String(id));
   if (includeArchived) paramsQs.set("includeArchived", "true");
   const { subscriptions } = await subscriptionsJson(paramsQs);
-  return { enabled: true, flags, boardSlug, task, subscriptions, includeArchived };
+  return { enabled: true, flags, boardSlug, taskId: id, task, subscriptions, includeArchived };
 };
 
 export const actions: Actions = {
@@ -78,7 +78,7 @@ export const actions: Actions = {
         userId: userId || undefined,
         notifierProfile: notifierProfileRaw || undefined,
       });
-      return { ok: true };
+      return { ok: true, subscribed: true };
     } catch (err) {
       return fail(400, { error: err instanceof Error ? err.message : String(err), values });
     }
