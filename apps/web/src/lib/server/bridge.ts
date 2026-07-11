@@ -19,10 +19,10 @@ const dev = process.env.NODE_ENV !== "production";
 // Spec FR-1: models are imported via the `~/*` alias the CLI already uses.
 import { existsSync, readFileSync, statSync, openSync, closeSync, readSync } from "node:fs";
 import type { Board, BoardMetadata, BoardWithTaskCounts, BoardStats } from "~/models/board";
-import type { BoardListRow, BoardFlags, TaskSummary, TaskDetail, DetailFlags, DispatchStatus, DispatchOnceResult, DispatchFlags, ProfileHealth, SpawnFailure, TaskCounts } from "$lib/types";
+import type { BoardListRow, BoardFlags, TaskSummary, TaskDetail, DetailFlags, DispatchStatus, DispatchOnceResult, DispatchFlags, ProfileHealth, SpawnFailure, TaskCounts, ActivityFlags } from "$lib/types";
 
 import type { Task, Task as TaskModel, CreateTaskInput } from "~/models/task";
-import type { TaskEvent } from "~/models/taskEvent";
+import type { TaskEvent, WatchFilters } from "~/models/taskEvent";
 import type { TaskRun } from "~/models/taskRun";
 import type { Comment } from "~/models/comment";
 import type { TaskAttachment } from "~/models/taskAttachment";
@@ -574,13 +574,6 @@ export function boardUiFlags(): BoardFlags {
     boardRename: isEnabled(FF_BOARD_RENAME),
     boardRmDelete: isEnabled(FF_BOARD_RM_DELETE),
   };
-}
-
-export interface ActivityFlags {
-  watchFilters: boolean;
-  tailNoFollow: boolean;
-  workerLogCapture: boolean;
-  tenantNamespace: boolean;
 }
 
 export function activityFlags(): ActivityFlags {
@@ -1195,30 +1188,45 @@ export async function assertTaskOnBoard(slug: string, id: number): Promise<void>
 export async function boardEventsJson(
   slug: string,
   params: URLSearchParams,
-): Promise<{ events: CamelCase<TaskEvent>[] }> {
-  await resolveBoard(slug);
+): Promise<{ events: CamelCase<TaskEvent>[]; since: number | null; board: string }> {
+  const board = await resolveBoard(slug);
   const m = await models();
-  
-  let assignee = undefined;
-  let tenant = undefined;
-  let kinds = undefined;
-  
-  if (isEnabled(FF_WATCH_FILTERS)) {
-    assignee = params.get("assignee") ?? undefined;
-    if (params.get("tenant") !== null) {
-      if (!isEnabled(FF_TENANT_NAMESPACE)) {
-        throw new BridgeError("feature_disabled", 400, "Tenant namespace feature is not enabled");
-      }
-      tenant = params.get("tenant") ?? undefined;
-    }
-    kinds = params.get("kinds") ? params.get("kinds")!.split(",") : undefined;
+
+  const watchFilters = isEnabled(FF_WATCH_FILTERS);
+  const tenantNamespace = isEnabled(FF_TENANT_NAMESPACE);
+  const hasAssignee = params.get("assignee") !== null;
+  const hasKinds = params.get("kinds") !== null;
+  const hasTenant = params.get("tenant") !== null;
+
+  // AC-16: reject filter params the backend cannot honor with 400 feature_disabled,
+  // matching the CLI. Silently dropping them would let the UI believe a filter is
+  // active while the server returns unfiltered (and here, board-scoped-only) rows.
+  if ((hasAssignee || hasKinds) && !watchFilters) {
+    throw new BridgeError("feature_disabled", 400, "Watch filters feature is not enabled");
   }
-  
-  const filters = { assignee, tenant, kinds };
+  if (hasTenant && !(watchFilters && tenantNamespace)) {
+    throw new BridgeError("feature_disabled", 400, "Tenant namespace feature is not enabled");
+  }
+
+  // Board scoping is mandatory so /api/boards/a/events never discloses board B.
+  const filters: WatchFilters = { boardId: board.id };
+  if (watchFilters) {
+    if (hasAssignee) filters.assignee = params.get("assignee") ?? undefined;
+    if (hasTenant) filters.tenant = params.get("tenant") ?? undefined;
+    if (hasKinds) filters.kinds = params.get("kinds")!.split(",");
+  }
+
   const since = params.get("since");
-  const limit = params.get("limit") ? Number(params.get("limit")) : 50;
-  const events = since !== null ? m.getEventsAfter(Number(since), filters) : m.getRecentEvents(limit, filters);
-  return { events: toCamel(events) };
+  const sinceId = since !== null ? Number(since) : null;
+  // Bound the result set so a resumed tab cannot pull an unbounded backlog.
+  let limit = params.get("limit") !== null ? Number(params.get("limit")) : 50;
+  if (!Number.isFinite(limit) || limit < 1) limit = 50;
+  if (limit > 200) limit = 200;
+
+  const events = sinceId !== null
+    ? m.getEventsAfter(sinceId, filters, limit)
+    : m.getRecentEvents(limit, filters);
+  return { events: toCamel(events), since: sinceId, board: slug };
 }
 
 export async function diagnosticsJson(

@@ -4,6 +4,11 @@ export type WatchFilters = {
   assignee?: string;
   tenant?: string;
   kinds?: string[];
+  // Board scoping is optional: the CLI `watch` command deliberately streams
+  // across all boards (current-board context is informational), so callers that
+  // want isolation pass boardId explicitly. The HTTP route always passes it so
+  // /api/boards/a/events can never disclose board B events.
+  boardId?: number;
 };
 
 export interface TaskEvent {
@@ -79,20 +84,25 @@ function buildWatchClauses(filters?: WatchFilters): { where: string[]; params: (
   const params: (string | number)[] = [];
 
   if (filters) {
-    const needsJoin = !!(filters.assignee || filters.tenant);
+    const needsJoin = filters.boardId !== undefined || !!filters.assignee || !!filters.tenant;
 
     if (needsJoin) {
-      // Use subquery to avoid polluting the SELECT columns with JOINed rows
-      where.push("e.task_id IN (SELECT id FROM tasks t WHERE 1=1");
+      // Subquery into tasks keeps SELECT columns clean of JOINed rows and gives
+      // one place to enforce board scoping + assignee/tenant filters.
+      let clause = "e.task_id IN (SELECT id FROM tasks t WHERE 1=1";
+      if (filters.boardId !== undefined) {
+        clause += " AND t.board_id = ?";
+        params.push(filters.boardId);
+      }
       if (filters.assignee) {
-        where[where.length - 1] += " AND t.assignee = ?";
+        clause += " AND t.assignee = ?";
         params.push(filters.assignee);
       }
       if (filters.tenant) {
-        where[where.length - 1] += " AND t.tenant = ?";
+        clause += " AND t.tenant = ?";
         params.push(filters.tenant);
       }
-      where[where.length - 1] += ")";
+      where.push(clause + ")");
     }
 
     if (filters.kinds && filters.kinds.length > 0) {
@@ -119,7 +129,7 @@ export function getRecentEvents(limit = 50, filters?: WatchFilters): TaskEvent[]
   return db.query(sql).all(...params) as TaskEvent[];
 }
 
-export function getEventsAfter(sinceId: number, filters?: WatchFilters): TaskEvent[] {
+export function getEventsAfter(sinceId: number, filters?: WatchFilters, limit?: number): TaskEvent[] {
   const db = getDb();
   const { where, params } = buildWatchClauses(filters);
 
@@ -129,6 +139,13 @@ export function getEventsAfter(sinceId: number, filters?: WatchFilters): TaskEve
     sql += " AND " + where.join(" AND ");
   }
   sql += " ORDER BY e.id ASC";
+  // Optional bound: the CLI watch omits it (it only ever tails events newer
+  // than the last one it saw), but the HTTP activity route passes one so a
+  // resumed tab cannot pull an unbounded backlog.
+  if (limit !== undefined) {
+    sql += " LIMIT ?";
+    params.push(limit);
+  }
 
   return db.query(sql).all(...params) as TaskEvent[];
 }

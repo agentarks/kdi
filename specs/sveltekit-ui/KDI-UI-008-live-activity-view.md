@@ -255,22 +255,22 @@ Acceptance Criteria
       `FF_TAIL_NO_FOLLOW=true`, non-follow mode.
 - [x] AC-10: The worker log pane supports follow tail and non-follow tail with a
       bytes input when `FF_WORKER_LOG_CAPTURE=true`.
-- [ ] AC-11: Missing log, empty event tail, and no-matching-events states show
+- [x] AC-11: Missing log, empty event tail, and no-matching-events states show
       clear empty-state messages ("No matching events" when filters active).
 - [x] AC-12: Polling pauses when the page is hidden and resumes when visible.
 - [x] AC-13: When `FF_SVELTEKIT_FRONTEND=false`, the page shows the disabled
       screen and routes return `503 { enabled: false }`.
-- [ ] AC-14: A smoke test with temp `HOME` and temp `KDI_DB` creates a task via
+- [x] AC-14: A smoke test with temp `HOME` and temp `KDI_DB` creates a task via
       the CLI (not HTTP bridge), generates events (create, promote), visits the
       activity page, and asserts the event stream renders task id and event kind.
-- [ ] AC-15: `bun run lint`, `bun run build` (CLI), `bun run check:web`, and
+- [x] AC-15: `bun run lint`, `bun run build` (CLI), `bun run check:web`, and
       `bun run build:web` all pass with an isolated `KDI_DB`.
-- [ ] AC-16: Server-side filter gating: `boardEventsJson` checks `FF_WATCH_FILTERS`
+- [x] AC-16: Server-side filter gating: `boardEventsJson` checks `FF_WATCH_FILTERS`
       before using assignee/kinds filters, and `FF_TENANT_NAMESPACE` before
       using tenant filter; returns `400 feature_disabled` when flag off.
-- [ ] AC-17: Poll interval clamped to minimum 0.5s, never NaN, on client and
+- [x] AC-17: Poll interval clamped to minimum 0.5s, never NaN, on client and
       server.
-- [ ] AC-18: Distinct "No matching events" empty state when filters active and
+- [x] AC-18: Distinct "No matching events" empty state when filters active and
       no events match; "No events yet" otherwise.
 
 -------------------------------------------------------------------------------

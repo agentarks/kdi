@@ -420,6 +420,57 @@ describe("KDI-UI-008 live activity view", () => {
     );
     expect(after.events.length).toBe(0);
   });
+
+  // P1-1: a board-scoped request must never disclose another board's events.
+  it("boardEventsJson is scoped to the resolved board and echoes board/since", async () => {
+    const slugA = await freshBoard("board-a");
+    const slugB = await freshBoard("board-b");
+    const { task: tA } = await createTaskJson(slugA, { title: "on A" });
+    const { task: tB } = await createTaskJson(slugB, { title: "on B" });
+
+    const res = await boardEventsJson(slugA, new URLSearchParams());
+    expect(res.board).toBe(slugA);
+    expect(res.since).toBeNull();
+    const taskIds = res.events.map((e) => e.taskId);
+    expect(taskIds).toContain(tA.id);
+    expect(taskIds).not.toContain(tB.id);
+  });
+
+  // P1-2 (AC-16): disabled filters are rejected with 400 feature_disabled, not dropped.
+  it("boardEventsJson rejects assignee/kinds with 400 when FF_WATCH_FILTERS is off", async () => {
+    const slug = await freshBoard("gated");
+    process.env.FF_WATCH_FILTERS = "false";
+    try {
+      await expectBridgeError(boardEventsJson(slug, new URLSearchParams({ assignee: "x" })), "feature_disabled", 400);
+      await expectBridgeError(boardEventsJson(slug, new URLSearchParams({ kinds: "created" })), "feature_disabled", 400);
+    } finally {
+      delete process.env.FF_WATCH_FILTERS;
+    }
+  });
+
+  it("boardEventsJson rejects tenant with 400 unless both watch + tenant flags are on", async () => {
+    const slug = await freshBoard("gated-tenant");
+    // FF_WATCH_FILTERS defaults on; turn the tenant flag off.
+    process.env.FF_TENANT_NAMESPACE = "false";
+    try {
+      await expectBridgeError(boardEventsJson(slug, new URLSearchParams({ tenant: "t1" })), "feature_disabled", 400);
+    } finally {
+      delete process.env.FF_TENANT_NAMESPACE;
+    }
+  });
+
+  // P1-3 + P2-2: incremental polls are bounded and the cursor is echoed.
+  it("boardEventsJson applies limit to incremental (since) queries", async () => {
+    const slug = await freshBoard("since-limit");
+    await createTaskJson(slug, { title: "t1" });
+    await createTaskJson(slug, { title: "t2" });
+    await createTaskJson(slug, { title: "t3" });
+    // Three "created" events exist; since=0 with limit=2 must cap the backlog.
+    const res = await boardEventsJson(slug, new URLSearchParams({ since: "0", limit: "2" }));
+    expect(res.since).toBe(0);
+    expect(res.board).toBe(slug);
+    expect(res.events.length).toBe(2);
+  });
 });
 
 // KDI-UI-002: board-management bridge helpers used by the SvelteKit UI routes.

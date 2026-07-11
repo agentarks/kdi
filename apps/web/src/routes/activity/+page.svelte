@@ -29,6 +29,13 @@
   let tailBytes = $state(Math.max(Number(params.get("tailBytes")) || 4096, 0));
   let hidden = $state(false);
   let streamError = $state<string | null>(null);
+  let taskError = $state<string | null>(null);
+  let taskEventsError = $state<string | null>(null);
+  let logError = $state<string | null>(null);
+  // Generation guards (P1-4): a stale fetch must never overwrite state for a
+  // newer filter set or a different selected task. boardGen bumps on filter
+  // apply; task panes guard on selectedTaskId captured at call time.
+  let boardGen = 0;
   let boardTimer = $state<ReturnType<typeof setTimeout> | null>(null);
   let taskEventsTimer = $state<ReturnType<typeof setTimeout> | null>(null);
   let taskLogTimer = $state<ReturnType<typeof setTimeout> | null>(null);
@@ -57,6 +64,7 @@
 
   async function fetchBoardEvents() {
     if (!board || !browser) return;
+    const gen = boardGen;
     const query = new URLSearchParams();
     const lastId = events.length > 0 ? events[0].id : undefined;
     if (lastId !== undefined) query.set("since", String(lastId));
@@ -70,9 +78,12 @@
       const r = await fetch(`/api/boards/${board.slug}/events?${query.toString()}`);
       if (!r.ok) throw new Error(await r.text());
       const j = (await r.json()) as { events: TaskEvent[] };
+      // Drop the result if filters changed while this request was in flight.
+      if (gen !== boardGen) return;
       events = mergeEvents(events, j.events);
       streamError = null;
     } catch (e) {
+      if (gen !== boardGen) return;
       streamError = e instanceof Error ? e.message : String(e);
     }
   }
@@ -96,33 +107,46 @@
 
   async function fetchSelectedTask() {
     if (!board || selectedTaskId === null || !browser) return;
+    const id = selectedTaskId;
     try {
       const r = await fetch(`/api/boards/${board.slug}/tasks/${selectedTaskId}`);
-      if (!r.ok) {
+      // Drop the result if the user selected a different task while in flight.
+      if (id !== selectedTaskId) return;
+      if (r.status === 404) {
         selectedTask = null;
+        taskError = null;
         return;
       }
+      if (!r.ok) throw new Error(await r.text());
       const j = (await r.json()) as { task: KanbanTask };
+      if (id !== selectedTaskId) return;
       selectedTask = j.task;
-    } catch {
-      selectedTask = null;
+      taskError = null;
+    } catch (e) {
+      if (id !== selectedTaskId) return;
+      taskError = e instanceof Error ? e.message : String(e);
     } finally {
-      taskLoading = false;
+      if (id === selectedTaskId) taskLoading = false;
     }
   }
 
   async function fetchTaskEvents() {
     if (!board || selectedTaskId === null || !browser) return;
+    const id = selectedTaskId;
     const query = new URLSearchParams();
     const lastId = taskEvents.length > 0 ? taskEvents[0].id : undefined;
     if (taskEventsFollow && lastId !== undefined) query.set("since", String(lastId));
     try {
       const r = await fetch(`/api/boards/${board.slug}/tasks/${selectedTaskId}/events?${query.toString()}`);
+      if (id !== selectedTaskId) return;
       if (!r.ok) throw new Error(await r.text());
       const j = (await r.json()) as { events: TaskEvent[] };
+      if (id !== selectedTaskId) return;
       taskEvents = mergeEvents(taskEvents, j.events);
-    } catch {
-      // leave existing events on error
+      taskEventsError = null;
+    } catch (e) {
+      if (id !== selectedTaskId) return;
+      taskEventsError = e instanceof Error ? e.message : String(e);
     }
   }
 
@@ -144,17 +168,21 @@
 
   async function fetchTaskLog() {
     if (!board || selectedTaskId === null || !browser) return;
+    const id = selectedTaskId;
     const query = new URLSearchParams();
     if (tailBytes) query.set("tail", String(tailBytes));
     try {
       const r = await fetch(`/api/boards/${board.slug}/tasks/${selectedTaskId}/log?${query.toString()}`);
-      if (!r.ok) {
-        taskLog = { present: false };
-        return;
-      }
+      if (id !== selectedTaskId) return;
+      // present:false is a valid "no log captured" answer (FR-12), not an error.
+      // Distinguish a missing log from a server/network failure so a 5xx is not
+      // masked as "No log captured yet."
+      if (!r.ok) throw new Error(await r.text());
       taskLog = (await r.json()) as TaskLog;
-    } catch {
-      taskLog = { present: false };
+      logError = null;
+    } catch (e) {
+      if (id !== selectedTaskId) return;
+      logError = e instanceof Error ? e.message : String(e);
     }
   }
 
@@ -174,8 +202,16 @@
     }
   }
 
+  function normalizeInterval(): void {
+    // P2-1: clamp the state itself, not just the scheduler, so the shareable
+    // URL and the bound input can never hold 0.1 / NaN.
+    const v = Number(pollInterval);
+    pollInterval = Number.isFinite(v) && v > 0 ? Math.max(v, 0.5) : 2;
+  }
+
   function updateUrl() {
     if (!browser) return;
+    normalizeInterval();
     const url = new URL(window.location.href);
     if (assignee) url.searchParams.set("assignee", assignee);
     else url.searchParams.delete("assignee");
@@ -192,7 +228,11 @@
   }
 
   function applyFilters() {
+    // New filter set: invalidate any in-flight board fetch and start clean.
+    boardGen++;
     events = [];
+    streamError = null;
+    normalizeInterval();
     updateUrl();
     fetchBoardEvents();
   }
@@ -203,6 +243,9 @@
     taskLoading = true;
     taskEvents = [];
     taskLog = null;
+    taskError = null;
+    taskEventsError = null;
+    logError = null;
     taskEventsFollow = true;
     taskLogFollow = true;
     updateUrl();
@@ -308,7 +351,7 @@
     {/if}
 
     {#if streamError}
-      <p class="error">{streamError}</p>
+      <p class="error">{streamError} <button class="btn" type="button" onclick={fetchBoardEvents}>Retry</button></p>
     {/if}
 
     <div class="activity-grid">
@@ -381,7 +424,9 @@
                 {/if}
               </div>
             </div>
-            {#if taskEvents.length === 0}
+            {#if taskEventsError}
+              <p class="error">{taskEventsError} <button class="btn" type="button" onclick={fetchTaskEvents}>Retry</button></p>
+            {:else if taskEvents.length === 0}
               <p class="text-dim">No events yet.</p>
             {:else}
               <ul class="task-event-list" role="list">
@@ -423,13 +468,20 @@
                   </label>
                 </div>
               </div>
-              {#if taskLog?.present}
+              {#if logError}
+                <p class="error">{logError} <button class="btn" type="button" onclick={fetchTaskLog}>Retry</button></p>
+              {:else if taskLog?.present}
                 <pre class="log"><code>{taskLog.content}</code></pre>
               {:else}
                 <p class="text-dim">No log captured yet.</p>
               {/if}
             </div>
           {/if}
+        {:else if taskError}
+          <div class="placeholder">
+            <p class="error">{taskError}</p>
+            <button class="btn" type="button" onclick={fetchSelectedTask}>Retry</button>
+          </div>
         {:else}
           <div class="placeholder">Task not found.</div>
         {/if}
