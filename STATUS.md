@@ -161,10 +161,12 @@
       terminates cleanly (HTTP smoke spawns the dev server in its own process group)
 - [x] Hydrated-browser regression (Playwright `bun run test:web:e2e`, `@playwright/test@1.61.1`):
       AC-14 proves CLI-written events render after client-side fetch; P1-1 proves
-      client navigation between boards resets the stream. Surfaced and fixed a
-      real hydration bug (the poll `$effect` read+wrote the timer `$state`, an
-      infinite `effect_update_depth_exceeded` loop on hydration; timer handles
-      are now plain non-reactive vars).
+      a stale board-A response (route-intercepted and held, then released after
+      navigating to board B) cannot populate board B — verified to fail without
+      the boardGen guard. Surfaced and fixed a real hydration bug (the poll
+      `$effect` read+wrote the timer `$state`, an infinite
+      `effect_update_depth_exceeded` loop on hydration; timer handles are now
+      plain non-reactive vars).
 
 ## KDI-UI-009: Stats and Diagnostics UI — Spec
 - [x] BRD/spec drafted at `specs/sveltekit-ui/KDI-UI-009-stats-diagnostics-ui.md`

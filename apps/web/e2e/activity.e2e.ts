@@ -160,26 +160,66 @@ test("AC-14: CLI-created events render after hydration", async ({ page }: { page
 });
 
 // P1-1: client-side navigation between boards must reset the stream so board A's
-// events and cursor never bleed into board B. Full page.goto would remount and
-// hide the bug, so we drive SvelteKit's client router with a same-origin link.
-test("P1-1: client navigation between boards resets the stream", async ({ page }: { page: Page }) => {
-  await page.goto(`${baseUrl}/activity?board=boardA`);
-  // boardA hydrates with its "created" event row.
-  await expect(page.locator(".event-row .badge", { hasText: "created" })).toBeVisible();
+// events and cursor never bleed into board B. This is the stale-response race
+// the boardGen guard exists for: if board A's /events response is still in
+// flight when the user navigates to board B, the late response must NOT write
+// A's events into B's stream. Full page.goto would remount and hide the bug, so
+// we drive SvelteKit's client router with a same-origin link, and use route
+// interception to hold A's response until after the navigation.
+test("P1-1: a stale board-A response cannot populate board B after navigation", async ({
+  page,
+}: {
+  page: Page;
+}) => {
+  // Hold boardA's /events response on a controller we release manually. The
+  // handler also records when the request arrives so we can deterministically
+  // confirm it is in flight before navigating (page.waitForRequest raced with
+  // the client router in the full suite).
+  let releaseA: () => void = () => {};
+  let aRequestReceived = false;
+  await page.route("**/api/boards/boardA/events**", async (route) => {
+    aRequestReceived = true;
+    await new Promise<void>((resolve) => {
+      releaseA = resolve;
+    });
+    await route.continue();
+  });
 
-  // Client-side navigate to boardB via a same-origin anchor click (SvelteKit
-  // intercepts <a> clicks for client routing; this re-runs load, changing
-  // data.board.slug without a full reload).
+  await page.goto(`${baseUrl}/activity?board=boardB`);
+  // Sanity: boardB starts empty and its header is rendered.
+  await expect(page.locator("code")).toContainText("boardB");
+  await expect(page.locator(".event-row")).toHaveCount(0);
+
+  // Navigate to boardA: the board-change effect fires the boardA /events fetch,
+  // which we are holding. Wait until that request reaches our handler.
+  await page.evaluate(() => {
+    const a = document.createElement("a");
+    a.href = "/activity?board=boardA";
+    document.body.appendChild(a);
+    a.click();
+  });
+  await expect(page.locator("code")).toContainText("boardA");
+  await expect.poll(() => aRequestReceived, { timeout: 15000 }).toBe(true);
+
+  // While boardA's response is STILL HELD (in flight), navigate back to
+  // boardB. resetForBoardChange() bumps boardGen so the in-flight A fetch must
+  // be dropped on arrival.
   await page.evaluate(() => {
     const a = document.createElement("a");
     a.href = "/activity?board=boardB";
     document.body.appendChild(a);
     a.click();
   });
-
-  // boardB's header shows its slug and its stream is empty (boardA's event is
-  // gone). "No events yet" is the unfiltered empty state (AC-18).
   await expect(page.locator("code")).toContainText("boardB");
-  await expect(page.getByText("No events yet")).toBeVisible();
+
+  // Now release boardA's held response. This is the decisive moment: without
+  // the boardGen guard, the late A response resolves and writes A's 'created'
+  // event into B's stream.
+  releaseA();
+
+  // Give the held response time to resolve and (if unguarded) render. boardB
+  // must stay empty.
+  await page.waitForTimeout(1000);
   await expect(page.locator(".event-row")).toHaveCount(0);
+  await expect(page.locator(".event-row .badge", { hasText: "created" })).toHaveCount(0);
 });
