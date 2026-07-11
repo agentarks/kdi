@@ -128,10 +128,10 @@
   }
 
   async function post(fields: LifecycleFields): Promise<{ ok: boolean; result: LifecycleResult }> {
-    const res = await fetch(`/api/boards/${boardSlug}/tasks/${task.id}/actions`, {
+    const res = await fetch(`/api/boards/${boardSlug}/tasks/${task.id}/${active}`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ action: active, fields }),
+      body: JSON.stringify(fields),
       signal: AbortSignal.timeout(15000),
     });
     const data = await res.json().catch(() => ({}));

@@ -101,10 +101,10 @@ interface ActionResult {
 }
 
 async function postAction(slug: string, id: number, action: string, fields: Record<string, unknown> = {}): Promise<ActionResult> {
-  const r = await fetch(`${baseUrl}/api/boards/${slug}/tasks/${id}/actions`, {
+  const r = await fetch(`${baseUrl}/api/boards/${slug}/tasks/${id}/${action}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ action, fields }),
+    body: JSON.stringify(fields),
     signal: AbortSignal.timeout(10000),
   });
   return (await r.json()) as ActionResult;
@@ -133,6 +133,19 @@ afterAll(async () => {
 });
 
 describe("KDI-UI-006 HTTP lifecycle smoke", () => {
+  it("per-action endpoints return FR-21 shape {taskId, status, message, currentStatus?}", async () => {
+    closeDb();
+    await startServer(true);
+    await createBoard("shape");
+    const id = await createTask("shape", "S");
+    const r = await postAction("shape", id, "promote");
+    expect(r.result.taskId).toBe(id);
+    expect(["success", "skipped", "error"]).toContain(r.result.status);
+    expect(typeof r.result.message).toBe("string");
+    expect(r.result.currentStatus).toBe("ready");
+    await stopServer();
+  }, 60000);
+
   it("AC-28 single-task lifecycle loop, state matches the DB", async () => {
     closeDb();
     await startServer(true);
@@ -235,10 +248,10 @@ describe("KDI-UI-006 HTTP lifecycle smoke", () => {
     await stopServer();
     await startServer(false);
 
-    const r = await fetch(`${baseUrl}/api/boards/gate/tasks/${id}/actions`, {
+    const r = await fetch(`${baseUrl}/api/boards/gate/tasks/${id}/archive`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ action: "archive", fields: {} }),
+      body: JSON.stringify({}),
       signal: AbortSignal.timeout(10000),
     });
     expect(r.status).toBe(503);
