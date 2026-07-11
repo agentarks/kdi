@@ -979,17 +979,17 @@
 - [x] Feature flag `FF_MODEL_OVERRIDE` registered in `specs/feature-flags.md` and defaults to `false`
 
 ## Dependencies
-- [ ] Parent/child task blocking
-- [ ] Child waits until parent is `done`
-- [ ] Dependency chain resolution
+- [x] Parent/child task blocking (KDI-045 `kdi create --parent`)
+- [x] Child waits until parent is `done`
+- [x] Dependency chain resolution
 
 ## Notifications
-- [ ] Terminal delivery on task completion
-- [ ] Webhook support (v2)
+- [x] Terminal delivery on task completion (KDI-025 notifier watcher; gated by `FF_NOTIFY_SUBS`, InDev)
+- [x] Webhook support (KDI-025 `webhook` transport; gated by `FF_NOTIFY_SUBS`, InDev)
 
 ## Feature Flags
-- [ ] `FF_ENABLE_KANBAN_DISPATCH` — gates dispatcher loop
-- [ ] Defaults to `false` everywhere
+- [x] `FF_ENABLE_KANBAN_DISPATCH` — gates dispatcher loop (Active, default `true`)
+- [x] Most flags promoted to **Active** (default `true`); see "End-User Rollout — Feature Flags Promoted to Active" and `specs/feature-flags.md`. InDev (default `false`): `FF_BOARD_RM_DELETE`, `FF_NOTIFY_SUBS`, `FF_TRIAGE_AUTOMATION`, `FF_SWARM_MODE`, `FF_GOAL_MODE`, `FF_SVELTEKIT_FRONTEND`.
 
 ## Non-Functional Requirements
 - [ ] Single binary (bun compile)
