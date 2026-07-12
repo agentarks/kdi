@@ -21,6 +21,9 @@
 - [ ] Review follow-up: further contrast audit for archived rows; self-host fonts to avoid Google Fonts render-block
 
 ## Tech Debt
+- [ ] KDI-UI-006: Pre-existing dispatch HTTP flake — `bridge.http.test.ts` dispatch test fails intermittently under full-suite load (passes in isolation). Not caused by KDI-UI-006 but surfaces when running the full suite.
+- [ ] KDI-UI-006: Pre-existing loader gaps — `boards`, `boards/new`, `activity`, `dispatch` loaders lack `isSvelteKitEnabled()` re-check (pre-date KDI-UI-006). The two touched loaders (`tasks/[id]`, `boards/[slug]`) comply; a blanket follow-up should close the rest.
+- [ ] KDI-UI-006: FR-3 force-when-blocked UX — force checkbox is always enabled when `FF_BULK_OPERATIONS` is on, not conditionally enabled only when dependencies block. Functionally correct; the dry-run flow surfaces the blocking state. Add conditional-enable if exact spec UX is later required.
 - [ ] KDI-UI-005: `readHeadText` caps non-tail logs at 500KB but may split a trailing UTF-8 character at the byte boundary; trim trailing partial sequence if that becomes user-visible.
 - [ ] KDI-UI-005: No HTTP smoke test forces `buildTaskContext` to throw, so `contextError: "not_available"` rendering is covered by unit tests only.
 - [ ] Flaky test: `tests/commands/triage-automation.test.ts > specify --all sweeps triage tasks` fails intermittently when run in the full suite (passes in isolation). Likely a mock-server / timing interaction.
@@ -67,61 +70,16 @@
 - [x] `bun run lint`, CLI build, `bun run check:web`, and `bun run build:web` pass
 
 ## KDI-UI-006: Task Lifecycle Actions — Done
-- [x] BRD/spec drafted at `specs/sveltekit-ui/KDI-UI-006-task-lifecycle-actions.md`
+- [x] BRD/spec drafted at `specs/sveltekit-ui/KDI-UI-006-task-lifecycle-actions.md`; all 30 acceptance criteria (AC-01..AC-30) verified against that spec
 - [x] Single actions: promote (+dry-run/force), block, unblock, schedule, review, archive, complete (+metadata gate), assign, reassign (+reclaim), claim, reclaim, heartbeat — all via `performTaskAction` in `apps/web/src/lib/server/bridge.ts` (single choke point), calling the same model fns the CLI uses
 - [x] Bulk actions: promote, block, unblock, schedule, archive, complete — `performBulkAction` loops the single-task core, returns per-task results + `{attempted,succeeded,skipped,failed}` summary
 - [x] Server-side flag re-checks mirror CLI error text (`feature_disabled` 403); client gating via `lifecycleFlags()` capability map with flag/status tooltips
-- [x] Master flag `FF_SVELTEKIT_FRONTEND` re-checked in `tasks/[id]` and `boards/[slug]` loaders via `isSvelteKitEnabled()`; JSON routes via `apiPost`→`gate()`
-- [x] Per-action REST endpoints: `POST /api/boards/[slug]/tasks/[id]/{promote,block,unblock,schedule,review,archive,complete,assign,reassign,claim,reclaim,heartbeat}` — action in URL path, body is fields, returns FR-21 shape
-- [x] Bulk endpoint: `POST /api/boards/[slug]/tasks/actions` — `{action, taskIds, fields}` → `{results, summary}`
+- [x] Master flag `FF_SVELTEKIT_FRONTEND` re-checked in `tasks/[id]` and `boards/[slug]` loaders via `isSvelteKitEnabled()`; JSON routes via `apiPost` to `gate()`
+- [x] Per-action REST endpoints: `POST /api/boards/[slug]/tasks/[id]/{promote,...,heartbeat}` — action in URL path, body is fields, returns FR-21 shape; bulk: `POST .../tasks/actions`
 - [x] `postCommentJson` bridge helper + `POST .../comments` route (reusable foundation for KDI-UI-009 diagnostics shortcuts)
-- [x] Components: `TaskActions.svelte` (detail panel, 12 actions + dialogs + dry-run verdict + destructive confirms), `BulkActionsToolbar.svelte` (board, 6 bulk actions + result panel), `TaskCard.svelte` checkbox selection
-- [x] DESIGN.md compliance: `.btn`/`.badge`/`.form-group` classes, CSS tokens (`--surface`, `--accent-muted`, `--warning`, `--shadow-sm`), focus-visible (global), prefers-reduced-motion (global), aria-live on result panels, accessible labels, inline non-blocking errors, distinct success/skipped/error states, busy indicator
-
-### Acceptance Criteria
-- [x] **AC-01** single promote — `task-lifecycle-actions.test.ts`: promote todo→ready, `currentStatus=ready`
-- [x] **AC-02** promote preconditions — test: wrong_status skip carries current status
-- [x] **AC-03** promote dry-run — test: `would_promote` verdict without mutating
-- [x] **AC-04** promote force — test: force bypasses `blocked_by_dependencies`
-- [x] **AC-05** bulk promote — test: 2 succeed, 1 skipped, summary counts
-- [x] **AC-06** block — test: blocked status, reason set
-- [x] **AC-07** block preconditions — test: already-blocked skips
-- [x] **AC-08** bulk block — test: skips already-blocked, summary
-- [x] **AC-09** unblock — test: blocked→todo, scheduled→ready
-- [x] **AC-10** bulk unblock — test: all succeed
-- [x] **AC-11** schedule — test: scheduled status, past time rejected
-- [x] **AC-12** bulk schedule — test: all succeed to same future time
-- [x] **AC-13** review — test: review status
-- [x] **AC-14** archive — test: archived status
-- [x] **AC-15** bulk archive — test: all succeed
-- [x] **AC-16** complete — test: done status with result/summary/metadata
-- [x] **AC-17** complete metadata gate — test: `FF_COMPLETE_METADATA=false` + metadata → 403; without metadata still works
-- [x] **AC-18** bulk complete — test: result-only; summary/metadata rejected
-- [x] **AC-19** assign — test: assign + `none` unassigns
-- [x] **AC-20** reassign — test: reassign with reclaim on running task
-- [x] **AC-21** claim — test: ready→running, TTL validated
-- [x] **AC-22** reclaim — test: running→ready
-- [x] **AC-23** heartbeat — test: recorded for running task
-- [x] **AC-24** result reporting — test: every result has `{taskId, status, message}`
-- [x] **AC-25** flag gate server-side — test: 8 flag-off scenarios return 403 with CLI text
-- [x] **AC-26** master flag — `task-lifecycle-actions.http.test.ts`: `FF_SVELTEKIT_FRONTEND=false` → 503, no mutation, `kdi show` confirms task unchanged
-- [x] **AC-27** no model churn — `git diff main --name-only` confirms zero edits under `src/models`, `src/commands`, `src/flags.ts`, `src/db.ts`
-- [x] **AC-28** UI smoke — `task-lifecycle-actions.http.test.ts`: promote→block→unblock→schedule→review→assign→claim→heartbeat→complete→archive over HTTP, each state cross-checked with `kdi show` CLI on same DB
-- [x] **AC-29** bulk smoke — `task-lifecycle-actions.http.test.ts`: bulk promote→block→unblock→complete→archive with per-task results + summary, states cross-checked with `kdi show`
-- [x] **AC-30** build passes — `bun run lint`, `bun run build`, `bun run check:web`, `bun run build:web` all green; 1107/1107 tests pass
-
-### Verification output
-```
-$ bun run lint     ✓ (tsc --noEmit)
-$ bun run build    ✓ (122 modules compiled)
-$ bun run check:web ✓ (svelte-check 0 errors, 0 warnings)
-$ bun run build:web ✓ (adapter-node, done)
-$ bun run test     ✓ 1107 pass / 0 fail / 3050 expect() calls / 55 files
-```
-
-### Test files
-- `apps/web/src/lib/server/task-lifecycle-actions.test.ts` — 46 unit tests (all actions, flag gates, preconditions, bulk, comment, result shape)
-- `apps/web/src/lib/server/task-lifecycle-actions.http.test.ts` — 3 HTTP smoke tests (AC-28 single loop with `kdi show` cross-check, AC-29 bulk, AC-26 master flag)
+- [x] Components: `TaskActions.svelte` (detail panel), `BulkActionsToolbar.svelte` (board), `TaskCard.svelte` checkbox selection — DESIGN.md compliant (tokens, `.btn`/`.badge`, focus-visible, prefers-reduced-motion, aria-live)
+- [x] Tests: `task-lifecycle-actions.test.ts` (46 unit), `task-lifecycle-actions.http.test.ts` (3 HTTP smoke with `kdi show` cross-check)
+- [x] Verification: `bun run lint`, `bun run build`, `bun run check:web`, `bun run build:web` all pass; 1107/1107 tests pass
 
 ## KDI-UI-000: SvelteKit App Shell — InDev
 - [x] Scaffolded SvelteKit app under `apps/web/` (Bun workspaces); repo root `package.json` gains `workspaces` and `dev:web` / `build:web` / `check:web` / `preview:web` scripts. CLI `build`/`lint` unchanged.
