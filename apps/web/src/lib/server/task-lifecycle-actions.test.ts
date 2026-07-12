@@ -533,4 +533,34 @@ describe("clampUtf8Bytes — UTF-8 byte budget (AC-23, review finding #1)", () =
     expect(out.length % 2).toBe(0);
     expect(out).not.toContain("\uFFFD");
   });
+
+  it("regression: ASCII + trailing emoji does not split the surrogate pair", () => {
+    // Review finding: "a".repeat(4093) + "🎯" = 4097 bytes. The byte-budget
+    // binary search lands at UTF-16 index 4094 (mid-pair), leaving a lone high
+    // surrogate that corrupts the persisted note. Must back up to 4093 (last "a").
+    const s = "a".repeat(4093) + "🎯";
+    expect(Buffer.byteLength(s, "utf8")).toBe(4097);
+    const out = clampUtf8Bytes(s, MAX_HEARTBEAT_NOTE_BYTES);
+    // Byte budget honored.
+    expect(Buffer.byteLength(out, "utf8")).toBeLessThanOrEqual(MAX_HEARTBEAT_NOTE_BYTES);
+    // No lone surrogate: ends on a complete code point.
+    expect((out.charCodeAt(out.length - 1) & 0xfc00) !== 0xd800).toBe(true);
+    expect(out).not.toContain("\uFFFD");
+    // Round-trip preserves the string exactly.
+    expect(Buffer.from(out, "utf8").toString("utf8")).toBe(out);
+    // Backed up to the last "a" (the emoji was dropped whole, not split).
+    expect(out).toBe("a".repeat(4093));
+  });
+
+  it("regression: pure emoji input also never splits mid-pair", () => {
+    // 1500 × 🎯 = 6000 bytes, 3000 code units. 4096 / 4 = 1024.0 (exact) is
+    // covered by the .repeat(2000) test above; this one forces an inexact
+    // boundary by mixing a 3-byte char to push the cut mid-pair.
+    const s = "あ" + "🎯".repeat(2000); // 3 + 8000 bytes
+    const out = clampUtf8Bytes(s, MAX_HEARTBEAT_NOTE_BYTES);
+    expect(Buffer.byteLength(out, "utf8")).toBeLessThanOrEqual(MAX_HEARTBEAT_NOTE_BYTES);
+    expect((out.charCodeAt(out.length - 1) & 0xfc00) !== 0xd800).toBe(true);
+    expect(out).not.toContain("\uFFFD");
+    expect(Buffer.from(out, "utf8").toString("utf8")).toBe(out);
+  });
 });

@@ -1414,8 +1414,10 @@ export async function bootstrapProfilesJson(slug: string, force = false): Promis
 // tracked as tech debt (out of scope here per AC-27: no src/models churn).
 export const MAX_HEARTBEAT_NOTE_BYTES = 4096;
 
-// Longest char-aligned prefix of `str` whose UTF-8 byte length is <= maxBytes.
-// Binary search so we never split a multibyte sequence. ponytail: O(log n) scans.
+// Longest prefix of `str` whose UTF-8 byte length is <= maxBytes, never
+// splitting a code point. Binary-search on UTF-16 indices for the byte budget,
+// then back up one if we landed mid-surrogate-pair (a trailing high surrogate
+// would corrupt the persisted note). ponytail: O(log n) + one O(1) guard.
 export function clampUtf8Bytes(str: string, maxBytes: number): string {
   if (Buffer.byteLength(str, "utf8") <= maxBytes) return str;
   let lo = 0;
@@ -1425,6 +1427,11 @@ export function clampUtf8Bytes(str: string, maxBytes: number): string {
     if (Buffer.byteLength(str.slice(0, mid), "utf8") <= maxBytes) lo = mid;
     else hi = mid - 1;
   }
+  // Binary search lands on a UTF-16 index. If `lo` sits inside a surrogate
+  // pair (trailing char is a high surrogate), back up one so we end on a
+  // complete code point. e.g. "a".repeat(4093)+"🎯" (4097 bytes) → 4094,
+  // which is mid-pair; back up to 4093 (the last "a").
+  if (lo > 0 && (str.charCodeAt(lo - 1) & 0xfc00) === 0xd800) lo--;
   return str.slice(0, lo);
 }
 
