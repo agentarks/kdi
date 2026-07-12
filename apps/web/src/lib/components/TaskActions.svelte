@@ -1,6 +1,7 @@
 <script lang="ts">
   import Dialog from "$lib/components/Dialog.svelte";
   import { invalidateAll } from "$app/navigation";
+  import { canPerform, actionTooltip, postTaskAction } from "$lib/lifecycle";
   import type { TaskDetailTask, LifecycleFlags, LifecycleAction, LifecycleResult, LifecycleFields } from "$lib/types";
 
   interface Props {
@@ -8,15 +9,15 @@
     flags: LifecycleFlags;
     boardSlug: string;
     currentProfile: string;
+    hasBlockingDeps?: boolean;
   }
-  let { task, flags, boardSlug, currentProfile }: Props = $props();
+  let { task, flags, boardSlug, currentProfile, hasBlockingDeps = false }: Props = $props();
 
   let dialog = $state<Dialog | undefined>(undefined);
 
   interface ActionButton {
     action: LifecycleAction;
     label: string;
-    needsConfirm?: boolean;
   }
 
   const SINGLE_BUTTONS: ActionButton[] = [
@@ -26,12 +27,12 @@
     { action: "schedule", label: "Schedule" },
     { action: "review", label: "Review" },
     { action: "claim", label: "Claim" },
-    { action: "reclaim", label: "Reclaim", needsConfirm: true },
+    { action: "reclaim", label: "Reclaim" },
     { action: "assign", label: "Assign" },
     { action: "reassign", label: "Reassign" },
     { action: "heartbeat", label: "Heartbeat" },
-    { action: "complete", label: "Complete", needsConfirm: true },
-    { action: "archive", label: "Archive", needsConfirm: true },
+    { action: "complete", label: "Complete" },
+    { action: "archive", label: "Archive" },
   ];
   let active = $state<LifecycleAction | null>(null);
   let busy = $state(false);
@@ -52,41 +53,10 @@
   let confirmChecked = $state(false);
   let dryRunResult = $state<LifecycleResult | null>(null);
 
-  const archived = $derived(task.archivedAt !== null);
   // Per-action enable conditions (FR-27). Client gating is UX only; the server
   // re-checks. Disabled controls get a flag/status tooltip.
-  const can = $derived<Record<LifecycleAction, boolean>>({
-    promote: task.status === "todo" && !archived,
-    block: task.status !== "blocked" && !archived,
-    unblock: (task.status === "blocked" || task.status === "scheduled") && !archived,
-    schedule: flags.scheduledStatus && !archived,
-    review: flags.reviewStatus && task.status !== "review" && !archived,
-    archive: !archived,
-    complete: !archived,
-    assign: flags.assignReassign && !archived,
-    reassign: flags.assignReassign && !archived,
-    claim: task.status === "ready" && !archived,
-    reclaim: task.status === "running" && task.claimLock !== null && !archived,
-    heartbeat: flags.heartbeat && task.status === "running" && !archived,
-  });
-
-  function tooltip(action: LifecycleAction): string | undefined {
-    if (can[action]) return undefined;
-    if (archived) return "Task is archived";
-    switch (action) {
-      case "promote": return task.status === "todo" ? undefined : `Only todo tasks (current: ${task.status})`;
-      case "block": return task.status === "blocked" ? "Already blocked" : undefined;
-      case "unblock": return "Only blocked or scheduled tasks";
-      case "schedule": return !flags.scheduledStatus ? "FF_SCHEDULED_STATUS" : undefined;
-      case "review": return !flags.reviewStatus ? "FF_REVIEW_STATUS" : (task.status === "review" ? "Already in review" : undefined);
-      case "assign":
-      case "reassign": return !flags.assignReassign ? "FF_ASSIGN_REASSIGN" : undefined;
-      case "claim": return task.status !== "ready" ? `Only ready tasks (current: ${task.status})` : undefined;
-      case "reclaim": return task.status !== "running" ? `Only running tasks (current: ${task.status})` : (task.claimLock === null ? "No active claim" : undefined);
-      case "heartbeat": return !flags.heartbeat ? "FF_HEARTBEAT" : (task.status !== "running" ? "Only running tasks" : undefined);
-      default: return undefined;
-    }
-  }
+  function can(action: LifecycleAction): boolean { return canPerform(action, task, flags); }
+  function tooltip(action: LifecycleAction): string | undefined { return actionTooltip(action, task, flags); }
 
   function resetFields() {
     reason = ""; atLocal = ""; profile = ""; reclaim = false; ttl = "";
@@ -128,15 +98,7 @@
   }
 
   async function post(fields: LifecycleFields): Promise<{ ok: boolean; result: LifecycleResult }> {
-    const res = await fetch(`/api/boards/${boardSlug}/tasks/${task.id}/${active}`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(fields),
-      signal: AbortSignal.timeout(15000),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (res.ok) return { ok: true, result: data.result as LifecycleResult };
-    return { ok: false, result: { taskId: task.id, status: "error", message: data.message ?? `Request failed (${res.status})` } };
+    return postTaskAction(boardSlug, task.id, active!, fields);
   }
 
   async function submit() {
@@ -188,7 +150,7 @@
       <button
         type="button"
         class="btn"
-        disabled={!can[btn.action]}
+        disabled={!can(btn.action)}
         title={tooltip(btn.action)}
         onclick={() => open(btn.action)}
       >
@@ -200,13 +162,30 @@
 
 <Dialog bind:this={dialog} title={active ? SINGLE_BUTTONS.find((b) => b.action === active)?.label ?? active : ""}>
   {#if active === "promote"}
-    <label class="check"><input type="checkbox" bind:checked={dryRun} disabled={!flags.bulkOperations} title={flags.bulkOperations ? undefined : "FF_BULK_OPERATIONS"} /> Dry run (preview verdict)</label>
-    <label class="check"><input type="checkbox" bind:checked={force} disabled={!flags.bulkOperations} title={flags.bulkOperations ? undefined : "FF_BULK_OPERATIONS"} /> Force (bypass parent dependencies)</label>
+    {#if flags.bulkOperations}
+      <label class="check"><input type="checkbox" bind:checked={dryRun} /> Dry run (preview verdict)</label>
+      <label class="check">
+        <input
+          type="checkbox"
+          bind:checked={force}
+          disabled={!hasBlockingDeps}
+          title={hasBlockingDeps ? undefined : "Enabled when a parent dependency is blocking"}
+        />
+        Force (bypass parent dependencies)
+      </label>
+      {#if !hasBlockingDeps && flags.bulkOperations}
+        <p class="text-dim hint">No parent dependencies blocking this task; force is not needed.</p>
+      {/if}
+    {:else}
+      <p class="text-dim hint">Dry run and force require FF_BULK_OPERATIONS.</p>
+    {/if}
     {#if dryRunResult}
       <p class="result-row {dryRunResult.status}">Dry run: {dryRunResult.message}</p>
     {/if}
     <div class="dialog-actions">
-      <button type="button" class="btn" onclick={runDryRun} disabled={busy}>Dry run</button>
+      {#if flags.bulkOperations}
+        <button type="button" class="btn" onclick={runDryRun} disabled={busy}>Dry run</button>
+      {/if}
       <button type="button" class="btn" onclick={() => dialog?.close()}>Cancel</button>
       <button type="button" class="btn btn--primary" onclick={submit} disabled={busy}>Promote</button>
     </div>
@@ -351,5 +330,6 @@
     margin-bottom: 12px;
   }
   .warn-text { color: var(--warning-text); font-size: 13px; }
+  .hint { font-size: 12px; margin-bottom: 12px; }
   .busy { color: var(--text-dim); font-size: 13px; font-family: var(--font-ui); }
 </style>

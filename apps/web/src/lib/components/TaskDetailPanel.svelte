@@ -83,8 +83,8 @@
     if (task.sessionId) out.push({ label: "Session", value: task.sessionId });
     if (task.workflowTemplateId && flags.workflowTemplates) out.push({ label: "Workflow template", value: task.workflowTemplateId });
     if (task.currentStepKey && flags.workflowTemplates) out.push({ label: "Current step", value: task.currentStepKey });
-    if (task.claimLock && flags.heartbeat) out.push({ label: "Claim lock", value: task.claimLock });
-    if (task.claimExpires && flags.heartbeat) out.push({ label: "Claim expires", value: formatDate(task.claimExpires) });
+    if (task.claimLock) out.push({ label: "Claim lock", value: task.claimLock });
+    if (task.claimExpires) out.push({ label: "Claim expires", value: formatDate(task.claimExpires) });
     if (task.lastHeartbeatAt && flags.heartbeat) out.push({ label: "Last heartbeat", value: formatDate(task.lastHeartbeatAt) });
     if (task.goalMode && flags.goalMode) {
       if (task.goalMaxTurns !== null) out.push({ label: "Goal max turns", value: task.goalMaxTurns });
@@ -218,7 +218,7 @@
     </div>
   {/if}
 
-  <TaskActions {task} flags={lifecycle} {boardSlug} {currentProfile} />
+  <TaskActions {task} flags={lifecycle} {boardSlug} {currentProfile} hasBlockingDeps={blockedParents.length > 0} />
 
   <section class="detail-section" aria-labelledby="body-heading">
     <h2 id="body-heading">Body</h2>

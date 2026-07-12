@@ -246,6 +246,16 @@ describe("KDI-UI-006 AC-29 bulk actions over HTTP with FF_BULK_OPERATIONS=true",
     const unblocked = await postBulk("bulk", "unblock", ids);
     expect(unblocked.summary.succeeded).toBe(3);
 
+    // --- bulk schedule: all 3 to same future time ---
+    const future = Math.floor(Date.now() / 1000) + 7200;
+    const scheduled = await postBulk("bulk", "schedule", ids, { at: future, reason: "later" });
+    expect(scheduled.summary.succeeded).toBe(3);
+    expect(showStatus(ids[0])).toBe("scheduled");
+
+    // --- bulk unblock scheduled → ready ---
+    const unblocked2 = await postBulk("bulk", "unblock", ids);
+    expect(unblocked2.summary.succeeded).toBe(3);
+
     // --- bulk complete: all 3 ---
     const completed = await postBulk("bulk", "complete", ids, { result: "done" });
     expect(completed.summary.succeeded).toBe(3);

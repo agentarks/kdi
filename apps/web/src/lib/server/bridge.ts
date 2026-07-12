@@ -66,7 +66,6 @@ type Modules = {
   getRun: typeof import("~/models/taskRun")["getRun"];
   getRecentBoardRunFailures: typeof import("~/models/taskRun")["getRecentBoardRunFailures"];
   getComments: typeof import("~/models/comment")["getComments"];
-  addComment: typeof import("~/models/comment")["addComment"];
   listAttachments: typeof import("~/models/taskAttachment")["listAttachments"];
   buildTaskContext: typeof import("~/models/context")["buildTaskContext"];
   runDiagnostics: typeof import("~/models/diagnostic")["runDiagnostics"];
@@ -1463,6 +1462,34 @@ function validateActionFlags(action: LifecycleAction, fields: LifecycleFields): 
 }
 
 // Required-field / value validation at the trust boundary.
+
+// Runtime type-check every provided field. A malformed POST (e.g.
+// {"reason": 123}) must get a clean 400, never a TypeError 500.
+function validateFieldTypes(fields: LifecycleFields): void {
+  if (fields.reason !== undefined && typeof fields.reason !== "string")
+    throw new BridgeError("invalid_input", 400, "reason must be a string.");
+  if (fields.at !== undefined && typeof fields.at !== "number")
+    throw new BridgeError("invalid_input", 400, "at must be a number (unix seconds).");
+  if (fields.force !== undefined && typeof fields.force !== "boolean")
+    throw new BridgeError("invalid_input", 400, "force must be a boolean.");
+  if (fields.dryRun !== undefined && typeof fields.dryRun !== "boolean")
+    throw new BridgeError("invalid_input", 400, "dryRun must be a boolean.");
+  if (fields.profile !== undefined && typeof fields.profile !== "string")
+    throw new BridgeError("invalid_input", 400, "profile must be a string.");
+  if (fields.reclaim !== undefined && typeof fields.reclaim !== "boolean")
+    throw new BridgeError("invalid_input", 400, "reclaim must be a boolean.");
+  if (fields.ttl !== undefined && typeof fields.ttl !== "number")
+    throw new BridgeError("invalid_input", 400, "ttl must be a number.");
+  if (fields.note !== undefined && typeof fields.note !== "string")
+    throw new BridgeError("invalid_input", 400, "note must be a string.");
+  if (fields.result !== undefined && typeof fields.result !== "string")
+    throw new BridgeError("invalid_input", 400, "result must be a string.");
+  if (fields.summary !== undefined && typeof fields.summary !== "string")
+    throw new BridgeError("invalid_input", 400, "summary must be a string.");
+  if (fields.metadata !== undefined && typeof fields.metadata !== "string")
+    throw new BridgeError("invalid_input", 400, "metadata must be a string.");
+}
+
 function validateActionFields(action: LifecycleAction, fields: LifecycleFields): void {
   switch (action) {
     case "block":
@@ -1682,6 +1709,7 @@ export async function performTaskAction(
   if (!SINGLE_LIFECYCLE_ACTIONS.has(action))
     throw new BridgeError("invalid_action", 400, `Action "${action}" is not a single-task lifecycle action.`);
   validateActionFlags(action, fields);
+  validateFieldTypes(fields);
   validateActionFields(action, fields);
   await assertTaskOnBoard(slug, id);
   const m = await models();
@@ -1704,6 +1732,7 @@ export async function performBulkAction(
   if (action === "complete" && (fields.summary !== undefined || fields.metadata !== undefined))
     throw new BridgeError("invalid_input", 400, "Bulk complete only supports result.");
   validateActionFlags(action, fields);
+  validateFieldTypes(fields);
   validateActionFields(action, fields);
   const board = await resolveBoard(slug);
   const m = await models();
@@ -1724,46 +1753,4 @@ export async function performBulkAction(
     failed: results.filter((r) => r.status === "error").length,
   };
   return { results, summary };
-}
-
-// ---------------------------------------------------------------------------
-// Task comment (KDI-UI-006 reusable foundation for KDI-UI-009 diagnostics)
-// ---------------------------------------------------------------------------
-//
-// postCommentJson is a standalone bridge helper (not a lifecycle action — it
-// doesn't mutate task status) so KDI-UI-009's diagnostics shortcuts can add a
-// comment note to a task from their own routes without re-plumbing the model
-// import. Mirrors the CLI comment command: --author requires FF_COMMENT_ENHANCEMENTS,
-// and when that flag is on the author defaults to the current profile.
-
-export interface PostCommentInput {
-  text: string;
-  author?: string;
-}
-
-export async function postCommentJson(
-  slug: string,
-  id: number,
-  input: PostCommentInput,
-): Promise<{ comment: CamelCase<Comment> }> {
-  if (typeof input.text !== "string" || input.text.trim() === "")
-    throw new BridgeError("invalid_input", 400, "Comment text is required.");
-  await assertTaskOnBoard(slug, id);
-  const m = await models();
-  // author follows the CLI gate: override requires FF_COMMENT_ENHANCEMENTS;
-  // when the flag is on, default to the current profile.
-  const author =
-    input.author !== undefined
-      ? isEnabled(FF_COMMENT_ENHANCEMENTS)
-        ? input.author.trim() || undefined
-        : (() => { throw new BridgeError("feature_disabled", 403, "Comment enhancements feature is not enabled."); })()
-      : isEnabled(FF_COMMENT_ENHANCEMENTS)
-        ? resolveCurrentProfile()
-        : undefined;
-  try {
-    const comment = m.addComment({ task_id: id, text: input.text, author });
-    return { comment: toCamel(comment) };
-  } catch (err) {
-    throw wrap(err);
-  }
 }

@@ -1,6 +1,7 @@
 <script lang="ts">
   import TaskCard from "$lib/components/TaskCard.svelte";
   import type { KanbanTask, KanbanCapabilities } from "$lib/kanban";
+  import type { LifecycleFlags } from "$lib/types";
 
   interface Props {
     status: string;
@@ -9,12 +10,13 @@
     tasks: KanbanTask[];
     boardSlug: string;
     capabilities: KanbanCapabilities;
+    lifecycle: LifecycleFlags;
     selectable?: boolean;
     selected: Set<number>;
     onselect?: (id: number, checked: boolean) => void;
   }
 
-  let { status, label, count, tasks, boardSlug, capabilities, selectable = false, selected, onselect }: Props = $props();
+  let { status, label, count, tasks, boardSlug, capabilities, lifecycle, selectable = false, selected, onselect }: Props = $props();
 </script>
 
 <div class="kanban-column" data-status={status}>
@@ -24,7 +26,7 @@
   </header>
   <div class="column-cards">
     {#each tasks as task (task.id)}
-      <TaskCard {task} {capabilities} {boardSlug} {selectable} selected={selected.has(task.id)} {onselect} />
+      <TaskCard {task} {capabilities} {lifecycle} {boardSlug} {selectable} selected={selected.has(task.id)} {onselect} />
     {/each}
   </div>
 </div>

@@ -72,7 +72,7 @@
     {capabilities}
   />
 
-  <KanbanBoard {tasks} board={displayBoard} {capabilities} {selectable} {selected} onselect={toggle} />
+  <KanbanBoard {tasks} board={displayBoard} {capabilities} {lifecycle} {selectable} {selected} onselect={toggle} />
 </div>
 
 <style>
