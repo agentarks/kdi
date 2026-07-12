@@ -1,7 +1,10 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import KanbanFilterBar from "$lib/components/KanbanFilterBar.svelte";
   import KanbanBoard from "$lib/components/KanbanBoard.svelte";
+  import BulkActionsToolbar from "$lib/components/BulkActionsToolbar.svelte";
   import type { KanbanTask, KanbanFilterState, KanbanCapabilities, KanbanTemplate } from "$lib/kanban";
+  import type { LifecycleFlags } from "$lib/types";
 
   interface Props {
     board: {
@@ -20,9 +23,10 @@
     templates: KanbanTemplate[];
     currentProfile: string;
     capabilities: KanbanCapabilities;
+    lifecycle: LifecycleFlags;
   }
 
-  let { board, tasks, filters, assignees, profiles, templates, currentProfile, capabilities }: Props = $props();
+  let { board, tasks, filters, assignees, profiles, templates, currentProfile, capabilities, lifecycle }: Props = $props();
 
   const displayBoard = $derived({
     ...board,
@@ -30,9 +34,29 @@
       ? board.taskCounts
       : { ...board.taskCounts, archived: 0 },
   });
+
+  // Bulk-selection state lives here so it survives filter/poll refreshes.
+  let selected = $state<Set<number>>(new Set());
+  let hydrated = $state(false);
+  const selectable = $derived(!!capabilities.bulkOperations);
+  const selectedArr = $derived([...selected].sort((a, b) => a - b));
+
+  onMount(() => {
+    hydrated = true;
+  });
+
+  function toggle(id: number, checked: boolean) {
+    const next = new Set(selected);
+    if (checked) next.add(id);
+    else next.delete(id);
+    selected = next;
+  }
+  function clearSelection() {
+    selected = new Set();
+  }
 </script>
 
-<div class="board-view">
+<div class="board-view" data-hydrated={hydrated ? "true" : undefined}>
   <header class="board-view-header">
     <h1>Board: {board.name ?? board.slug}</h1>
     {#if board.archivedAt !== null}
@@ -40,6 +64,10 @@
     {/if}
     <span class="board-meta">{board.workdir} · {board.baseRef}</span>
   </header>
+
+  {#if selectable && selected.size > 0}
+    <BulkActionsToolbar boardSlug={board.slug} selected={selectedArr} flags={lifecycle} onclear={clearSelection} />
+  {/if}
 
   <KanbanFilterBar
     {filters}
@@ -50,7 +78,7 @@
     {capabilities}
   />
 
-  <KanbanBoard {tasks} board={displayBoard} {capabilities} />
+  <KanbanBoard {tasks} board={displayBoard} {capabilities} {lifecycle} {selectable} {selected} onselect={toggle} />
 </div>
 
 <style>
@@ -76,4 +104,3 @@
     color: var(--text-dim);
   }
 </style>
-

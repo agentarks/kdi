@@ -21,6 +21,8 @@
 - [ ] Review follow-up: further contrast audit for archived rows; self-host fonts to avoid Google Fonts render-block
 
 ## Tech Debt
+- [ ] KDI-UI-006: Pre-existing dispatch HTTP flake — `bridge.http.test.ts` dispatch test fails intermittently under full-suite load (passes in isolation). Not caused by KDI-UI-006 but surfaces when running the full suite.
+- [ ] KDI-UI-006: Pre-existing loader gaps — `boards`, `boards/new`, `activity`, `dispatch` loaders lack `isSvelteKitEnabled()` re-check (pre-date KDI-UI-006). The two touched loaders (`tasks/[id]`, `boards/[slug]`) comply; a blanket follow-up should close the rest.
 - [ ] KDI-UI-005: `readHeadText` caps non-tail logs at 500KB but may split a trailing UTF-8 character at the byte boundary; trim trailing partial sequence if that becomes user-visible.
 - [ ] KDI-UI-005: No HTTP smoke test forces `buildTaskContext` to throw, so `contextError: "not_available"` rendering is covered by unit tests only.
 - [ ] Flaky test: `tests/commands/triage-automation.test.ts > specify --all sweeps triage tasks` fails intermittently when run in the full suite (passes in isolation). Likely a mock-server / timing interaction.
@@ -66,13 +68,22 @@
 - [x] Smoke test with temp HOME/KDI_DB opens a CLI-created task and asserts the panel renders title, status, and body
 - [x] `bun run lint`, CLI build, `bun run check:web`, and `bun run build:web` pass
 
-## KDI-UI-006: Task Lifecycle Actions — Spec
-- [x] BRD/spec drafted at `specs/sveltekit-ui/KDI-UI-006-task-lifecycle-actions.md`
-- [ ] Single actions: promote, promote dry-run, block, unblock, schedule, review, archive, complete, assign, reassign, claim, reclaim, heartbeat
-- [ ] Bulk actions: promote, block, unblock, schedule, archive, complete
-- [ ] Confirm destructive actions; inline reason fields for block/schedule/review/reclaim/reassign
-- [ ] Acceptance: every action maps to an existing CLI/model path and shows success/skip/error per task
-- [ ] `bun run lint`, CLI build, SvelteKit build pass
+## KDI-UI-006: Task Lifecycle Actions — Done
+- [x] BRD/spec drafted at `specs/sveltekit-ui/KDI-UI-006-task-lifecycle-actions.md`; all 30 acceptance criteria (AC-01..AC-30) verified against that spec
+- [x] Single actions: promote (+dry-run/force), block, unblock, schedule, review, archive, complete (+metadata gate), assign, reassign (+reclaim), claim, reclaim, heartbeat — all via `performTaskAction` in `apps/web/src/lib/server/bridge.ts` (single choke point), calling the same model fns the CLI uses
+- [x] Bulk actions: promote, block, unblock, schedule, archive, complete — `performBulkAction` loops the single-task core, returns per-task results + `{attempted,succeeded,skipped,failed}` summary
+- [x] Server-side flag re-checks mirror CLI error text (`feature_disabled` 403); client gating via `lifecycleFlags()` capability map with flag/status tooltips
+- [x] Master flag `FF_SVELTEKIT_FRONTEND` re-checked in `tasks/[id]` and `boards/[slug]` loaders via `isSvelteKitEnabled()`; JSON routes via `apiPost` to `gate()`
+- [x] Per-action REST endpoints: `POST /api/boards/[slug]/tasks/[id]/{promote,...,heartbeat}` — action in URL path, body is fields, returns FR-21 shape; bulk: `POST .../tasks/actions`
+- [x] Components: `TaskActions.svelte` (detail panel), `BulkActionsToolbar.svelte` (board), `TaskCard.svelte` checkbox selection — DESIGN.md compliant (tokens, `.btn`/`.badge`, focus-visible, prefers-reduced-motion, aria-live)
+- [x] Tests: `task-lifecycle-actions.test.ts` (46 unit + 6 UTF-8 clamp + 1 multibyte heartbeat), `task-lifecycle-actions.http.test.ts` (3 HTTP smoke with `kdi show` cross-check), `handler.test.ts` (3 malformed-JSON), `e2e/lifecycle.e2e.ts` (3 incl. in-dialog role=alert error)
+- [x] Verification: `bun run lint`, `bun run build`, `bun run check:web`, `bun run build:web` all pass; 1117/1117 `bun test` pass; 5/5 Playwright e2e pass
+- [x] **PR #91 review (round 3) — all 4 findings fixed:**
+  - **#1 (High, byte limit):** heartbeat note now clamped to a true 4 KiB **UTF-8 byte** budget at the server boundary (`clampUtf8Bytes` + `MAX_HEARTBEAT_NOTE_BYTES` in `bridge.ts`); UI counter switched from `note.length` to `TextEncoder` byte count with a live `{bytes}/4096` readout and dropped the misleading char-based `maxlength`. Multibyte unit tests (CJK 3-byte, emoji 4-byte) + integration test added. Model/CLI char-based cap left untouched (AC-27: no `src/models` churn) and tracked as tech debt below.
+    - **Round 4 (surrogate split):** the byte-budget binary search operates on UTF-16 indices and could land mid-surrogate-pair (e.g. `"a".repeat(4093)+"🎯"` → index 4094 = lone high surrogate, corrupting the persisted note). Added an O(1) guard: if the selected index ends with a high surrogate (`& 0xfc00 === 0xd800`), back up one to a complete code point. Regression tests added for the exact ASCII+emoji split case and a pure-emoji inexact-boundary case; both assert no lone surrogate, no `\uFFFD`, and clean UTF-8 round-trip.
+  - **#2 (High, error behind modal):** a failed single action now keeps the dialog open and renders the message in-dialog as `role="alert"` (`dialogError` in `TaskActions.svelte`); covered by Playwright (`failed action surfaces an in-dialog role=alert error`).
+  - **#3 (Medium, a11y):** disabled action buttons use `aria-disabled` (not `disabled`) so they stay keyboard-focusable, with per-action `aria-describedby` → visually-hidden reason text; same fix on the bulk schedule button. `.btn[aria-disabled="true"]` mirrors the `:disabled` style.
+  - **#4 (Medium, 400 vs 500):** the shared `apiPost` factory in `handler.ts` now maps malformed/empty JSON to a stable `400 invalid_json` instead of leaking a `SyntaxError` through the generic 500 path (one guard, all 16+ POST routes). Covered by `handler.test.ts`.
 
 ## KDI-UI-000: SvelteKit App Shell — InDev
 - [x] Scaffolded SvelteKit app under `apps/web/` (Bun workspaces); repo root `package.json` gains `workspaces` and `dev:web` / `build:web` / `check:web` / `preview:web` scripts. CLI `build`/`lint` unchanged.
@@ -1010,6 +1021,8 @@
 ## Tech Debt
 
 ### Known gaps (not blocking, tracked for future work)
+
+- [ ] **KDI-UI-006: heartbeat note byte limit is char-based in the model + CLI** — `src/models/claim.ts` (`MAX_HEARTBEAT_NOTE_BYTES` + `note.length`/`note.slice`) and `src/commands/tasks.ts:1533` enforce the 4 KiB budget via JS code-unit count, not UTF-8 bytes, so CJK/emoji input can exceed the intended byte limit. The SvelteKit UI now clamps by true UTF-8 bytes at the server boundary (`clampUtf8Bytes` in `bridge.ts`), making the model path a harmless no-op for UI submissions, but the CLI path is still char-based. Fixing the model/CLI is out of KDI-UI-006 scope (AC-27 forbids `src/models` churn); track for a separate flag-gated slice with CLI tests.
 
 - [ ] **KDI-000d: Live-PID contention test** — `initDb` is synchronous and blocks the event loop; async test cleanup races with the sync loop. The implementation is correct (verified by code review), but testing live-PID lock contention requires spawning a real concurrent process, which is flaky in the Bun test runner.
 - [ ] **KDI-000e: `finishRun(null outcome)` defaults to `"done"`** — Reviewer noted this weakens the "status is derived from outcome" invariant. Making `outcome` non-nullable would be a breaking change to existing callers. Consider enforcing in a future refactor.

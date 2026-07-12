@@ -1,6 +1,7 @@
 <script lang="ts">
   import KanbanColumn from "$lib/components/KanbanColumn.svelte";
   import { STATUSES, statusLabel, type KanbanTask, type KanbanCapabilities } from "$lib/kanban";
+  import type { LifecycleFlags } from "$lib/types";
 
   interface Props {
     tasks: KanbanTask[];
@@ -9,9 +10,13 @@
       taskCounts: Record<string, number>;
     };
     capabilities: KanbanCapabilities;
+    lifecycle: LifecycleFlags;
+    selectable?: boolean;
+    selected: Set<number>;
+    onselect?: (id: number, checked: boolean) => void;
   }
 
-  let { tasks, board, capabilities }: Props = $props();
+  let { tasks, board, capabilities, lifecycle, selectable = false, selected, onselect }: Props = $props();
 
   const columns = $derived.by(() => {
     const map: Record<string, KanbanTask[]> = {};
@@ -32,6 +37,10 @@
       tasks={columns[status]}
       boardSlug={board.slug}
       {capabilities}
+      {lifecycle}
+      {selectable}
+      {selected}
+      {onselect}
     />
   {/each}
 </div>

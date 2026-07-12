@@ -1,4 +1,4 @@
-import { fail, redirect } from "@sveltejs/kit";
+import { error, fail, redirect } from "@sveltejs/kit";
 import type { PageServerLoad, Actions } from "./$types";
 import {
   showBoardJson,
@@ -14,6 +14,8 @@ import {
   renameBoardJson,
   renameBoardSlugJson,
   removeBoardJson,
+  lifecycleFlags,
+  isSvelteKitEnabled,
   BridgeError,
   bridgeError,
 } from "$lib/server/bridge";
@@ -26,6 +28,7 @@ import {
   FF_WORKFLOW_TEMPLATES,
   FF_RATE_LIMIT_EXIT_CODE,
   FF_HEARTBEAT,
+  FF_BULK_OPERATIONS,
   FF_BOARD_SWITCH,
   FF_BOARD_RENAME_HERMES,
   FF_BOARD_RENAME,
@@ -34,6 +37,9 @@ import {
 import type { KanbanTask, KanbanFilterState, KanbanCapabilities, KanbanTemplate } from "$lib/kanban";
 
 export const load: PageServerLoad = async ({ params, url }) => {
+  if (!isSvelteKitEnabled()) {
+    throw error(404, "UI disabled");
+  }
   const slug = params.slug;
   const search = url.searchParams;
 
@@ -60,6 +66,7 @@ export const load: PageServerLoad = async ({ params, url }) => {
     workflowTemplates: isEnabled(FF_WORKFLOW_TEMPLATES),
     rateLimitExitCode: isEnabled(FF_RATE_LIMIT_EXIT_CODE),
     heartbeat: isEnabled(FF_HEARTBEAT),
+    bulkOperations: isEnabled(FF_BULK_OPERATIONS),
   };
 
   const filters: KanbanFilterState = {
@@ -83,6 +90,7 @@ export const load: PageServerLoad = async ({ params, url }) => {
     board,
     currentSlug,
     flags,
+    lifecycle: lifecycleFlags(),
     filters,
     currentProfile: resolveCurrentProfile(),
     capabilities,

@@ -1,14 +1,18 @@
 <script lang="ts">
   import { formatAge, formatDate, formatBytes, statusLabel } from "$lib/kanban";
-  import type { TaskDetail, DetailFlags, LogResponse, TaskDetailRun, TaskDetailEvent } from "$lib/types";
+  import TaskActions from "$lib/components/TaskActions.svelte";
+  import type { TaskDetail, DetailFlags, LogResponse, TaskDetailRun, TaskDetailEvent, LifecycleFlags } from "$lib/types";
 
   interface Props {
     detail: TaskDetail;
     flags: DetailFlags;
+    lifecycle: LifecycleFlags;
     boardSlug: string;
+    currentProfile: string;
+    initialAction?: string | null;
   }
 
-  let { detail, flags, boardSlug }: Props = $props();
+  let { detail, flags, lifecycle, boardSlug, currentProfile, initialAction }: Props = $props();
 
   const task = $derived(detail.task);
   const age = $derived(formatAge(task.createdAt));
@@ -80,8 +84,8 @@
     if (task.sessionId) out.push({ label: "Session", value: task.sessionId });
     if (task.workflowTemplateId && flags.workflowTemplates) out.push({ label: "Workflow template", value: task.workflowTemplateId });
     if (task.currentStepKey && flags.workflowTemplates) out.push({ label: "Current step", value: task.currentStepKey });
-    if (task.claimLock && flags.heartbeat) out.push({ label: "Claim lock", value: task.claimLock });
-    if (task.claimExpires && flags.heartbeat) out.push({ label: "Claim expires", value: formatDate(task.claimExpires) });
+    if (task.claimLock) out.push({ label: "Claim lock", value: task.claimLock });
+    if (task.claimExpires) out.push({ label: "Claim expires", value: formatDate(task.claimExpires) });
     if (task.lastHeartbeatAt && flags.heartbeat) out.push({ label: "Last heartbeat", value: formatDate(task.lastHeartbeatAt) });
     if (task.goalMode && flags.goalMode) {
       if (task.goalMaxTurns !== null) out.push({ label: "Goal max turns", value: task.goalMaxTurns });
@@ -214,6 +218,8 @@
       <span class="badge rate-limited">Rate limited until {formatDate(task.rateLimitedUntil)}</span>
     </div>
   {/if}
+
+  <TaskActions {task} flags={lifecycle} {boardSlug} {currentProfile} hasBlockingDeps={blockedParents.length > 0} {initialAction} />
 
   <section class="detail-section" aria-labelledby="body-heading">
     <h2 id="body-heading">Body</h2>
