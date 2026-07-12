@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import KanbanFilterBar from "$lib/components/KanbanFilterBar.svelte";
   import KanbanBoard from "$lib/components/KanbanBoard.svelte";
   import BulkActionsToolbar from "$lib/components/BulkActionsToolbar.svelte";
@@ -36,8 +37,13 @@
 
   // Bulk-selection state lives here so it survives filter/poll refreshes.
   let selected = $state<Set<number>>(new Set());
+  let hydrated = $state(false);
   const selectable = $derived(!!capabilities.bulkOperations);
   const selectedArr = $derived([...selected].sort((a, b) => a - b));
+
+  onMount(() => {
+    hydrated = true;
+  });
 
   function toggle(id: number, checked: boolean) {
     const next = new Set(selected);
@@ -50,7 +56,7 @@
   }
 </script>
 
-<div class="board-view">
+<div class="board-view" data-hydrated={hydrated ? "true" : undefined}>
   <header class="board-view-header">
     <h1>Board: {board.name ?? board.slug}</h1>
     {#if board.archivedAt !== null}
@@ -98,4 +104,3 @@
     color: var(--text-dim);
   }
 </style>
-

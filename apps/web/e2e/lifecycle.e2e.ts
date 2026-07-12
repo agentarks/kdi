@@ -122,10 +122,15 @@ test("row selection → bulk toolbar appears → bulk promote shows per-task res
   // Bulk toolbar is NOT visible before selection.
   await expect(page.locator(".bulk-toolbar")).toHaveCount(0);
 
+  // The selection controls require hydrated event handlers. Wait for the
+  // board's explicit interactive-ready state before clicking SSR markup.
+  await expect(page.locator('.board-view[data-hydrated="true"]')).toBeVisible();
+
   // Select both tasks.
   const card1 = page.locator(".task-card", { hasText: "Task one" });
   const card2 = page.locator(".task-card", { hasText: "Task two" });
   await card1.locator(".card-check").check();
+  await expect(page.locator(".bulk-toolbar .bulk-count")).toContainText("1 selected");
   await card2.locator(".card-check").check();
 
   // Bulk toolbar now appears with count.
@@ -144,6 +149,8 @@ test("row selection → bulk toolbar appears → bulk promote shows per-task res
   await expect(page.locator(".summary")).toContainText("succeeded 2");
   await expect(page.locator(".result-list .result-row")).toHaveCount(2);
   await expect(page.locator(".result-list .result-row.success")).toHaveCount(2);
+  await expect(page.locator('[data-status="ready"] .task-card', { hasText: "Task one" })).toBeVisible();
+  await expect(page.locator('[data-status="ready"] .task-card', { hasText: "Task two" })).toBeVisible();
 });
 
 test("row action menu links to detail panel with action pre-selected", async ({

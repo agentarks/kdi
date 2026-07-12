@@ -23,7 +23,6 @@
 ## Tech Debt
 - [ ] KDI-UI-006: Pre-existing dispatch HTTP flake — `bridge.http.test.ts` dispatch test fails intermittently under full-suite load (passes in isolation). Not caused by KDI-UI-006 but surfaces when running the full suite.
 - [ ] KDI-UI-006: Pre-existing loader gaps — `boards`, `boards/new`, `activity`, `dispatch` loaders lack `isSvelteKitEnabled()` re-check (pre-date KDI-UI-006). The two touched loaders (`tasks/[id]`, `boards/[slug]`) comply; a blanket follow-up should close the rest.
-- [ ] KDI-UI-006: FR-3 force-when-blocked UX — force checkbox is always enabled when `FF_BULK_OPERATIONS` is on, not conditionally enabled only when dependencies block. Functionally correct; the dry-run flow surfaces the blocking state. Add conditional-enable if exact spec UX is later required.
 - [ ] KDI-UI-005: `readHeadText` caps non-tail logs at 500KB but may split a trailing UTF-8 character at the byte boundary; trim trailing partial sequence if that becomes user-visible.
 - [ ] KDI-UI-005: No HTTP smoke test forces `buildTaskContext` to throw, so `contextError: "not_available"` rendering is covered by unit tests only.
 - [ ] Flaky test: `tests/commands/triage-automation.test.ts > specify --all sweeps triage tasks` fails intermittently when run in the full suite (passes in isolation). Likely a mock-server / timing interaction.
