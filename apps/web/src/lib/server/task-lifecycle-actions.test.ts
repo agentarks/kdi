@@ -301,9 +301,19 @@ describe("KDI-UI-006 single-task actions", () => {
     await expectBridgeError(performTaskAction(slug, task.id, "promote", { force: "yes" as unknown as boolean }), "invalid_input", 400);
     // profile must be string, not number
     await expectBridgeError(performTaskAction(slug, task.id, "assign", { profile: 99 as unknown as string }), "invalid_input", 400);
+    // fields must be object, not primitive/array
+    await expectBridgeError(performTaskAction(slug, task.id, "archive", "string" as unknown as Record<string, never>), "invalid_input", 400);
+    await expectBridgeError(performTaskAction(slug, task.id, "archive", [1, 2] as unknown as Record<string, never>), "invalid_input", 400);
     // task must be unchanged after all rejections
     const check = await performTaskAction(slug, task.id, "archive");
     expect(check.result.status).toBe("success");
+  });
+
+  it("AC-25: bulk validates taskIds as positive integers", async () => {
+    const slug = await freshBoard();
+    await expectBridgeError(performBulkAction(slug, "archive", [1.5] as unknown as number[]), "invalid_input", 400);
+    await expectBridgeError(performBulkAction(slug, "archive", [-1] as unknown as number[]), "invalid_input", 400);
+    await expectBridgeError(performBulkAction(slug, "archive", ["x"] as unknown as number[]), "invalid_input", 400);
   });
 
   it("claim TTL must be a positive integer (matching CLI)", async () => {

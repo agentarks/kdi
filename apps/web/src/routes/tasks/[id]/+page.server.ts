@@ -7,13 +7,14 @@ export const load: PageServerLoad = async ({ params, url }) => {
     throw error(404, "UI disabled");
   }
   const id = Number(params.id);
+  const initialAction = url.searchParams.get("action");
   const boardSlug = url.searchParams.get("board") ?? (await readCurrentBoardJson());
   if (!boardSlug) {
     throw error(400, "Board slug is required via ?board or a current board.");
   }
   try {
     const detail = await taskDetailJson(boardSlug, id);
-    return { detail, flags: detailFlags(), lifecycle: lifecycleFlags(), currentProfile: resolveCurrentProfile(), boardSlug };
+    return { detail, flags: detailFlags(), lifecycle: lifecycleFlags(), currentProfile: resolveCurrentProfile(), boardSlug, initialAction };
   } catch (err) {
     if (err instanceof BridgeError && (err.code === "task_not_found" || err.code === "board_not_found")) {
       throw error(404, err.message);

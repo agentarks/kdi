@@ -9,7 +9,7 @@ export interface TaskLike {
   id: number;
   status: string;
   archivedAt: number | null;
-  claimLock?: string | null;
+  claimLock: string | null;
 }
 
 export const ROW_ACTIONS: { action: LifecycleAction; label: string; needsField?: "reason" | "datetime" | "profile" }[] = [
@@ -40,7 +40,7 @@ export function canPerform(action: LifecycleAction, task: TaskLike, flags: Lifec
     case "assign": return flags.assignReassign && !archived;
     case "reassign": return flags.assignReassign && !archived;
     case "claim": return task.status === "ready" && !archived;
-    case "reclaim": return task.status === "running" && (task.claimLock !== undefined ? task.claimLock !== null : true) && !archived;
+    case "reclaim": return task.status === "running" && task.claimLock !== null && !archived;
     case "heartbeat": return flags.heartbeat && task.status === "running" && !archived;
   }
 }

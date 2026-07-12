@@ -76,7 +76,6 @@
 - [x] Server-side flag re-checks mirror CLI error text (`feature_disabled` 403); client gating via `lifecycleFlags()` capability map with flag/status tooltips
 - [x] Master flag `FF_SVELTEKIT_FRONTEND` re-checked in `tasks/[id]` and `boards/[slug]` loaders via `isSvelteKitEnabled()`; JSON routes via `apiPost` to `gate()`
 - [x] Per-action REST endpoints: `POST /api/boards/[slug]/tasks/[id]/{promote,...,heartbeat}` — action in URL path, body is fields, returns FR-21 shape; bulk: `POST .../tasks/actions`
-- [x] `postCommentJson` bridge helper + `POST .../comments` route (reusable foundation for KDI-UI-009 diagnostics shortcuts)
 - [x] Components: `TaskActions.svelte` (detail panel), `BulkActionsToolbar.svelte` (board), `TaskCard.svelte` checkbox selection — DESIGN.md compliant (tokens, `.btn`/`.badge`, focus-visible, prefers-reduced-motion, aria-live)
 - [x] Tests: `task-lifecycle-actions.test.ts` (46 unit), `task-lifecycle-actions.http.test.ts` (3 HTTP smoke with `kdi show` cross-check)
 - [x] Verification: `bun run lint`, `bun run build`, `bun run check:web`, `bun run build:web` all pass; 1107/1107 tests pass

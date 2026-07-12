@@ -10,8 +10,9 @@
     boardSlug: string;
     currentProfile: string;
     hasBlockingDeps?: boolean;
+    initialAction?: string | null;
   }
-  let { task, flags, boardSlug, currentProfile, hasBlockingDeps = false }: Props = $props();
+  let { task, flags, boardSlug, currentProfile, hasBlockingDeps = false, initialAction }: Props = $props();
 
   let dialog = $state<Dialog | undefined>(undefined);
 
@@ -34,6 +35,7 @@
     { action: "complete", label: "Complete" },
     { action: "archive", label: "Archive" },
   ];
+  const SINGLE_LIFECYCLE_ACTIONS_FROM_LABEL = new Set(SINGLE_BUTTONS.map((b) => b.action));
   let active = $state<LifecycleAction | null>(null);
   let busy = $state(false);
   let result = $state<LifecycleResult | null>(null);
@@ -49,7 +51,6 @@
   let summary = $state("");
   let metadata = $state("");
   let force = $state(false);
-  let dryRun = $state(false);
   let confirmChecked = $state(false);
   let dryRunResult = $state<LifecycleResult | null>(null);
 
@@ -61,7 +62,7 @@
   function resetFields() {
     reason = ""; atLocal = ""; profile = ""; reclaim = false; ttl = "";
     note = ""; resultText = ""; summary = ""; metadata = "";
-    force = false; dryRun = false; confirmChecked = false; dryRunResult = null;
+    force = false; confirmChecked = false; dryRunResult = null;
   }
 
   function open(action: LifecycleAction) {
@@ -73,6 +74,14 @@
     active = action;
     dialog?.open();
   }
+
+  // Row menu opens detail with ?action=X; auto-open on mount.
+  $effect(() => {
+    if (initialAction && SINGLE_LIFECYCLE_ACTIONS_FROM_LABEL.has(initialAction as LifecycleAction)) {
+      const action = initialAction as LifecycleAction;
+      if (canPerform(action, task, flags)) open(action);
+    }
+  });
 
   function fieldsFor(action: LifecycleAction, dry: boolean): LifecycleFields {
     switch (action) {
@@ -163,7 +172,6 @@
 <Dialog bind:this={dialog} title={active ? SINGLE_BUTTONS.find((b) => b.action === active)?.label ?? active : ""}>
   {#if active === "promote"}
     {#if flags.bulkOperations}
-      <label class="check"><input type="checkbox" bind:checked={dryRun} /> Dry run (preview verdict)</label>
       <label class="check">
         <input
           type="checkbox"
@@ -173,14 +181,14 @@
         />
         Force (bypass parent dependencies)
       </label>
-      {#if !hasBlockingDeps && flags.bulkOperations}
+      {#if !hasBlockingDeps}
         <p class="text-dim hint">No parent dependencies blocking this task; force is not needed.</p>
       {/if}
     {:else}
-      <p class="text-dim hint">Dry run and force require FF_BULK_OPERATIONS.</p>
+      <p class="text-dim hint">Force requires FF_BULK_OPERATIONS.</p>
     {/if}
     {#if dryRunResult}
-      <p class="result-row {dryRunResult.status}">Dry run: {dryRunResult.message}</p>
+      <p class="result-row {dryRunResult.status}" role="status" aria-live="polite">Dry run: {dryRunResult.message}</p>
     {/if}
     <div class="dialog-actions">
       {#if flags.bulkOperations}

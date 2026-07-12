@@ -9,9 +9,10 @@
     lifecycle: LifecycleFlags;
     boardSlug: string;
     currentProfile: string;
+    initialAction?: string | null;
   }
 
-  let { detail, flags, lifecycle, boardSlug, currentProfile }: Props = $props();
+  let { detail, flags, lifecycle, boardSlug, currentProfile, initialAction }: Props = $props();
 
   const task = $derived(detail.task);
   const age = $derived(formatAge(task.createdAt));
@@ -218,7 +219,7 @@
     </div>
   {/if}
 
-  <TaskActions {task} flags={lifecycle} {boardSlug} {currentProfile} hasBlockingDeps={blockedParents.length > 0} />
+  <TaskActions {task} flags={lifecycle} {boardSlug} {currentProfile} hasBlockingDeps={blockedParents.length > 0} {initialAction} />
 
   <section class="detail-section" aria-labelledby="body-heading">
     <h2 id="body-heading">Body</h2>

@@ -9,4 +9,4 @@
   <title>{data.detail?.task.title ?? "Task"} — kdi</title>
 </svelte:head>
 
-<TaskDetailPanel detail={data.detail} flags={data.flags} lifecycle={data.lifecycle} boardSlug={data.boardSlug} currentProfile={data.currentProfile} />
+<TaskDetailPanel detail={data.detail} flags={data.flags} lifecycle={data.lifecycle} boardSlug={data.boardSlug} currentProfile={data.currentProfile} initialAction={data.initialAction} />

@@ -634,6 +634,8 @@ export interface KanbanTask {
   currentStepKey: string | null;
   sessionId: string | null;
   archivedAt: number | null;
+  claimLock: string | null;
+  claimExpires: number | null;
 }
 
 function toKanbanTask(t: TaskModel): KanbanTask {
@@ -657,6 +659,8 @@ function toKanbanTask(t: TaskModel): KanbanTask {
     currentStepKey: t.current_step_key,
     sessionId: t.session_id,
     archivedAt: t.archived_at,
+    claimLock: t.claim_lock,
+    claimExpires: t.claim_expires,
   };
 }
 
@@ -1466,6 +1470,8 @@ function validateActionFlags(action: LifecycleAction, fields: LifecycleFields): 
 // Runtime type-check every provided field. A malformed POST (e.g.
 // {"reason": 123}) must get a clean 400, never a TypeError 500.
 function validateFieldTypes(fields: LifecycleFields): void {
+  if (fields === null || typeof fields !== "object" || Array.isArray(fields))
+    throw new BridgeError("invalid_input", 400, "Fields must be an object.");
   if (fields.reason !== undefined && typeof fields.reason !== "string")
     throw new BridgeError("invalid_input", 400, "reason must be a string.");
   if (fields.at !== undefined && typeof fields.at !== "number")
@@ -1728,6 +1734,10 @@ export async function performBulkAction(
     throw new BridgeError("feature_disabled", 403, "Bulk operations feature is not enabled.");
   if (!Array.isArray(taskIds) || taskIds.length === 0)
     throw new BridgeError("invalid_input", 400, "taskIds must be a non-empty array.");
+  for (const id of taskIds) {
+    if (typeof id !== "number" || !Number.isInteger(id) || id <= 0)
+      throw new BridgeError("invalid_input", 400, "taskIds must be positive integers.");
+  }
   // Bulk complete supports only result (mirror CLI).
   if (action === "complete" && (fields.summary !== undefined || fields.metadata !== undefined))
     throw new BridgeError("invalid_input", 400, "Bulk complete only supports result.");

@@ -15,5 +15,10 @@ export const POST: RequestHandler = apiPost((e, body: LifecycleFields) => {
   const action = e.params.action as LifecycleAction;
   if (!SINGLE_LIFECYCLE_ACTIONS.has(action))
     throw new BridgeError("invalid_action", 404, `Unknown action "${e.params.action}".`);
-  return performTaskAction(e.params.slug, Number(e.params.id), action, body ?? {});
+  const id = Number(e.params.id);
+  if (!Number.isInteger(id) || id <= 0)
+    throw new BridgeError("invalid_input", 400, "Task ID must be a positive integer.");
+  // body can be null/undefined for fieldless actions; normalize to {}.
+  const fields = (body === null || body === undefined) ? {} : body;
+  return performTaskAction(e.params.slug, id, action, fields);
 }, 200);

@@ -308,3 +308,126 @@ describe("KDI-UI-006 AC-26 master flag off → 503, no mutation", () => {
     expect(showStatus(id)).toBe("todo");
   }, 120000);
 });
+
+describe("KDI-UI-006 HTTP body validation", () => {
+  it("malformed single-action body returns 400, not 500", async () => {
+    if (!tmpHome) {
+      tmpHome = mkdtempSync(join(tmpdir(), "kdi-ui006-http-"));
+      process.env.HOME = tmpHome;
+      process.env.KDI_DB = join(tmpHome, "kdi.sqlite");
+      initDb();
+      await createBoardJson({ slug: "val", workdir: tmpHome });
+      closeDb();
+    } else {
+      initDb();
+      await createBoardJson({ slug: "val", workdir: tmpHome });
+      closeDb();
+    }
+
+    await startServer();
+    const id = await createTask("val", "V");
+
+    // primitive body (not an object)
+    const r1 = await fetch(`${baseUrl}/api/boards/val/tasks/${id}/archive`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify("not-an-object"),
+      signal: AbortSignal.timeout(10000),
+    });
+    expect(r1.status).toBe(400);
+
+    // wrong field type
+    const r2 = await fetch(`${baseUrl}/api/boards/val/tasks/${id}/block`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ reason: 123 }),
+      signal: AbortSignal.timeout(10000),
+    });
+    expect(r2.status).toBe(400);
+
+    // task must still be todo (not blocked)
+    expect(showStatus(id)).toBe("todo");
+    await stopServer();
+  }, 120000);
+
+  it("null bulk body returns 400, not 500", async () => {
+    if (!tmpHome) {
+      tmpHome = mkdtempSync(join(tmpdir(), "kdi-ui006-http-"));
+      process.env.HOME = tmpHome;
+      process.env.KDI_DB = join(tmpHome, "kdi.sqlite");
+      initDb();
+      await createBoardJson({ slug: "val2", workdir: tmpHome });
+      closeDb();
+    } else {
+      initDb();
+      await createBoardJson({ slug: "val2", workdir: tmpHome });
+      closeDb();
+    }
+
+    await startServer();
+    const id = await createTask("val2", "V");
+
+    // null body
+    const r1 = await fetch(`${baseUrl}/api/boards/val2/tasks/actions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(null),
+      signal: AbortSignal.timeout(10000),
+    });
+    expect(r1.status).toBe(400);
+
+    // missing action
+    const r2 = await fetch(`${baseUrl}/api/boards/val2/tasks/actions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ taskIds: [id] }),
+      signal: AbortSignal.timeout(10000),
+    });
+    expect(r2.status).toBe(400);
+
+    // non-integer taskIds
+    const r3 = await fetch(`${baseUrl}/api/boards/val2/tasks/actions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "archive", taskIds: [-1] }),
+      signal: AbortSignal.timeout(10000),
+    });
+    expect(r3.status).toBe(400);
+
+    // task must still be todo
+    expect(showStatus(id)).toBe("todo");
+    await stopServer();
+  }, 120000);
+
+  it("AC-03: dry-run promote does not mutate state", async () => {
+    if (!tmpHome) {
+      tmpHome = mkdtempSync(join(tmpdir(), "kdi-ui006-http-"));
+      process.env.HOME = tmpHome;
+      process.env.KDI_DB = join(tmpHome, "kdi.sqlite");
+      initDb();
+      await createBoardJson({ slug: "dry", workdir: tmpHome });
+      closeDb();
+    } else {
+      initDb();
+      await createBoardJson({ slug: "dry", workdir: tmpHome });
+      closeDb();
+    }
+
+    await startServer();
+    const id = await createTask("dry", "D");
+
+    const r = await fetch(`${baseUrl}/api/boards/dry/tasks/${id}/promote`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ dryRun: true }),
+      signal: AbortSignal.timeout(10000),
+    });
+    expect(r.status).toBe(200);
+    const data = (await r.json()) as { result: { status: string; message: string } };
+    expect(data.result.message).toContain("would promote");
+
+    // task must still be todo (dry-run did not promote)
+    expect(showStatus(id)).toBe("todo");
+    await stopServer();
+  }, 120000);
+});
