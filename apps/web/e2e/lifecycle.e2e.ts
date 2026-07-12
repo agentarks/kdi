@@ -178,3 +178,30 @@ test("row action menu links to detail panel with action pre-selected", async ({
   // The promote dialog auto-opens.
   await expect(page.locator(".dialog h3", { hasText: "Promote" })).toBeVisible();
 });
+
+test("failed action surfaces an in-dialog role=alert error (review finding #2)", async ({
+  page,
+}: {
+  page: Page;
+}) => {
+  // A todo task; complete is enabled for any non-archived task.
+  const id = await runCli(["create", "Error dialog task", "--board", "lc", "--no-dispatcher-warning"]);
+  await page.goto(`${baseUrl}/tasks/${id.trim()}?board=lc&action=complete`);
+
+  // Complete dialog auto-opens (initialAction).
+  const dialog = page.locator(".dialog");
+  await expect(dialog.locator("h3", { hasText: "Complete" })).toBeVisible();
+
+  // Submit invalid metadata JSON + confirm completion. The server returns a
+  // 400 "Metadata must be valid JSON." — the error must render IN the dialog.
+  await dialog.locator("#complete-metadata").fill("{not json");
+  await dialog.getByRole("checkbox", { name: "Confirm completion" }).check();
+  await dialog.getByRole("button", { name: "Complete" }).click();
+
+  // In-dialog role="alert" error appears…
+  const alert = dialog.locator('[role="alert"]');
+  await expect(alert).toBeVisible({ timeout: 10000 });
+  await expect(alert).toContainText("Metadata must be valid JSON.");
+  // …and the dialog stays open so the operator can recover.
+  await expect(dialog.locator("h3", { hasText: "Complete" })).toBeVisible();
+});

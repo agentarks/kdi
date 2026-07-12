@@ -11,6 +11,8 @@ import {
   createBoardJson,
   createTaskJson,
   BridgeError,
+  clampUtf8Bytes,
+  MAX_HEARTBEAT_NOTE_BYTES,
 } from "./bridge";
 import { addDependency } from "~/models/dependency";
 import { closeDb } from "~/db";
@@ -265,6 +267,17 @@ describe("KDI-UI-006 single-task actions", () => {
     expect(r.status).toBe("success");
   });
 
+  it("AC-23 heartbeat clamps multibyte notes to the UTF-8 byte budget", async () => {
+    const slug = await freshBoard();
+    const { task } = await createTaskJson(slug, { title: "HB", initialStatus: "ready" });
+    await act(slug, task.id, "claim");
+    // 2048 × "a" (1 byte) + 2048 × "あ" (3 bytes each) = 8192 bytes → must clamp
+    // to <= 4096 bytes, char-aligned (never splits the multibyte sequence).
+    const big = "a".repeat(2048) + "あ".repeat(2048);
+    const r = await act(slug, task.id, "heartbeat", { note: big });
+    expect(r.status).toBe("success");
+  });
+
   it("claim on non-ready skips", async () => {
     const slug = await freshBoard();
     const { task } = await createTaskJson(slug, { title: "X" });
@@ -483,5 +496,41 @@ describe("KDI-UI-006 bulk actions", () => {
       expect(typeof r.taskId).toBe("number");
       expect(typeof r.message).toBe("string");
     }
+  });
+});
+
+describe("clampUtf8Bytes — UTF-8 byte budget (AC-23, review finding #1)", () => {
+  it("leaves input under the budget untouched", () => {
+    expect(clampUtf8Bytes("abc", 4096)).toBe("abc");
+    expect(clampUtf8Bytes("", 4096)).toBe("");
+  });
+
+  it("clamps ASCII to the exact byte count", () => {
+    const s = "a".repeat(5000);
+    const out = clampUtf8Bytes(s, MAX_HEARTBEAT_NOTE_BYTES);
+    expect(Buffer.byteLength(out, "utf8")).toBe(MAX_HEARTBEAT_NOTE_BYTES);
+    expect(out.length).toBe(MAX_HEARTBEAT_NOTE_BYTES);
+  });
+
+  it("clamps CJK by byte length, not code-unit count", () => {
+    // あ = 3 UTF-8 bytes, 1 JS code unit. 5000 chars = 15000 bytes.
+    const s = "あ".repeat(5000);
+    const out = clampUtf8Bytes(s, MAX_HEARTBEAT_NOTE_BYTES);
+    expect(Buffer.byteLength(out, "utf8")).toBeLessThanOrEqual(MAX_HEARTBEAT_NOTE_BYTES);
+    // 4096 / 3 = 1365.0 → 1365 chars fit (4095 bytes), the 1366th would exceed.
+    expect(out.length).toBe(1365);
+    // Never splits a multibyte sequence — result decodes cleanly.
+    expect(() => Buffer.from(out, "utf8").toString("utf8")).not.toThrow();
+    expect(out).not.toContain("\uFFFD");
+  });
+
+  it("clamps emoji (4-byte sequences) char-aligned", () => {
+    // 🎯 = U+1F3AF = 4 UTF-8 bytes, 2 JS code units (surrogate pair).
+    const s = "🎯".repeat(2000);
+    const out = clampUtf8Bytes(s, MAX_HEARTBEAT_NOTE_BYTES);
+    expect(Buffer.byteLength(out, "utf8")).toBeLessThanOrEqual(MAX_HEARTBEAT_NOTE_BYTES);
+    // Must end on a complete emoji (even number of code units), not a lone surrogate.
+    expect(out.length % 2).toBe(0);
+    expect(out).not.toContain("\uFFFD");
   });
 });

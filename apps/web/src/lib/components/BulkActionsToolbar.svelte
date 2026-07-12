@@ -94,16 +94,21 @@
 <div class="bulk-toolbar">
   <span class="bulk-count">{selected.length} selected</span>
   {#each BULK_BUTTONS as btn (btn.action)}
+    {@const blocked = btn.action === "schedule" && !canSchedule}
     <button
       type="button"
       class="btn"
-      disabled={btn.action === "schedule" && !canSchedule}
-      title={btn.action === "schedule" && !canSchedule ? "FF_SCHEDULED_STATUS" : undefined}
-      onclick={() => open(btn.action)}
+      aria-disabled={blocked}
+      title={blocked ? "FF_SCHEDULED_STATUS" : undefined}
+      aria-describedby={blocked ? "bulk-schedule-desc" : undefined}
+      onclick={() => { if (!blocked) open(btn.action); }}
     >
       {btn.label}
     </button>
   {/each}
+  {#if !canSchedule}
+    <span id="bulk-schedule-desc" class="sr-only">Scheduling requires FF_SCHEDULED_STATUS to be enabled.</span>
+  {/if}
   <button type="button" class="btn" onclick={onclear}>Clear</button>
 
   {#if bulkResult}

@@ -39,6 +39,11 @@
   let active = $state<LifecycleAction | null>(null);
   let busy = $state(false);
   let result = $state<LifecycleResult | null>(null);
+  let dialogError = $state<string | null>(null);
+
+  // Heartbeat note byte counter. TextEncoder measures true UTF-8 bytes so CJK /
+  // emoji input is bounded by the real 4 KiB budget, not JS code-unit count.
+  const encoder = new TextEncoder();
 
   // form fields (reset on each open)
   let reason = $state("");
@@ -63,6 +68,7 @@
     reason = ""; atLocal = ""; profile = ""; reclaim = false; ttl = "";
     note = ""; resultText = ""; summary = ""; metadata = "";
     force = false; confirmChecked = false; dryRunResult = null;
+    dialogError = null;
   }
 
   function open(action: LifecycleAction) {
@@ -116,8 +122,16 @@
     try {
       const { ok, result: r } = await post(fieldsFor(active, false));
       result = r;
-      if (ok && r.status !== "skipped") await invalidateAll();
-      if (ok) dialog?.close();
+      // On error, keep the dialog open and surface the message in-dialog
+      // (role="alert") so the operator can see/recover from 4xx validation
+      // errors instead of having them render only behind the modal.
+      if (!ok || r.status === "error") {
+        dialogError = r.message;
+        return;
+      }
+      dialogError = null;
+      if (r.status !== "skipped") await invalidateAll();
+      dialog?.close();
     } finally {
       busy = false;
     }
@@ -134,7 +148,8 @@
     }
   }
 
-  const noteOver = $derived(note.length > 4096);
+  const noteBytes = $derived(encoder.encode(note).length);
+  const noteOver = $derived(noteBytes > 4096);
 
   // FR-9: the UI rejects times in the past before calling the model.
   const atInPast = $derived(atLocal !== "" && toUnix(atLocal) <= Math.floor(Date.now() / 1000));
@@ -156,20 +171,35 @@
 
   <div class="action-grid">
     {#each SINGLE_BUTTONS as btn (btn.action)}
+      {@const enabled = can(btn.action)}
       <button
         type="button"
         class="btn"
-        disabled={!can(btn.action)}
+        aria-disabled={!enabled}
         title={tooltip(btn.action)}
-        onclick={() => open(btn.action)}
+        aria-describedby={!enabled && tooltip(btn.action) ? `action-desc-${btn.action}` : undefined}
+        onclick={() => { if (enabled) open(btn.action); }}
       >
         {btn.label}
       </button>
     {/each}
   </div>
+  <!-- a11y: disabled (aria-disabled) buttons stay keyboard-focusable so the
+       reason is reachable; each disabled action exposes its reason via a
+       visually-hidden description referenced by aria-describedby. -->
+  <div class="sr-only">
+    {#each SINGLE_BUTTONS as btn (btn.action)}
+      {#if !can(btn.action) && tooltip(btn.action)}
+        <span id={`action-desc-${btn.action}`}>{tooltip(btn.action)}</span>
+      {/if}
+    {/each}
+  </div>
 </section>
 
 <Dialog bind:this={dialog} title={active ? SINGLE_BUTTONS.find((b) => b.action === active)?.label ?? active : ""}>
+  {#if dialogError}
+    <p class="dialog-error" role="alert">{dialogError}</p>
+  {/if}
   {#if active === "promote"}
     {#if flags.bulkOperations}
       <label class="check">
@@ -292,8 +322,9 @@
   {:else if active === "heartbeat"}
     <div class="form-group">
       <label for="hb-note">Note (optional, max 4096 bytes)</label>
-      <textarea id="hb-note" bind:value={note} rows="3" maxlength="4096"></textarea>
-      {#if noteOver}<span class="error">Note exceeds 4096 bytes.</span>{/if}
+      <textarea id="hb-note" bind:value={note} rows="3" aria-describedby="hb-note-count"></textarea>
+      <span id="hb-note-count" class="hint">{noteBytes}/4096 bytes{#if noteOver} — over the limit{/if}</span>
+      {#if noteOver}<span class="error" role="alert">Note exceeds 4096 bytes.</span>{/if}
     </div>
     <div class="dialog-actions">
       <button type="button" class="btn" onclick={() => dialog?.close()}>Cancel</button>
@@ -340,4 +371,13 @@
   .warn-text { color: var(--warning-text); font-size: 13px; }
   .hint { font-size: 12px; margin-bottom: 12px; }
   .busy { color: var(--text-dim); font-size: 13px; font-family: var(--font-ui); }
+  .dialog-error {
+    margin: 0 0 12px;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--warning);
+    color: var(--warning-text);
+    font-size: 13px;
+  }
 </style>

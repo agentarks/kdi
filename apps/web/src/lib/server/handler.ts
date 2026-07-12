@@ -41,7 +41,18 @@ export function apiPost<
     const disabled = gate();
     if (disabled) return disabled;
     try {
-      const body = (await event.request.json()) as B;
+      // Malformed/missing JSON is a client error, not a 500. Caught here so every
+      // POST route (16+ callers) returns a stable 400 instead of leaking a parse
+      // error through the generic 500 path. ponytail: one guard in the factory.
+      let body: B;
+      try {
+        body = (await event.request.json()) as B;
+      } catch {
+        return json(
+          { error: "invalid_json", message: "Request body must be valid JSON." },
+          { status: 400 },
+        );
+      }
       return json(await fn(event, body), { status });
     } catch (e) {
       return errorResponse(e);

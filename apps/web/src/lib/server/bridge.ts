@@ -1405,6 +1405,29 @@ export async function bootstrapProfilesJson(slug: string, force = false): Promis
 // ponytail: one core applier shared by single + bulk; flag/field validation
 // factored so neither path drifts from CLI semantics.
 
+// UTF-8 byte budget for heartbeat notes. The model constant
+// (MAX_HEARTBEAT_NOTE_BYTES in src/models/claim.ts) is NOT exported and is
+// enforced via JS `.length` / `.slice()` (UTF-16 code units), which under-counts
+// multibyte input — CJK (3 bytes/char) or emoji (4 bytes) blow past 4 KiB.
+// We clamp by true UTF-8 bytes at this server boundary; the model's looser
+// char cap becomes a harmless no-op. The deeper model/CLI char-based bug is
+// tracked as tech debt (out of scope here per AC-27: no src/models churn).
+export const MAX_HEARTBEAT_NOTE_BYTES = 4096;
+
+// Longest char-aligned prefix of `str` whose UTF-8 byte length is <= maxBytes.
+// Binary search so we never split a multibyte sequence. ponytail: O(log n) scans.
+export function clampUtf8Bytes(str: string, maxBytes: number): string {
+  if (Buffer.byteLength(str, "utf8") <= maxBytes) return str;
+  let lo = 0;
+  let hi = str.length;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (Buffer.byteLength(str.slice(0, mid), "utf8") <= maxBytes) lo = mid;
+    else hi = mid - 1;
+  }
+  return str.slice(0, lo);
+}
+
 export const SINGLE_LIFECYCLE_ACTIONS: ReadonlySet<LifecycleAction> = new Set([
   "promote", "block", "unblock", "schedule", "review", "archive",
   "complete", "assign", "reassign", "claim", "reclaim", "heartbeat",
@@ -1699,7 +1722,10 @@ function applyTaskAction(
       if (!t) return skipped(id, "not_found");
       if (t.archived_at !== null) return skipped(id, "already archived", "archived");
       if (t.status !== "running") return skipped(id, `wrong_status (current: ${t.status})`, t.status);
-      const ok = m.heartbeat(id, fields.note);
+      // Enforce the 4 KiB byte budget (not char count) at the boundary so
+      // multibyte input cannot exceed it.
+      const note = fields.note !== undefined ? clampUtf8Bytes(fields.note, MAX_HEARTBEAT_NOTE_BYTES) : undefined;
+      const ok = m.heartbeat(id, note);
       if (!ok) return skipped(id, "not running", t.status);
       return success(id, `Heartbeat recorded for task ${id}.`);
     }
