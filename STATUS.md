@@ -187,15 +187,30 @@
 - [ ] Acceptance: UI output matches `kdi stats --json` and `kdi diagnostics --json`
 - [ ] `bun run lint`, CLI build, `bun run check:web`, and `bun run build:web` pass with isolated `KDI_DB`
 
-## KDI-UI-010: Notification Subscriptions UI — Spec
-- [x] BRD/spec drafted at `specs/sveltekit-ui/KDI-UI-010-notification-subscriptions-ui.md`
-- [x] Implemented: `/notifications` board-scoped list + `/tasks/[id]/notifications` per-task list with subscribe form
-- [x] List global and per-task subscriptions (`subscriptionsJson` bridge helper, camelCase at the boundary)
-- [x] Subscribe/unsubscribe with platform, chat id, thread id, user id, and notifier profile (model `subscribe`/`unsubscribe` via bridge `subscribeJson`/`unsubscribeJson`; notifier profile validated inside `subscribe` via `getNotifier`)
-- [x] Include archived/unsubscribed toggle (`?archived=1` on both pages; unsubscribed rows dimmed)
-- [x] Gated by `FF_NOTIFY_SUBS` (disabled render + rejected writes when off) and the master `FF_SVELTEKIT_FRONTEND` flag
-- [x] Acceptance: covers `notify-subscribe`, `notify-list`, and `notify-unsubscribe` (bridge smoke `apps/web/src/lib/server/notifySubs.test.ts` + live HTTP user-loop verified)
-- [x] `bun run lint`, CLI build, `bun run check:web`, and `bun run build:web` pass with isolated `KDI_DB`; full suite 1067 pass / 0 fail
+## KDI-UI-010: Notification Subscriptions UI — Done
+- [x] Spec: `specs/sveltekit-ui/KDI-UI-010-notification-subscriptions-ui.md`
+- [x] Implemented in worktree `feat/kdi-ui-010-notify-subs-ui` (only `apps/web/` touched; no `src/models`, `src/commands`, `notifiers.ts`, `db.ts`, or `flags.ts` edits — AC-15)
+- [x] Routes: `apps/web/src/routes/notifications/+page.{server.ts,svelte}` + `apps/web/src/routes/tasks/[id]/notifications/+page.{server.ts,svelte}`; nav link in `apps/web/src/routes/+layout.svelte`
+- [x] Bridge: `apps/web/src/lib/server/bridge.ts` — extended `subscriptionsJson`, added `subscribeJson`/`unsubscribeJson`/`notifySubsFlags` + `requireNotifySubs`; `assertTaskOnBoard` enforces board membership (FR-18)
+- [x] **AC-01 global list** — `/notifications` resolves `?board` → `readCurrentBoard()` → `default`, renders 8 columns (id, task_id→link, platform, chat_id, thread_id?, user_id?, notifier_profile, subscribed_at); `notify-subs.http.test.ts` asserts `chat-1`+`telegram` appear.
+- [x] **AC-02 global archived toggle** — `?archived=1` adds Unsubscribed column, dims rows (`opacity:0.6`), shows `unsubscribed` badge; off → unsubscribed rows hidden. Verified live + prod CSS `tr.archived{opacity:.6}`.
+- [x] **AC-03 global empty state** — `.placeholder` "No active subscriptions." + "View board tasks →" link.
+- [x] **AC-04 per-task list** — `/tasks/[id]/notifications` loads task via `showTaskJson`, renders task summary + scoped table.
+- [x] **AC-05 per-task subscribe form** — platform dropdown (telegram/slack/discord/webhook only), required chat_id, optional thread_id/user_id/notifier_profile. `notify-subs.http.test.ts` posts the form and verifies the row.
+- [x] **AC-06 notifier profile default** — empty `notifier_profile` → server defaults to platform name; `notify-subs.test.ts` + live probe confirm stored `notifier_profile="telegram"`.
+- [x] **AC-07 notifier profile validation** — `getNotifier` runs inside model `subscribe()`; missing/misconfigured profiles return model error verbatim (`Notifier profile 'X' not found.` / `…missing required config key 'bot_token'.`).
+- [x] **AC-08 duplicate subscription** — `notify-subs.test.ts` asserts both no-thread (`…already exists (no thread)…`) and thread (`…+ thread already exists.`) messages.
+- [x] **AC-09 unsupported platform** — dropdown constrained to 4; direct POST rejected with `Unsupported platform. Valid platforms: telegram, slack, discord, webhook.`
+- [x] **AC-10 unsubscribe from per-task** — per-row `?/unsubscribe` form; `notify-subs.http.test.ts` AC-12/13 exercises it.
+- [x] **AC-11 unsubscribe from global** — per-row form sends task_id/platform/chat_id/thread_id; `notify-subs.http.test.ts` AC-16 unsubscribes from `/notifications`.
+- [x] **AC-12 thread-scoped unsubscribe** — leaves no-thread sub intact; proven in `notify-subs.test.ts` + `notify-subs.http.test.ts` (2→1, thread_id NULL).
+- [x] **AC-13 no-thread unsubscribe removes all** — removes all active subs for task/platform/chat incl. thread-scoped; proven (→0, archived=2).
+- [x] **AC-14 flag gate** — `FF_NOTIFY_SUBS=false`: routes render disabled state, mutations rejected (403). `FF_SVELTEKIT_FRONTEND=false`: both routes 307→`/disabled`, POST serializes redirect envelope (no mutation). Covered by `notify-subs.http.test.ts` + master-off test.
+- [x] **AC-15 no code churn** — `git diff ded623f..HEAD -- src/` is empty; only `apps/web/` + STATUS.md.
+- [x] **AC-16 UI smoke** — `apps/web/src/lib/server/notify-subs.http.test.ts` (CLI-first, copies `board-management.http.test.ts` pattern): creates board+task via `kdi` CLI, subscribes via per-task UI form, verifies row in `/notifications`, toggles `?archived=1`, unsubscribes from global list, verifies active empties + unsubscribed row only with toggle on; **cross-checks every step with `kdi notify-list --json`** on the same DB.
+- [x] Tests: `apps/web/src/lib/server/notify-subs.test.ts` (10 bridge cases) + `notify-subs.http.test.ts` (3 HTTP/user-loop cases incl. AC-09/12/13/14/16).
+- [x] Design (impeccable, locked "Brutalist Soft — Yellow"): global `.table`/`.form-group`/`.badge`/`.btn`, `opacity:0.6` dim + `unsubscribed` badge, empty states with guidance, inline `role="alert"` errors with `use:enhance` form stays mounted, inherits global `focus-visible` + `prefers-reduced-motion`.
+- [x] Verification (isolated `KDI_DB`): `bun install` ✓ · `bun run lint` ✓ · `bun run build` ✓ · `bun run check:web` 0 errors ✓ · `bun run build:web` ✓ · `bun test` **1071 pass / 0 fail**.
 
 ## KDI-UI-007: Dispatch Control Center — Spec
 - [x] BRD drafted at `specs/sveltekit-ui/KDI-UI-007-dispatch-control-center.md`
