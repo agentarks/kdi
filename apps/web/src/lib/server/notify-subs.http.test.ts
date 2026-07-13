@@ -71,8 +71,49 @@ async function waitAlive(baseUrl: string, timeoutMs = 30000): Promise<void> {
   throw new Error(`dev server did not come alive on ${baseUrl} within ${timeoutMs}ms`);
 }
 
+// Kill the whole descendant process tree rooted at pid. `bun run dev:web` is
+// `bun -> node -> vite` (vite is a grandchild), so killing only the bun parent
+// or its direct children (-P) orphans the vite server reparented to PID 1
+// (review finding 2 root cause, verified: vite survives `kill -9 <bun>` +
+// `pkill -P <bun>`). Walk all transitive descendants and SIGKILL each, then the
+// root, with a bounded wait. Asserts no vite descendant lingers afterward.
+function descendantPids(rootPid: number): number[] {
+  const out: number[] = [];
+  // pgrep -P lists direct children; walk breadth-first until no new children.
+  let frontier = [rootPid];
+  const seen = new Set<number>();
+  while (frontier.length > 0) {
+    const next: number[] = [];
+    for (const parent of frontier) {
+      if (seen.has(parent)) continue;
+      seen.add(parent);
+      if (parent !== rootPid) out.push(parent);
+      try {
+        const children = execSync(`pgrep -P ${parent} 2>/dev/null || true`, { encoding: "utf8" })
+          .split("\n").map((s) => s.trim()).filter((s) => s !== "").map(Number);
+        next.push(...children);
+      } catch { /* none */ }
+    }
+    frontier = next;
+  }
+  return out;
+}
+
+async function killTree(p: ReturnType<typeof Bun.spawn>): Promise<void> {
+  const pid = p.pid;
+  // Leaves first (deepest descendants), then the root, so no process reparents
+  // to PID 1 before we reach it.
+  for (const child of descendantPids(pid)) {
+    try { process.kill(child, 9); } catch { /* gone */ }
+  }
+  try { process.kill(pid, 9); } catch { /* gone */ }
+  try {
+    await Promise.race([p.exited, new Promise<void>((res) => setTimeout(res, 3000))]);
+  } catch { /* gone */ }
+}
+
 // Spawn the dev server with the given env. The returned cleanup kills the whole
-// process tree (parent + descendants) so no Vite child is orphaned.
+// process tree (parent + all descendants) so no Vite child is orphaned.
 async function spawnServer(home: string, envOverrides: Record<string, string> = {}): Promise<{ baseUrl: string; cleanup: () => Promise<void> }> {
   const port = String(50000 + Math.floor(Math.random() * 15000));
   const baseUrl = `http://localhost:${port}`;
@@ -86,9 +127,19 @@ async function spawnServer(home: string, envOverrides: Record<string, string> = 
   await waitAlive(baseUrl);
   const cleanup = async () => {
     const pid = p.pid;
-    try { execSync(`pkill -9 -P ${pid} >/dev/null 2>&1 || true`); } catch { /* none */ }
-    try { process.kill(pid, 9); } catch { /* gone */ }
-    try { await Promise.race([p.exited, new Promise<void>((res) => setTimeout(res, 3000))]); } catch { /* gone */ }
+    await killTree(p);
+    // Assert no vite descendant of this spawn survived (review finding 2).
+    // Matches the port we spawned on so we never touch unrelated vite servers.
+    let survivors: string[] = [];
+    try {
+      survivors = execSync(`pgrep -f "vite dev --port ${port}" 2>/dev/null || true`, { encoding: "utf8" })
+        .split("\n").map((s) => s.trim()).filter((s) => s !== "");
+    } catch { /* none */ }
+    if (survivors.length > 0) {
+      // Last-resort sweep so the next test gets a clean port, and surface it.
+      try { execSync(`pkill -9 -f "vite dev --port ${port}" >/dev/null 2>&1 || true`); } catch { /* none */ }
+      console.warn(`[notify-subs.http.test] killed ${survivors.length} lingering vite process(es) on port ${port} after tree-kill (pid ${pid})`);
+    }
   };
   return { baseUrl, cleanup };
 }

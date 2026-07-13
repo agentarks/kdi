@@ -180,7 +180,7 @@
 <style>
   /* DESIGN.md CSS architecture: forms/tables use the global .form-group / .table
      classes; only component-specific LAYOUT (the subscribe grid) lives here and
-     consumes the global tokens. Archived rows dim to opacity 0.6 (DESIGN.md a11y). */
+     consumes the global tokens. */
   .subscribe-form {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -194,20 +194,15 @@
   .req {
     color: var(--warning);
   }
-  .table tr.archived {
-    opacity: 0.6;
-  }
-  /* WCAG AA: #666 text-dim inside an opacity:0.6 row drops to ~2.5:1 contrast.
-     Override archived-row timestamps to full-strength --text so they clear 4.5:1
-     even when the row is dimmed. Row distinction comes from dimming + badge. */
+  /* WCAG AA archived treatment: do NOT dim the row via opacity. Parent opacity
+     composites the whole subtree (including the badge) into one group, dropping
+     badge fg/bg contrast to 4.18:1; a child opacity:1 cannot un-composite an
+     ancestor group. Instead dim only the row's text; the badge stays at full
+     strength and the row is still visibly archived via muted text + the
+     "unsubscribed" tag. */
+  .table tr.archived td,
   .table tr.archived .text-dim {
-    color: var(--text);
-  }
-  /* WCAG AA: the .badge fg/bg composes to ~4.18:1 under 0.6 row opacity. Un-dim
-     badges so they render at full contrast; the dimmed cells + the "unsubscribed"
-     label still mark the row archived. */
-  .table tr.archived .badge {
-    opacity: 1;
+    color: var(--text-dim);
   }
   .mono {
     font-family: var(--font-mono);
