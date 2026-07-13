@@ -203,6 +203,12 @@
   .table tr.archived .text-dim {
     color: var(--text);
   }
+  /* WCAG AA: the .badge fg/bg composes to ~4.18:1 under 0.6 row opacity. Un-dim
+     badges so they render at full contrast; the dimmed cells + the "unsubscribed"
+     label still mark the row archived. */
+  .table tr.archived .badge {
+    opacity: 1;
+  }
   .mono {
     font-family: var(--font-mono);
   }

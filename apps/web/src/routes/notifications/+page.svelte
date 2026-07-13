@@ -141,6 +141,13 @@
   .table tr.archived .text-dim {
     color: var(--text);
   }
+  /* WCAG AA: the .badge foreground/background composes to ~4.18:1 under the
+     row's 0.6 opacity, below 4.5:1. Un-dim badges so they render at full
+     contrast (yellow #fff176 / #1a1a1a is ~13:1); the row's dimmed cells and
+     the badge's "unsubscribed" text together still mark the row archived. */
+  .table tr.archived .badge {
+    opacity: 1;
+  }
   .mono {
     font-family: var(--font-mono);
   }

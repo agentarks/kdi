@@ -210,7 +210,7 @@
 - [x] **AC-16 UI smoke** — `apps/web/src/lib/server/notify-subs.http.test.ts` (CLI-first, copies `board-management.http.test.ts` pattern): creates board+task via `kdi` CLI, subscribes via per-task UI form, verifies row in `/notifications`, toggles `?archived=1`, unsubscribes from global list, verifies active empties + unsubscribed row only with toggle on; **cross-checks every step with `kdi notify-list --json`** on the same DB.
 - [x] Tests: `apps/web/src/lib/server/notify-subs.test.ts` (10 bridge cases) + `notify-subs.http.test.ts` (3 HTTP/user-loop cases incl. AC-09/12/13/14/16).
 - [x] Design (impeccable, locked "Brutalist Soft — Yellow"): global `.table`/`.form-group`/`.badge`/`.btn`, `opacity:0.6` dim + `unsubscribed` badge, empty states with guidance, inline `role="alert"` errors with `use:enhance` form stays mounted, inherits global `focus-visible` + `prefers-reduced-motion`.
-- [x] Verification (isolated `KDI_DB`): `bun install` ✓ · `bun run lint` ✓ · `bun run build` ✓ · `bun run check:web` 0 errors ✓ · `bun run build:web` ✓ · `bun test` **1134 pass / 0 fail** (post-rebase onto `main` incl. KDI-UI-006).
+- [x] Verification (isolated `KDI_DB`): `bun install` ✓ · `bun run lint` ✓ · `bun run build` ✓ · `bun run check:web` 0 errors ✓ · `bun run build:web` ✓ · `bun test` (single CI run) **1134 pass / 0 fail**. The notify-subs HTTP suite uses one server per describe (matching the `board-management.http.test.ts` template) and is reliable within a single run; back-to-back `bun test` invocations of any HTTP-smoke file can hang on Vite port release, a pre-existing environment issue (the template exhibits the same).
 
 ### KDI-UI-010 Residual risks / tech debt
 

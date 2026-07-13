@@ -1,17 +1,19 @@
 // KDI-UI-010 AC-16: notification-subscriptions UI smoke test.
 //
-// Copies the pattern from board-management.http.test.ts: spawn `bun run dev:web`
-// against an isolated temp HOME + KDI_DB with FF_NOTIFY_SUBS=true, create the
-// board + task via the CLI (kdi boards create / kdi create), exercise the
-// SvelteKit form actions the way a browser does, and cross-check every step
-// against `kdi notify-list` / `kdi notify-subscribe` / `kdi notify-unsubscribe`
-// on the same DB. This proves the UI and CLI read and write the same SQLite
-// database with identical behavior.
+// Spawns `bun run dev:web` against an isolated temp HOME + KDI_DB with
+// FF_NOTIFY_SUBS=true, creates the board + task via the CLI (kdi boards create /
+// kdi create), exercises the SvelteKit form actions the way a browser does, and
+// cross-checks every step against `kdi notify-list` on the same DB. Proves the
+// UI and CLI read and write the same SQLite database with identical behavior.
 //
-// SvelteKit enhanced forms return a 200 JSON envelope ({type:"redirect"|"failure"});
-// a plain form POST would return 303. submitForm accepts either shape as success.
+// Process lifecycle (deterministic): the board-management.http.test.ts template
+// spawns ONE server per describe and tears it down once in afterAll. Spawning
+// per-test orphaned Vite children and held ports between runs. This file matches
+// the template: one shared server for the four flags-on tests; each flag-off
+// config gets its own single-test describe with its own server. Three servers
+// total, no mid-file respawn.
 
-import { describe, it, expect, afterAll } from "bun:test";
+import { describe, it, expect, afterAll, beforeAll } from "bun:test";
 import { rmSync, existsSync, mkdtempSync } from "node:fs";
 import { execSync } from "node:child_process";
 import { tmpdir } from "node:os";
@@ -19,68 +21,76 @@ import { join } from "node:path";
 import { initDb } from "~/db";
 import { createBoardJson } from "./bridge";
 
-const REPO_ROOT = process.cwd(); // tests run from repo root
+const REPO_ROOT = process.cwd();
 
-let proc: ReturnType<typeof Bun.spawn> | null = null;
-let tmpHome: string;
-
-const kdiEnv = (): Record<string, string> => ({
-  HOME: tmpHome,
-  KDI_DB: join(tmpHome, "kdi.sqlite"),
-  FF_SVELTEKIT_FRONTEND: "true",
-  VITE_FF_SVELTEKIT_FRONTEND: "true",
-  FF_NOTIFY_SUBS: "true",
-});
-
-async function waitAlive(baseUrl: string, timeoutMs = 30000): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    try {
-      const r = await fetch(`${baseUrl}/`);
-      if (r.ok || r.status === 307 || r.status === 303 || r.status === 404) return;
-    } catch {
-      // not up yet
-    }
-    await new Promise((res) => setTimeout(res, 300));
-  }
-  throw new Error(`dev server did not come alive on ${baseUrl} within ${timeoutMs}ms`);
+function makeTmpHome(label: string): string {
+  const home = mkdtempSync(join(tmpdir(), `kdi-ui010-${label}-`));
+  process.env.HOME = home;
+  process.env.KDI_DB = join(home, "kdi.sqlite");
+  return home;
 }
 
-async function startServer(): Promise<string> {
-  if (proc) {
-    try { proc.kill(9); await proc.exited; } catch { /* gone */ }
-    proc = null;
-  }
-  const port = String(50000 + Math.floor(Math.random() * 15000));
-  const baseUrl = `http://localhost:${port}`;
-  proc = Bun.spawn({
-    cmd: ["bun", "run", "dev:web", "--port", port],
-    cwd: REPO_ROOT,
-    env: { ...process.env, ...kdiEnv(), NODE_ENV: "development" },
-    stdout: "ignore",
-    stderr: "ignore",
-  });
-  await waitAlive(baseUrl);
-  return baseUrl;
+function kdiEnv(home: string): Record<string, string> {
+  return {
+    HOME: home,
+    KDI_DB: join(home, "kdi.sqlite"),
+    FF_SVELTEKIT_FRONTEND: "true",
+    VITE_FF_SVELTEKIT_FRONTEND: "true",
+    FF_NOTIFY_SUBS: "true",
+  };
 }
 
-// Run the kdi CLI against the same isolated DB. Used both to seed state
-// (boards/tasks) and to cross-check UI results (notify-list) per AC-16.
-function runKdi(args: string): string {
+function runKdi(home: string, args: string): string {
   return execSync(`bun run src/index.ts ${args}`, {
     encoding: "utf-8",
     cwd: REPO_ROOT,
-    env: { ...process.env, ...kdiEnv() },
+    env: { ...process.env, ...kdiEnv(home) },
   }).trim();
 }
 
-function notifyList(taskId?: number, archived = false): string {
+function notifyList(home: string, taskId?: number, archived = false): string {
   const parts = ["notify-list"];
   if (taskId !== undefined) parts.push(String(taskId));
   parts.push("--board", "demo");
   if (archived) parts.push("--archived");
   parts.push("--json");
-  return runKdi(parts.join(" "));
+  return runKdi(home, parts.join(" "));
+}
+
+async function waitAlive(baseUrl: string, timeoutMs = 30000): Promise<void> {
+  // Poll /disabled (always 200 regardless of FF_SVELTEKIT_FRONTEND) so the
+  // readiness check works for both the flags-on and master-off servers.
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      const r = await fetch(`${baseUrl}/disabled`, { redirect: "manual" });
+      if (r.ok || r.status === 307 || r.status === 303 || r.status === 404) return;
+    } catch { /* not up yet */ }
+    await new Promise((res) => setTimeout(res, 300));
+  }
+  throw new Error(`dev server did not come alive on ${baseUrl} within ${timeoutMs}ms`);
+}
+
+// Spawn the dev server with the given env. The returned cleanup kills the whole
+// process tree (parent + descendants) so no Vite child is orphaned.
+async function spawnServer(home: string, envOverrides: Record<string, string> = {}): Promise<{ baseUrl: string; cleanup: () => Promise<void> }> {
+  const port = String(50000 + Math.floor(Math.random() * 15000));
+  const baseUrl = `http://localhost:${port}`;
+  const p = Bun.spawn({
+    cmd: ["bun", "run", "dev:web", "--port", port],
+    cwd: REPO_ROOT,
+    env: { ...process.env, ...kdiEnv(home), NODE_ENV: "development", ...envOverrides },
+    stdout: "ignore",
+    stderr: "ignore",
+  });
+  await waitAlive(baseUrl);
+  const cleanup = async () => {
+    const pid = p.pid;
+    try { execSync(`pkill -9 -P ${pid} >/dev/null 2>&1 || true`); } catch { /* none */ }
+    try { process.kill(pid, 9); } catch { /* gone */ }
+    try { await Promise.race([p.exited, new Promise<void>((res) => setTimeout(res, 3000))]); } catch { /* gone */ }
+  };
+  return { baseUrl, cleanup };
 }
 
 async function submitForm(baseUrl: string, path: string, body: Record<string, string>): Promise<{ status: number; ok: boolean; error?: string }> {
@@ -93,14 +103,12 @@ async function submitForm(baseUrl: string, path: string, body: Record<string, st
     redirect: "manual",
   });
   const text = await res.text();
-  // Success: 303 redirect OR 200 JSON envelope {type:"redirect"|"success"}.
   if (res.status === 303) return { status: 303, ok: true };
   if (res.status === 200) {
     try {
       const json = JSON.parse(text);
       if (json.type === "redirect" || json.type === "success") return { status: 303, ok: true, error: undefined };
       if (json.type === "failure") {
-        // Unwrap SvelteKit's serialized failure data to the message string.
         const data = typeof json.data === "string" ? JSON.parse(json.data) : json.data;
         const msg = Array.isArray(data) ? data[1] : data?.error?.message ?? data?.error;
         return { status: json.status, ok: false, error: msg };
@@ -110,177 +118,208 @@ async function submitForm(baseUrl: string, path: string, body: Record<string, st
   return { status: res.status, ok: false, error: text.slice(0, 200) };
 }
 
-afterAll(() => {
-  if (proc) { try { proc.kill(9); } catch { /* gone */ } proc = null; }
-  if (tmpHome && existsSync(tmpHome)) rmSync(tmpHome, { recursive: true, force: true });
-});
+// ---------------------------------------------------------------------------
+// Shared-server suite: the four flags-on tests reuse ONE dev server.
+// ---------------------------------------------------------------------------
 
 describe("KDI-UI-010 notification subscriptions UI smoke (AC-16)", () => {
-  it("subscribe via per-task UI -> global list -> toggle -> unsubscribe -> empty (cross-checked with kdi notify-list)", async () => {
-    tmpHome = mkdtempSync(join(tmpdir(), "kdi-ui010-http-"));
-    // Seed the DB file in the test process, then create the board + task via the
-    // CLI exactly as an operator would (AC-16: "create a board and task").
-    process.env.HOME = tmpHome;
-    process.env.KDI_DB = join(tmpHome, "kdi.sqlite");
+  let home: string;
+  let baseUrl: string;
+  let cleanup: () => Promise<void>;
+  let demoTaskId: number;
+  let semTaskId: number;
+
+  beforeAll(async () => {
+    home = makeTmpHome("http");
     initDb();
-    await createBoardJson({ slug: "demo", workdir: tmpHome });
-    const createOut = runKdi('create "Notify me" --board demo');
-    const taskId = Number(createOut.trim());
-    expect(taskId).toBeGreaterThan(0);
+    await createBoardJson({ slug: "demo", workdir: home });
+    demoTaskId = Number(runKdi(home, 'create "Notify me" --board demo').trim());
+    semTaskId = Number(runKdi(home, 'create "Sem" --board demo').trim());
+    ({ baseUrl, cleanup } = await spawnServer(home));
+  }, 120000);
 
-    const baseUrl = await startServer();
+  afterAll(async () => {
+    if (cleanup) await cleanup();
+    if (home && existsSync(home)) rmSync(home, { recursive: true, force: true });
+  });
 
-    // AC-16: subscribe to the task via the per-task UI form (log is always available).
-    const sub = await submitForm(baseUrl, `/tasks/${taskId}/notifications?board=demo&/subscribe`, {
+  it("subscribe via per-task UI -> global list -> toggle -> unsubscribe -> empty (cross-checked with kdi notify-list)", async () => {
+    const sub = await submitForm(baseUrl, `/tasks/${demoTaskId}/notifications?board=demo&/subscribe`, {
       platform: "telegram", chat_id: "chat-1", notifier_profile: "log",
     });
     expect(sub.ok).toBe(true);
 
-    // Cross-check with `kdi notify-list <task>` on the same DB.
-    const cliTaskList = JSON.parse(notifyList(taskId));
+    const cliTaskList = JSON.parse(notifyList(home, demoTaskId));
     expect(cliTaskList).toHaveLength(1);
     expect(cliTaskList[0].platform).toBe("telegram");
     expect(cliTaskList[0].chat_id).toBe("chat-1");
     expect(cliTaskList[0].notifier_profile).toBe("log");
 
-    // AC-01/AC-16: the subscription appears in the GLOBAL list for the board.
     const globalActive = await (await fetch(`${baseUrl}/notifications?board=demo`)).text();
     expect(globalActive).toContain("chat-1");
     expect(globalActive).toContain("telegram");
     expect(globalActive).not.toContain("No active subscriptions");
-    // CLI parity: board-scoped notify-list sees it too.
-    const cliBoardList = JSON.parse(notifyList());
+    const cliBoardList = JSON.parse(notifyList(home));
     expect(cliBoardList).toHaveLength(1);
-    expect(cliBoardList[0].task_id).toBe(taskId);
+    expect(cliBoardList[0].task_id).toBe(demoTaskId);
 
-    // AC-16 (spec step order): toggle "Include unsubscribed" BEFORE unsubscribe —
-    // the still-active row appears and is NOT marked unsubscribed.
+    // AC-16 (spec step order): toggle BEFORE unsubscribe — still-active row shows
+    // the Unsubscribe button, NOT the unsubscribed badge.
     const archivedActive = await (await fetch(`${baseUrl}/notifications?board=demo&archived=1`)).text();
     expect(archivedActive).toContain("chat-1");
     expect(archivedActive).toContain(">Unsubscribe</button>");
     expect(archivedActive).not.toContain(">unsubscribed</span>");
 
-    // AC-11/AC-16: unsubscribe from the GLOBAL list.
     const unsub = await submitForm(baseUrl, `/notifications?board=demo&/unsubscribe`, {
-      task_id: String(taskId), platform: "telegram", chat_id: "chat-1",
+      task_id: String(demoTaskId), platform: "telegram", chat_id: "chat-1",
     });
     expect(unsub.ok).toBe(true);
 
-    // AC-16: active global list is now empty.
     const globalAfter = await (await fetch(`${baseUrl}/notifications?board=demo`)).text();
     expect(globalAfter).not.toContain("chat-1");
     expect(globalAfter).toContain("No active subscriptions");
 
-    // AC-02/AC-16: the unsubscribed row reappears ONLY with the toggle on.
     const archivedAfter = await (await fetch(`${baseUrl}/notifications?board=demo&archived=1`)).text();
     expect(archivedAfter).toContain("chat-1");
     expect(archivedAfter).toContain("unsubscribed");
 
-    // CLI parity: active list empty, archived list has the soft-deleted row.
-    expect(JSON.parse(notifyList(taskId, false))).toHaveLength(0);
-    expect(JSON.parse(notifyList(taskId, true))).toHaveLength(1);
+    expect(JSON.parse(notifyList(home, demoTaskId, false))).toHaveLength(0);
+    expect(JSON.parse(notifyList(home, demoTaskId, true))).toHaveLength(1);
   }, 120000);
 
   it("AC-09/AC-12/AC-13: unsupported platform rejection + thread-scoped vs no-thread unsubscribe", async () => {
-    tmpHome = mkdtempSync(join(tmpdir(), "kdi-ui010-http-"));
-    process.env.HOME = tmpHome;
-    process.env.KDI_DB = join(tmpHome, "kdi.sqlite");
-    initDb();
-    await createBoardJson({ slug: "demo", workdir: tmpHome });
-    const taskId = Number(runKdi('create "Sem" --board demo').trim());
-    const baseUrl = await startServer();
-
-    // AC-09: unsupported platform rejected with CLI-verbatim text via the form.
-    const bad = await submitForm(baseUrl, `/tasks/${taskId}/notifications?board=demo&/subscribe`, {
+    const bad = await submitForm(baseUrl, `/tasks/${semTaskId}/notifications?board=demo&/subscribe`, {
       platform: "carrier-pigeon", chat_id: "c", notifier_profile: "log",
     });
     expect(bad.ok).toBe(false);
     expect(bad.error).toContain("Unsupported platform");
 
-    // Create a no-thread + a thread-scoped sub for the same platform/chat.
-    expect((await submitForm(baseUrl, `/tasks/${taskId}/notifications?board=demo&/subscribe`, {
+    expect((await submitForm(baseUrl, `/tasks/${semTaskId}/notifications?board=demo&/subscribe`, {
       platform: "slack", chat_id: "shared", notifier_profile: "log",
     })).ok).toBe(true);
-    expect((await submitForm(baseUrl, `/tasks/${taskId}/notifications?board=demo&/subscribe`, {
+    expect((await submitForm(baseUrl, `/tasks/${semTaskId}/notifications?board=demo&/subscribe`, {
       platform: "slack", chat_id: "shared", thread_id: "t1", notifier_profile: "log",
     })).ok).toBe(true);
-    expect(JSON.parse(notifyList(taskId))).toHaveLength(2);
+    expect(JSON.parse(notifyList(home, semTaskId))).toHaveLength(2);
 
-    // AC-12: thread-scoped unsubscribe leaves the no-thread sub intact.
-    expect((await submitForm(baseUrl, `/tasks/${taskId}/notifications?board=demo&/unsubscribe`, {
+    expect((await submitForm(baseUrl, `/tasks/${semTaskId}/notifications?board=demo&/unsubscribe`, {
       platform: "slack", chat_id: "shared", thread_id: "t1",
     })).ok).toBe(true);
-    const afterThread = JSON.parse(notifyList(taskId));
+    const afterThread = JSON.parse(notifyList(home, semTaskId));
     expect(afterThread).toHaveLength(1);
     expect(afterThread[0].thread_id).toBeNull();
 
-    // AC-13: no-thread unsubscribe removes ALL remaining active subs for that
-    // platform/chat (here just the no-thread one).
-    expect((await submitForm(baseUrl, `/tasks/${taskId}/notifications?board=demo&/unsubscribe`, {
+    expect((await submitForm(baseUrl, `/tasks/${semTaskId}/notifications?board=demo&/unsubscribe`, {
       platform: "slack", chat_id: "shared",
     })).ok).toBe(true);
-    expect(JSON.parse(notifyList(taskId, false))).toHaveLength(0);
-    expect(JSON.parse(notifyList(taskId, true))).toHaveLength(2);
+    expect(JSON.parse(notifyList(home, semTaskId, false))).toHaveLength(0);
+    expect(JSON.parse(notifyList(home, semTaskId, true))).toHaveLength(2);
   }, 120000);
 
-  it("AC-14: FF_NOTIFY_SUBS=false disables mutations (disabled render, rejected POST)", async () => {
-    tmpHome = mkdtempSync(join(tmpdir(), "kdi-ui010-http-"));
-    process.env.HOME = tmpHome;
-    process.env.KDI_DB = join(tmpHome, "kdi.sqlite");
-    initDb();
-    await createBoardJson({ slug: "demo", workdir: tmpHome });
-    const taskId = Number(runKdi('create "Gated" --board demo').trim());
+  it("form actions preserve the selected board ( Finding 1 regression )", async () => {
+    await createBoardJson({ slug: "real", workdir: home });
+    const taskId = Number(runKdi(home, 'create "On real" --board real').trim());
+    const { subscribeJson } = await import("./bridge");
+    process.env.FF_NOTIFY_SUBS = "true";
+    await subscribeJson("real", taskId, "telegram", "c1", { notifierProfile: "log" });
 
-    // Re-spawn the server with the feature flag off.
-    if (proc) { try { proc.kill(9); await proc.exited; } catch { /* gone */ } proc = null; }
-    const port = String(50000 + Math.floor(Math.random() * 15000));
-    const baseUrl = `http://localhost:${port}`;
-    proc = Bun.spawn({
-      cmd: ["bun", "run", "dev:web", "--port", port],
-      cwd: REPO_ROOT,
-      env: { ...process.env, ...kdiEnv(), FF_NOTIFY_SUBS: "false", NODE_ENV: "development" },
-      stdout: "ignore",
-      stderr: "ignore",
+    const html = await (await fetch(`${baseUrl}/notifications?board=real`)).text();
+    expect(html).toContain('name="board" value="real"');
+    const taskHtml = await (await fetch(`${baseUrl}/tasks/${taskId}/notifications?board=real`)).text();
+    expect(taskHtml).toContain('name="board" value="real"');
+
+    const params = new URLSearchParams({ board: "real", task_id: String(taskId), platform: "telegram", chat_id: "c1" });
+    const res = await fetch(`${baseUrl}/notifications?/unsubscribe`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded", origin: baseUrl, referer: `${baseUrl}/notifications` },
+      body: params.toString(),
+      redirect: "manual",
     });
-    await waitAlive(baseUrl);
+    const rBody = await res.json();
+    expect(["redirect", "success"]).toContain(rBody.type);
+    expect(JSON.parse(notifyList(home, taskId))).toHaveLength(0);
+  }, 120000);
 
-    // Disabled render on both routes.
+  it("FR-13: missing-task subscribe returns the model message 'Task <id> not found.' ( Finding 2 regression )", async () => {
+    const res = await submitForm(baseUrl, `/tasks/9999/notifications?board=demo&/subscribe`, {
+      platform: "telegram", chat_id: "c", notifier_profile: "log",
+    });
+    expect(res.ok).toBe(false);
+    expect(res.error).toBe("Task 9999 not found.");
+    // Cross-board task (exists on another board) is still blocked.
+    await createBoardJson({ slug: "other", workdir: home });
+    const xTaskId = Number(runKdi(home, 'create "On other" --board other').trim());
+    const xRes = await submitForm(baseUrl, `/tasks/${xTaskId}/notifications?board=demo&/subscribe`, {
+      platform: "telegram", chat_id: "c", notifier_profile: "log",
+    });
+    expect(xRes.ok).toBe(false);
+    expect(xRes.error).toBe(`Task ${xTaskId} not found on board "demo".`);
+  }, 120000);
+});
+
+// ---------------------------------------------------------------------------
+// Flag-off suites: each is its own describe so it owns one server start/stop
+// with the alternate flag env. No mid-file respawn of a shared server.
+// ---------------------------------------------------------------------------
+
+describe("KDI-UI-010 flag gate (AC-14): FF_NOTIFY_SUBS=false", () => {
+  let home: string;
+  let baseUrl: string;
+  let cleanup: () => Promise<void>;
+
+  beforeAll(async () => {
+    home = makeTmpHome("notifoff");
+    initDb();
+    await createBoardJson({ slug: "demo", workdir: home });
+    const taskId = Number(runKdi(home, 'create "Gated" --board demo').trim());
+    ({ baseUrl, cleanup } = await spawnServer(home, { FF_NOTIFY_SUBS: "false" }));
+    // stash for the test body
+    (globalThis as Record<string, unknown>).__ui010_notifoff_task = taskId;
+  }, 120000);
+
+  afterAll(async () => {
+    if (cleanup) await cleanup();
+    if (home && existsSync(home)) rmSync(home, { recursive: true, force: true });
+  });
+
+  it("disabled render + rejected subscribe POST (403) + no subscription created", async () => {
+    const taskId = (globalThis as Record<string, unknown>).__ui010_notifoff_task as number;
     expect(await (await fetch(`${baseUrl}/notifications?board=demo`)).text()).toContain("Notification subscriptions feature is not enabled");
     expect(await (await fetch(`${baseUrl}/tasks/${taskId}/notifications?board=demo`)).text()).toContain("Notification subscriptions feature is not enabled");
 
-    // Subscribe POST is rejected and creates nothing.
     const sub = await submitForm(baseUrl, `/tasks/${taskId}/notifications?board=demo&/subscribe`, {
       platform: "telegram", chat_id: "x", notifier_profile: "log",
     });
     expect(sub.ok).toBe(false);
     expect(sub.status).toBe(403);
+    expect(JSON.parse(notifyList(home, taskId, true))).toHaveLength(0);
+  }, 120000);
+});
 
-    // CLI parity on the same DB: zero subscriptions (the gate is in the bridge;
-    // the CLI itself also rejects via requireFlag, so 0 rows is guaranteed).
-    expect(JSON.parse(notifyList(taskId, true))).toHaveLength(0);
+describe("KDI-UI-010 flag gate (AC-14): FF_SVELTEKIT_FRONTEND=false", () => {
+  let home: string;
+  let baseUrl: string;
+  let cleanup: () => Promise<void>;
+
+  beforeAll(async () => {
+    home = makeTmpHome("masteroff");
+    initDb();
+    await createBoardJson({ slug: "demo", workdir: home });
+    const taskId = Number(runKdi(home, 'create "MasterOff" --board demo').trim());
+    ({ baseUrl, cleanup } = await spawnServer(home, {
+      FF_SVELTEKIT_FRONTEND: "false",
+      VITE_FF_SVELTEKIT_FRONTEND: "false",
+    }));
+    (globalThis as Record<string, unknown>).__ui010_masteroff_task = taskId;
   }, 120000);
 
-  it("AC-14: FF_SVELTEKIT_FRONTEND=false redirects every route to /disabled and blocks mutations", async () => {
-    tmpHome = mkdtempSync(join(tmpdir(), "kdi-ui010-http-master-"));
-    process.env.HOME = tmpHome;
-    process.env.KDI_DB = join(tmpHome, "kdi.sqlite");
-    initDb();
-    await createBoardJson({ slug: "demo", workdir: tmpHome });
-    const taskId = Number(runKdi('create "MasterOff" --board demo').trim());
+  afterAll(async () => {
+    if (cleanup) await cleanup();
+    if (home && existsSync(home)) rmSync(home, { recursive: true, force: true });
+  });
 
-    if (proc) { try { proc.kill(9); await proc.exited; } catch { /* gone */ } proc = null; }
-    const port = String(50000 + Math.floor(Math.random() * 15000));
-    const baseUrl = `http://localhost:${port}`;
-    proc = Bun.spawn({
-      cmd: ["bun", "run", "dev:web", "--port", port],
-      cwd: REPO_ROOT,
-      env: { ...process.env, ...kdiEnv(), FF_SVELTEKIT_FRONTEND: "false", VITE_FF_SVELTEKIT_FRONTEND: "false", NODE_ENV: "development" },
-      stdout: "ignore",
-      stderr: "ignore",
-    });
-    await waitAlive(baseUrl);
-
-    // GET loaders redirect to /disabled (loader bodies never run).
+  it("redirects every route to /disabled and blocks mutations", async () => {
+    const taskId = (globalThis as Record<string, unknown>).__ui010_masteroff_task as number;
     const g1 = await fetch(`${baseUrl}/notifications?board=demo`, { redirect: "manual" });
     expect(g1.status).toBe(307);
     expect(g1.headers.get("location")).toBe("/disabled");
@@ -288,7 +327,6 @@ describe("KDI-UI-010 notification subscriptions UI smoke (AC-16)", () => {
     expect(g2.status).toBe(307);
     expect(g2.headers.get("location")).toBe("/disabled");
 
-    // POST mutation serializes the redirect envelope; the action body never runs.
     const p = await fetch(`${baseUrl}/tasks/${taskId}/notifications?board=demo&/subscribe`, {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded", origin: baseUrl, referer: `${baseUrl}/tasks/${taskId}/notifications` },
@@ -299,75 +337,6 @@ describe("KDI-UI-010 notification subscriptions UI smoke (AC-16)", () => {
     expect(pBody.type).toBe("redirect");
     expect(pBody.status).toBe(307);
     expect(pBody.location).toBe("/disabled");
-
-    // CLI parity: no subscription created.
-    expect(JSON.parse(notifyList(taskId, true))).toHaveLength(0);
-  }, 120000);
-
-  it("form actions preserve the selected board ( Finding 1 regression )", async () => {
-    tmpHome = mkdtempSync(join(tmpdir(), "kdi-ui010-http-board-"));
-    process.env.HOME = tmpHome;
-    process.env.KDI_DB = join(tmpHome, "kdi.sqlite");
-    initDb();
-    // Two boards; a task + subscription live on "real", none on "other".
-    await createBoardJson({ slug: "real", workdir: tmpHome });
-    await createBoardJson({ slug: "other", workdir: tmpHome });
-    const taskId = Number(runKdi('create "On real" --board real').trim());
-    // Seed the subscription via the bridge (notify-subscribe has no --board flag
-    // and we only need a row to exercise the unsubscribe form).
-    const { subscribeJson } = await import("./bridge");
-    process.env.FF_NOTIFY_SUBS = "true";
-    await subscribeJson("real", taskId, "telegram", "c1", { notifierProfile: "log" });
-
-    const baseUrl = await startServer();
-
-    // The rendered unsubscribe form must carry the board in a hidden field so the
-    // `?/unsubscribe` action (which drops the page query string) still targets
-    // the right board. Assert the hidden field exists and names the viewed board.
-    const html = await (await fetch(`${baseUrl}/notifications?board=real`)).text();
-    expect(html).toContain('name="board" value="real"');
-    const taskHtml = await (await fetch(`${baseUrl}/tasks/${taskId}/notifications?board=real`)).text();
-    expect(taskHtml).toContain('name="board" value="real"');
-
-    // Functional proof: POST the unsubscribe action WITHOUT ?board in the URL
-    // (as the rendered form does). The hidden field must keep it targeting `real`
-    // so the sub is actually removed.
-    const params = new URLSearchParams({ board: "real", task_id: String(taskId), platform: "telegram", chat_id: "c1" });
-    const res = await fetch(`${baseUrl}/notifications?/unsubscribe`, {
-      method: "POST",
-      headers: { "content-type": "application/x-www-form-urlencoded", origin: baseUrl, referer: `${baseUrl}/notifications` },
-      body: params.toString(),
-      redirect: "manual",
-    });
-    const rBody = await res.json();
-    expect(["redirect", "success"]).toContain(rBody.type);
-    // Cross-check: the subscription is gone on the `real` board.
-    expect(JSON.parse(notifyList(taskId))).toHaveLength(0);
-  }, 120000);
-
-  it("FR-13: missing-task subscribe returns the model message 'Task <id> not found.' ( Finding 2 regression )", async () => {
-    tmpHome = mkdtempSync(join(tmpdir(), "kdi-ui010-http-fr13-"));
-    process.env.HOME = tmpHome;
-    process.env.KDI_DB = join(tmpHome, "kdi.sqlite");
-    initDb();
-    await createBoardJson({ slug: "demo", workdir: tmpHome });
-    const baseUrl = await startServer();
-
-    // Task 9999 does not exist. FR-13 requires the model's verbatim message,
-    // NOT assertTaskOnBoard's board-naming variant.
-    const res = await submitForm(baseUrl, `/tasks/9999/notifications?board=demo&/subscribe`, {
-      platform: "telegram", chat_id: "c", notifier_profile: "log",
-    });
-    expect(res.ok).toBe(false);
-    expect(res.error).toBe("Task 9999 not found.");
-    // Cross-board task (exists on another board) is still blocked and reports the
-    // board-naming message.
-    await createBoardJson({ slug: "other", workdir: tmpHome });
-    const xTaskId = Number(runKdi('create "On other" --board other').trim());
-    const xRes = await submitForm(baseUrl, `/tasks/${xTaskId}/notifications?board=demo&/subscribe`, {
-      platform: "telegram", chat_id: "c", notifier_profile: "log",
-    });
-    expect(xRes.ok).toBe(false);
-    expect(xRes.error).toBe(`Task ${xTaskId} not found on board "demo".`);
+    expect(JSON.parse(notifyList(home, taskId, true))).toHaveLength(0);
   }, 120000);
 });
