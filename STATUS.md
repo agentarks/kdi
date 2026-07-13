@@ -205,12 +205,12 @@
 - [x] **AC-11 unsubscribe from global** — per-row form sends task_id/platform/chat_id/thread_id; `notify-subs.http.test.ts` AC-16 unsubscribes from `/notifications`.
 - [x] **AC-12 thread-scoped unsubscribe** — leaves no-thread sub intact; proven in `notify-subs.test.ts` + `notify-subs.http.test.ts` (2→1, thread_id NULL).
 - [x] **AC-13 no-thread unsubscribe removes all** — removes all active subs for task/platform/chat incl. thread-scoped; proven (→0, archived=2).
-- [x] **AC-14 flag gate** — `FF_NOTIFY_SUBS=false`: routes render disabled state, mutations rejected (403). `FF_SVELTEKIT_FRONTEND=false`: both routes 307→`/disabled`, POST serializes redirect envelope (no mutation). Covered by `notify-subs.http.test.ts` + master-off test.
+- [x] **AC-14 flag gate** — `FF_NOTIFY_SUBS=false`: routes render disabled state, mutations rejected (403); `FF_SVELTEKIT_FRONTEND=false`: both routes 307→`/disabled`, POST serializes redirect envelope (no mutation). Both cases covered by dedicated tests in `notify-subs.http.test.ts`.
 - [x] **AC-15 no code churn** — `git diff ded623f..HEAD -- src/` is empty; only `apps/web/` + STATUS.md.
 - [x] **AC-16 UI smoke** — `apps/web/src/lib/server/notify-subs.http.test.ts` (CLI-first, copies `board-management.http.test.ts` pattern): creates board+task via `kdi` CLI, subscribes via per-task UI form, verifies row in `/notifications`, toggles `?archived=1`, unsubscribes from global list, verifies active empties + unsubscribed row only with toggle on; **cross-checks every step with `kdi notify-list --json`** on the same DB.
 - [x] Tests: `apps/web/src/lib/server/notify-subs.test.ts` (10 bridge cases) + `notify-subs.http.test.ts` (3 HTTP/user-loop cases incl. AC-09/12/13/14/16).
 - [x] Design (impeccable, locked "Brutalist Soft — Yellow"): global `.table`/`.form-group`/`.badge`/`.btn`, `opacity:0.6` dim + `unsubscribed` badge, empty states with guidance, inline `role="alert"` errors with `use:enhance` form stays mounted, inherits global `focus-visible` + `prefers-reduced-motion`.
-- [x] Verification (isolated `KDI_DB`): `bun install` ✓ · `bun run lint` ✓ · `bun run build` ✓ · `bun run check:web` 0 errors ✓ · `bun run build:web` ✓ · `bun test` **1130 pass / 0 fail** (post-rebase onto `main` incl. KDI-UI-006).
+- [x] Verification (isolated `KDI_DB`): `bun install` ✓ · `bun run lint` ✓ · `bun run build` ✓ · `bun run check:web` 0 errors ✓ · `bun run build:web` ✓ · `bun test` **1134 pass / 0 fail** (post-rebase onto `main` incl. KDI-UI-006).
 
 ### KDI-UI-010 Residual risks / tech debt
 

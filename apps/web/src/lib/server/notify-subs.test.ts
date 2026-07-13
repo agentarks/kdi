@@ -222,4 +222,13 @@ describe("KDI-UI-010 notification subscriptions bridge", () => {
     const list = await subscriptionsJson(qs({ taskId: String(task.id) }));
     expect(list.subscriptions.length).toBe(0);
   });
+
+  it("FR-13: missing task surfaces the model message 'Task <id> not found.' verbatim", async () => {
+    await createBoardJson({ slug: "solo", workdir: tmpHome });
+    // Task 9999 does not exist; subscribeJson must let the model throw its
+    // FR-13 message (not assertTaskOnBoard's board-naming variant).
+    await expect(
+      subscribeJson("solo", 9999, "telegram", "c", { notifierProfile: "log" }),
+    ).rejects.toThrow(/^Task 9999 not found\.$/);
+  });
 });

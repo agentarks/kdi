@@ -22,10 +22,14 @@ function getField(data: FormData, name: string): string {
   return v === null ? "" : v.toString().trim();
 }
 
-// Board resolution chain shared by load + both actions (FR-17): ?board= ->
-// current board -> "default". One helper so the action mutations resolve the
-// same board the load did, before assertTaskOnBoard runs inside the bridge.
-async function resolveBoardSlug(url: URL): Promise<string> {
+// Board resolution chain shared by load + both actions (FR-17): a hidden `board`
+// form field (if present) -> ?board= query -> current board -> "default". The
+// hidden field is required because SvelteKit form actions `?/...` drop the page
+// query string, so a POST from /tasks/[id]/notifications?board=other would
+// otherwise lose the board. One helper so load + actions resolve consistently.
+async function resolveBoardSlug(url: URL, formData?: FormData): Promise<string> {
+  const formBoard = formData?.get("board");
+  if (formBoard !== null && formBoard !== undefined && String(formBoard) !== "") return String(formBoard);
   return url.searchParams.get("board") ?? (await readCurrentBoardJson()) ?? "default";
 }
 
@@ -63,8 +67,8 @@ export const actions: Actions = {
     if (!isSvelteKitEnabled() || !notifySubsFlags().notifySubs) {
       return fail(403, { error: "Notification subscriptions feature is not enabled." });
     }
-    const boardSlug = await resolveBoardSlug(url);
     const data = await request.formData();
+    const boardSlug = await resolveBoardSlug(url, data);
     const platform = getField(data, "platform").toLowerCase();
     const chatId = getField(data, "chat_id");
     const threadId = getField(data, "thread_id");
@@ -97,8 +101,8 @@ export const actions: Actions = {
     if (!isSvelteKitEnabled() || !notifySubsFlags().notifySubs) {
       return fail(403, { error: "Notification subscriptions feature is not enabled." });
     }
-    const boardSlug = await resolveBoardSlug(url);
     const data = await request.formData();
+    const boardSlug = await resolveBoardSlug(url, data);
     const platform = getField(data, "platform");
     const chatId = getField(data, "chat_id");
     const threadIdRaw = data.get("thread_id");

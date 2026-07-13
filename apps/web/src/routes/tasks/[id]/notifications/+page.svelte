@@ -79,6 +79,7 @@
         <p class="success" role="status">Subscribed.</p>
       {/if}
       <form method="POST" action="?/subscribe" use:enhance class="subscribe-form">
+        <input type="hidden" name="board" value={data.boardSlug} />
         <div class="form-group">
           <label for="platform">Platform</label>
           <select id="platform" name="platform" bind:value={values.platform}>
@@ -151,6 +152,7 @@
                 <td>
                   {#if sub.unsubscribedAt === null}
                     <form method="POST" action="?/unsubscribe" use:enhance class="inline-form">
+                      <input type="hidden" name="board" value={data.boardSlug} />
                       <input type="hidden" name="platform" value={sub.platform} />
                       <input type="hidden" name="chat_id" value={sub.chatId} />
                       {#if sub.threadId}<input type="hidden" name="thread_id" value={sub.threadId} />{/if}
@@ -194,6 +196,12 @@
   }
   .table tr.archived {
     opacity: 0.6;
+  }
+  /* WCAG AA: #666 text-dim inside an opacity:0.6 row drops to ~2.5:1 contrast.
+     Override archived-row timestamps to full-strength --text so they clear 4.5:1
+     even when the row is dimmed. Row distinction comes from dimming + badge. */
+  .table tr.archived .text-dim {
+    color: var(--text);
   }
   .mono {
     font-family: var(--font-mono);

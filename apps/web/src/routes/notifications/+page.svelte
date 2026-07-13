@@ -108,6 +108,7 @@
               <td>
                 {#if sub.unsubscribedAt === null}
                   <form method="POST" action="?/unsubscribe" use:enhance class="inline-form">
+                    <input type="hidden" name="board" value={data.boardSlug} />
                     <input type="hidden" name="task_id" value={sub.taskId} />
                     <input type="hidden" name="platform" value={sub.platform} />
                     <input type="hidden" name="chat_id" value={sub.chatId} />
@@ -132,6 +133,13 @@
      instead of reinventing them. */
   .table tr.archived {
     opacity: 0.6;
+  }
+  /* WCAG AA: #666 text-dim inside an opacity:0.6 row drops to ~2.5:1 contrast.
+     Override archived-row timestamps to full-strength --text (#1a1a1a), which
+     clears 4.5:1 even when the row is dimmed. Row distinction comes from the
+     dimming + the "unsubscribed" badge, not from low-contrast text. */
+  .table tr.archived .text-dim {
+    color: var(--text);
   }
   .mono {
     font-family: var(--font-mono);

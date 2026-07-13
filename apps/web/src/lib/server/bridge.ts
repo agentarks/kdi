@@ -1332,10 +1332,23 @@ export interface SubscribeInput {
 }
 
 // Shape mirrors editTaskJson(slug, id, ...): the bridge verifies board membership
-// via assertTaskOnBoard so mutations stay consistent with the resolved board,
-// matching every other task-scoped write helper. The model's subscribe()/
-// unsubscribe() are not board-scoped, so this is where the UI's board context is
-// enforced (FR-18).
+// so mutations stay consistent with the resolved board, matching every other
+// task-scoped write helper. The model's subscribe()/unsubscribe() are not
+// board-scoped, so this is where the UI's board context is enforced (FR-18).
+//
+// FR-13 requires the model's verbatim `Task <id> not found.` for a missing task,
+// so we do NOT use assertTaskOnBoard() here (its message names the board). We
+// check membership ourselves: a missing task falls through to the model, which
+// throws the FR-13 message; a task that exists but belongs to another board is
+// blocked with the same task_not_found code the rest of the bridge uses.
+async function guardTaskOnBoard(m: Awaited<ReturnType<typeof models>>, slug: string, taskId: number): Promise<void> {
+  const task = m.showTask(taskId);
+  if (task && task.board_id !== (await resolveBoard(slug)).id) {
+    throw new BridgeError("task_not_found", 404, `Task ${taskId} not found on board "${slug}".`);
+  }
+  // task missing -> fall through; the model throws `Task <id> not found.`
+}
+
 export async function subscribeJson(
   slug: string,
   taskId: number,
@@ -1344,9 +1357,9 @@ export async function subscribeJson(
   options: SubscribeInput = {},
 ): Promise<{ subscription: CamelCase<NotifySub> }> {
   requireNotifySubs();
-  await assertTaskOnBoard(slug, taskId);
   const m = await models();
   m.initDb();
+  await guardTaskOnBoard(m, slug, taskId);
   try {
     const sub = m.subscribe(taskId, platform, chatId, {
       threadId: options.threadId,
@@ -1367,9 +1380,9 @@ export async function unsubscribeJson(
   threadId?: string,
 ): Promise<{ unsubscribed: number }> {
   requireNotifySubs();
-  await assertTaskOnBoard(slug, taskId);
   const m = await models();
   m.initDb();
+  await guardTaskOnBoard(m, slug, taskId);
   try {
     const count = m.unsubscribe(taskId, platform, chatId, threadId);
     return { unsubscribed: count };

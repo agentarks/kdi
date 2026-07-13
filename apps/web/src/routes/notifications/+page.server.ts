@@ -48,7 +48,11 @@ export const actions: Actions = {
     const chatId = String(data.get("chat_id") ?? "");
     const threadIdRaw = data.get("thread_id");
     const threadId = threadIdRaw !== null && String(threadIdRaw) !== "" ? String(threadIdRaw) : undefined;
-    const boardSlug = url.searchParams.get("board") ?? (await readCurrentBoardJson()) ?? "default";
+    // Form action `?/unsubscribe` drops the page query string, so the board is
+    // carried in a hidden form field (FR-17). Fall back to the URL param (for
+    // direct API-style POSTs) then the current board.
+    const boardField = data.get("board");
+    const boardSlug = (boardField !== null && String(boardField) !== "" ? String(boardField) : url.searchParams.get("board")) ?? (await readCurrentBoardJson()) ?? "default";
 
     if (!Number.isInteger(taskId) || taskId <= 0) {
       return fail(400, { error: "Invalid task id." });

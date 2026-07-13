@@ -259,4 +259,115 @@ describe("KDI-UI-010 notification subscriptions UI smoke (AC-16)", () => {
     // the CLI itself also rejects via requireFlag, so 0 rows is guaranteed).
     expect(JSON.parse(notifyList(taskId, true))).toHaveLength(0);
   }, 120000);
+
+  it("AC-14: FF_SVELTEKIT_FRONTEND=false redirects every route to /disabled and blocks mutations", async () => {
+    tmpHome = mkdtempSync(join(tmpdir(), "kdi-ui010-http-master-"));
+    process.env.HOME = tmpHome;
+    process.env.KDI_DB = join(tmpHome, "kdi.sqlite");
+    initDb();
+    await createBoardJson({ slug: "demo", workdir: tmpHome });
+    const taskId = Number(runKdi('create "MasterOff" --board demo').trim());
+
+    if (proc) { try { proc.kill(9); await proc.exited; } catch { /* gone */ } proc = null; }
+    const port = String(50000 + Math.floor(Math.random() * 15000));
+    const baseUrl = `http://localhost:${port}`;
+    proc = Bun.spawn({
+      cmd: ["bun", "run", "dev:web", "--port", port],
+      cwd: REPO_ROOT,
+      env: { ...process.env, ...kdiEnv(), FF_SVELTEKIT_FRONTEND: "false", VITE_FF_SVELTEKIT_FRONTEND: "false", NODE_ENV: "development" },
+      stdout: "ignore",
+      stderr: "ignore",
+    });
+    await waitAlive(baseUrl);
+
+    // GET loaders redirect to /disabled (loader bodies never run).
+    const g1 = await fetch(`${baseUrl}/notifications?board=demo`, { redirect: "manual" });
+    expect(g1.status).toBe(307);
+    expect(g1.headers.get("location")).toBe("/disabled");
+    const g2 = await fetch(`${baseUrl}/tasks/${taskId}/notifications?board=demo`, { redirect: "manual" });
+    expect(g2.status).toBe(307);
+    expect(g2.headers.get("location")).toBe("/disabled");
+
+    // POST mutation serializes the redirect envelope; the action body never runs.
+    const p = await fetch(`${baseUrl}/tasks/${taskId}/notifications?board=demo&/subscribe`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded", origin: baseUrl, referer: `${baseUrl}/tasks/${taskId}/notifications` },
+      body: new URLSearchParams({ platform: "telegram", chat_id: "c", notifier_profile: "log" }).toString(),
+      redirect: "manual",
+    });
+    const pBody = (await p.json()) as { type: string; status: number; location: string };
+    expect(pBody.type).toBe("redirect");
+    expect(pBody.status).toBe(307);
+    expect(pBody.location).toBe("/disabled");
+
+    // CLI parity: no subscription created.
+    expect(JSON.parse(notifyList(taskId, true))).toHaveLength(0);
+  }, 120000);
+
+  it("form actions preserve the selected board ( Finding 1 regression )", async () => {
+    tmpHome = mkdtempSync(join(tmpdir(), "kdi-ui010-http-board-"));
+    process.env.HOME = tmpHome;
+    process.env.KDI_DB = join(tmpHome, "kdi.sqlite");
+    initDb();
+    // Two boards; a task + subscription live on "real", none on "other".
+    await createBoardJson({ slug: "real", workdir: tmpHome });
+    await createBoardJson({ slug: "other", workdir: tmpHome });
+    const taskId = Number(runKdi('create "On real" --board real').trim());
+    // Seed the subscription via the bridge (notify-subscribe has no --board flag
+    // and we only need a row to exercise the unsubscribe form).
+    const { subscribeJson } = await import("./bridge");
+    process.env.FF_NOTIFY_SUBS = "true";
+    await subscribeJson("real", taskId, "telegram", "c1", { notifierProfile: "log" });
+
+    const baseUrl = await startServer();
+
+    // The rendered unsubscribe form must carry the board in a hidden field so the
+    // `?/unsubscribe` action (which drops the page query string) still targets
+    // the right board. Assert the hidden field exists and names the viewed board.
+    const html = await (await fetch(`${baseUrl}/notifications?board=real`)).text();
+    expect(html).toContain('name="board" value="real"');
+    const taskHtml = await (await fetch(`${baseUrl}/tasks/${taskId}/notifications?board=real`)).text();
+    expect(taskHtml).toContain('name="board" value="real"');
+
+    // Functional proof: POST the unsubscribe action WITHOUT ?board in the URL
+    // (as the rendered form does). The hidden field must keep it targeting `real`
+    // so the sub is actually removed.
+    const params = new URLSearchParams({ board: "real", task_id: String(taskId), platform: "telegram", chat_id: "c1" });
+    const res = await fetch(`${baseUrl}/notifications?/unsubscribe`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded", origin: baseUrl, referer: `${baseUrl}/notifications` },
+      body: params.toString(),
+      redirect: "manual",
+    });
+    const rBody = await res.json();
+    expect(["redirect", "success"]).toContain(rBody.type);
+    // Cross-check: the subscription is gone on the `real` board.
+    expect(JSON.parse(notifyList(taskId))).toHaveLength(0);
+  }, 120000);
+
+  it("FR-13: missing-task subscribe returns the model message 'Task <id> not found.' ( Finding 2 regression )", async () => {
+    tmpHome = mkdtempSync(join(tmpdir(), "kdi-ui010-http-fr13-"));
+    process.env.HOME = tmpHome;
+    process.env.KDI_DB = join(tmpHome, "kdi.sqlite");
+    initDb();
+    await createBoardJson({ slug: "demo", workdir: tmpHome });
+    const baseUrl = await startServer();
+
+    // Task 9999 does not exist. FR-13 requires the model's verbatim message,
+    // NOT assertTaskOnBoard's board-naming variant.
+    const res = await submitForm(baseUrl, `/tasks/9999/notifications?board=demo&/subscribe`, {
+      platform: "telegram", chat_id: "c", notifier_profile: "log",
+    });
+    expect(res.ok).toBe(false);
+    expect(res.error).toBe("Task 9999 not found.");
+    // Cross-board task (exists on another board) is still blocked and reports the
+    // board-naming message.
+    await createBoardJson({ slug: "other", workdir: tmpHome });
+    const xTaskId = Number(runKdi('create "On other" --board other').trim());
+    const xRes = await submitForm(baseUrl, `/tasks/${xTaskId}/notifications?board=demo&/subscribe`, {
+      platform: "telegram", chat_id: "c", notifier_profile: "log",
+    });
+    expect(xRes.ok).toBe(false);
+    expect(xRes.error).toBe(`Task ${xTaskId} not found on board "demo".`);
+  }, 120000);
 });
