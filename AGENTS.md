@@ -170,5 +170,5 @@ All commands must pass with no errors. If a test is flaky or environment-specifi
 2. Make focused commits with clear messages.
 3. Run the verification commands above.
 4. Update `STATUS.md` and `AGENTS.md` if conventions or versions changed.
-5. Open a PR and request review. PR description must include: BRD link, eval evidence, flag status, migration notes.
+5. Open a PR and request review. PR description must include: BRD link, eval evidence, flag status, migration notes, and a **Mermaid diagram** summarizing the changes at a high level (the components, routes, commands, or data-flow touched) so reviewers can grasp the shape of the change before reading the diff. Trivial docs-only or single-line changes may omit the diagram with a one-line note saying why.
 6. Merge only after checks pass and review is approved.
