@@ -19,7 +19,7 @@ const dev = process.env.NODE_ENV !== "production";
 // Spec FR-1: models are imported via the `~/*` alias the CLI already uses.
 import { existsSync, readFileSync, statSync, openSync, closeSync, readSync } from "node:fs";
 import type { Board, BoardMetadata, BoardWithTaskCounts, BoardStats } from "~/models/board";
-import type { BoardListRow, BoardFlags, TaskSummary, TaskDetail, DetailFlags, DispatchStatus, DispatchOnceResult, DispatchFlags, ProfileHealth, SpawnFailure, TaskCounts, ActivityFlags, LifecycleAction, LifecycleFields, LifecycleResult, BulkLifecycleResult, LifecycleFlags } from "$lib/types";
+import type { BoardListRow, BoardFlags, TaskSummary, TaskDetail, DetailFlags, DispatchStatus, DispatchOnceResult, DispatchFlags, ProfileHealth, SpawnFailure, TaskCounts, ActivityFlags, LifecycleAction, LifecycleFields, LifecycleResult, BulkLifecycleResult, LifecycleFlags, StatsFlags } from "$lib/types";
 
 import type { Task, Task as TaskModel, CreateTaskInput } from "~/models/task";
 import type { TaskEvent, WatchFilters } from "~/models/taskEvent";
@@ -162,7 +162,7 @@ async function models(): Promise<Modules> {
 // Spec FR: gate the whole bridge behind FF_SVELTEKIT_FRONTEND. Using the
 // shared flag registry so the UI honors the same env/registry overrides as
 // every other KDI feature.
-import { isEnabled, FF_SVELTEKIT_FRONTEND, FF_LIST_FILTERS_SORT, FF_TENANT_NAMESPACE, FF_CREATED_BY, FF_WORKFLOW_TEMPLATES, FF_RATE_LIMIT_EXIT_CODE, FF_HEARTBEAT, FF_BOARD_METADATA, FF_BOARD_CREATE_SWITCH, FF_DEFAULT_WORKDIR, FF_BOARD_SWITCH, FF_BOARD_RENAME_HERMES, FF_BOARD_RENAME, FF_BOARD_RM_DELETE, FF_ENABLE_KANBAN_DISPATCH, FF_DISPATCH_ONCE, FF_DISPATCH_CONTROLS, FF_REAL_HARNESS_PROFILES, FF_WATCH_FILTERS, FF_TAIL_NO_FOLLOW, FF_NOTIFY_SUBS } from "~/flags";
+import { isEnabled, FF_SVELTEKIT_FRONTEND, FF_LIST_FILTERS_SORT, FF_TENANT_NAMESPACE, FF_CREATED_BY, FF_WORKFLOW_TEMPLATES, FF_RATE_LIMIT_EXIT_CODE, FF_HEARTBEAT, FF_BOARD_METADATA, FF_BOARD_CREATE_SWITCH, FF_DEFAULT_WORKDIR, FF_BOARD_SWITCH, FF_BOARD_RENAME_HERMES, FF_BOARD_RENAME, FF_BOARD_RM_DELETE, FF_ENABLE_KANBAN_DISPATCH, FF_DISPATCH_ONCE, FF_DISPATCH_CONTROLS, FF_REAL_HARNESS_PROFILES, FF_WATCH_FILTERS, FF_TAIL_NO_FOLLOW, FF_NOTIFY_SUBS, FF_STATS } from "~/flags";
 import {
   FF_SCHEDULED_STATUS,
   FF_PRIORITY_INTEGER,
@@ -603,6 +603,16 @@ export function activityFlags(): ActivityFlags {
     tailNoFollow: isEnabled(FF_TAIL_NO_FOLLOW),
     workerLogCapture: isEnabled(FF_WORKER_LOG_CAPTURE),
     tenantNamespace: isEnabled(FF_TENANT_NAMESPACE),
+  };
+}
+
+// --- KDI-UI-009: Stats & Diagnostics UI sub-flag gate (Slice 1: FF_STATS) ---
+// The bridge itself does NOT gate boardStatsJson on FF_STATS (Slice 2's
+// diagnosticsJson mirrors that); each page loader gates its own sub-flag so an
+// off flag yields a disabled payload instead of an error (FR-2 / AC-11).
+export function statsFlags(): StatsFlags {
+  return {
+    stats: isEnabled(FF_STATS),
   };
 }
 
