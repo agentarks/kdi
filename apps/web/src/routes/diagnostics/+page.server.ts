@@ -43,10 +43,12 @@ export const load: PageServerLoad = async ({ url }) => {
     severity = normalized;
   }
 
-  const slug = url.searchParams.get("board") ?? (await readCurrentBoardJson());
-  if (!slug) {
-    return { error: "No board selected.", flags };
-  }
+  // Board resolution mirrors the /stats loader: ?board → current-board file →
+  // "default". Falling back to "default" (instead of erroring "No board
+  // selected") matches every other board-resolving loader in the app, so a
+  // fresh install with no current-board file still renders the default board.
+  const slug =
+    url.searchParams.get("board") ?? (await readCurrentBoardJson()) ?? "default";
 
   // Resolve the board (validates existence + archived) for the header name.
   let boardResult: Awaited<ReturnType<typeof showBoardJson>>;

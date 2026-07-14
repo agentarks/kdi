@@ -218,6 +218,16 @@ describe("KDI-UI-009 Slice 2 /diagnostics page (AC-02/04/07/08)", () => {
     const html = await (await fetch(`${baseUrl}/diagnostics?board=diag`)).text();
     expect(html).toContain('href="/diagnostics"');
   }, 120000);
+
+  it("no ?board resolves via the default fallback, not a 'No board selected' dead-end", async () => {
+    // Regression guard for the ?? "default" board-resolution fallback. The
+    // test env has no current-board file, so pre-fix this rendered
+    // "No board selected."; post-fix it resolves "default" (here → board_not_found
+    // inline error, since no default board is seeded) — either way it must NOT
+    // be the old no-board dead-end.
+    const html = await (await fetch(`${baseUrl}/diagnostics`)).text();
+    expect(html).not.toContain("No board selected");
+  }, 120000);
 });
 
 // ---------------------------------------------------------------------------
