@@ -13,6 +13,7 @@
     { href: "/activity", label: "Activity" },
     { href: "/notifications", label: "Notifications" },
     { href: "/stats", label: "Stats" },
+    { href: "/diagnostics", label: "Diagnostics" },
   ];
 
   // ponytail: placeholder boards until KDI-UI-002 wires real data in.
