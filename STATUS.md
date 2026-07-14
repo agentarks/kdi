@@ -182,6 +182,7 @@
 
 ## KDI-UI-009: Stats and Diagnostics UI — Spec
 - [x] BRD/spec drafted at `specs/sveltekit-ui/KDI-UI-009-stats-diagnostics-ui.md`
+- [x] **Slice 1 (`/stats` page) DONE** — `apps/web/src/routes/stats/+page.{server.ts,svelte}` + `apps/web/src/lib/server/statsPage.ts` + `apps/web/src/lib/format.ts`; `statsFlags()` added to bridge.ts; `FF_STATS`-gated (AC-11), 8 status buckets (AC-03 parity vs `kdi stats --json`), assignee counts (empty-state), oldest-ready age (FR-6), manual refresh, JSON export (AC-10), board-not-found inline error (FR-1). Tests: `stats.test.ts` (8) + `stats.http.test.ts` (5) + `format.test.ts` (4). Nav `/stats` already present in `+layout.svelte`.
 - [ ] Show per-status counts, per-assignee counts, oldest-ready age, and health diagnostics
 - [ ] Severity filter and task-specific diagnostics
 - [ ] Action shortcuts for diagnostics actions: reclaim, reassign, unblock, comment, open docs/CLI hint
@@ -1075,6 +1076,15 @@
 - [x] ~~**KDI-031 docs typo: `ff_show_run_filtering` lifecycle header still says `— Planned`**~~ — fixed in `specs/feature-flags.md`; header is now `— Active` and status transitions note the promotion.
 - [ ] **KDI-037: unused imports in `tests/dispatcherPresence.test.ts:2,8`** — `readFileSync` (from `node:fs`) and `createBoard` (from `../src/models/board`) are imported but never referenced. The linter does not catch them because the project does not enable `noUnusedLocals` for this file context. Drop the imports. Caught by `pi.backend-reviewer` on PR #32, APPROVE_WITH_NITS.
 - [ ] **KDI-037: dead helpers `captureWarn` / `restoreWarn` in `tests/commands/tasks.test.ts:864-878`** — Defined in the KDI-037 describe block but never called; every test inlines its own `console.warn` capture via `try/finally`. Delete the helpers. Caught by `pi.backend-reviewer` on PR #32, APPROVE_WITH_NITS.
+
+### Review nits (from KDI-UI-009 Slice 1 / PR #96 review)
+
+- [ ] **BUG (spec deviation): `/stats` JSON export uses camelCase keys, not CLI snake_case (FR-8 / AC-10)** — `apps/web/src/routes/stats/+page.svelte` `exportJson()` emits the bridge's camelCase payload (`statusCounts`, `assigneeCounts`, `oldestReadyAgeSeconds`) while `kdi stats --json` emits snake_case (`status_counts`, etc.). Values match; keys differ. BRD FR-8 / AC-10 say the export "matches the CLI `--json` output". An operator who `diff`s UI export vs CLI sees key-name differences. Decision needed: (a) accept the bridge-wide camelCase convention and update the BRD to "values match", or (b) re-serialize to snake_case on the export path only (~5-line `toSnakeCase`, not the API). The AC-10 test checks value parity only, so it would not catch a regression here. **Same issue exists on `/diagnostics` (PR #95, FR-18) — fix both together.** Caught by `pi.frontend-reviewer` on PR #96, APPROVE_WITH_NITS.
+- [ ] **BUG (BRD inaccuracy): FR-4 lists 9 status buckets incl. `archived`, but `getBoardStats` returns 8** — `src/models/board.ts` `BoardStats.status_counts` defines 8 keys (no `archived`); the query filters `archived_at IS NULL`. Rendering 8 is correct for AC-03 parity (a synthetic `archived: 0` would break parity). Fix: update `specs/sveltekit-ui/KDI-UI-009-stats-diagnostics-ui.md` FR-4 to say 8 buckets. Changing `src/models` is out of scope (FR-24). Caught by `pi.frontend-reviewer` on PR #96.
+- [ ] **DEBT: dead `flags` derived var in `/stats` page** — `apps/web/src/routes/stats/+page.svelte:17` `const flags = $derived(data.flags as StatsFlags)` is declared but never referenced (the page checks `data.enabled`, not `flags.stats`). Delete the line. Caught by `pi.frontend-reviewer` (ponytail-review) on PR #96.
+- [ ] **DEBT: duplicated fallback `statuses` array in `/stats` page** — `apps/web/src/routes/stats/+page.svelte:28-37` re-declares `STATS_STATUSES` from `statsPage.ts`; the branch using it is unreachable when `statuses` is absent. Replace with `data.statuses ?? []`. Caught by `pi.frontend-reviewer` (ponytail-review) on PR #96.
+- [ ] **DEBT: `StatsFlags` is a one-field interface** — `apps/web/src/lib/types.ts:40-42` `{ stats: boolean }`; a bare `boolean` would do. Accepted for consistency with `ActivityFlags`; revisit if no second field materializes. Caught by `pi.frontend-reviewer` (ponytail-review) on PR #96.
+- [ ] **DEBT: local `BoardStats` interface re-declares the bridge `CamelCase<BoardStats>` shape** — `apps/web/src/routes/stats/+page.svelte:19-24` duplicates the shape with `as BoardStats` casts; types can drift if the bridge shape changes. Pragmatic tradeoff (SvelteKit `$types` generation makes direct imports awkward); low priority. Caught by `pi.frontend-reviewer` on PR #96.
 
 ### Deferred non-blocking items (from KDI-038 review)
 

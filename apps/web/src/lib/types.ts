@@ -37,6 +37,11 @@ export interface ActivityFlags {
   tenantNamespace: boolean;
 }
 
+// Stats & Diagnostics UI (KDI-UI-009)
+export interface StatsFlags {
+  stats: boolean;
+}
+
 // Dispatch Control Center (KDI-UI-007)
 
 export interface DispatchPresence {
