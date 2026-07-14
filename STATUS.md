@@ -113,7 +113,7 @@
   - `specs/sveltekit-ui/KDI-UI-014-goal-mode-ui.md`
   - `specs/sveltekit-ui/KDI-UI-015-accessibility-keyboard-baseline.md`
   - `specs/sveltekit-ui/KDI-UI-016-end-to-end-ui-smoke-loop.md`
-- [ ] Next implementation: P1 task detail and lifecycle UI (KDI-UI-005/006/007) consuming the merged KDI-UI-001 bridge, then observability and end-to-end smoke loop (KDI-UI-016). Specs drafted for P3/P4 items KDI-UI-013, KDI-UI-015, and KDI-UI-016 in PR #66.
+- [ ] Next implementation: **KDI-UI-009 (stats & diagnostics UI)** — the only remaining P2 gap; backend (`kdi stats`/`kdi diagnostics`) and the `boardStatsJson`/`diagnosticsJson` bridge endpoints are already done, so it is frontend/route work only. KDI-UI-005/006/007 (previously listed here) are all Done. Then P3 (KDI-UI-011/012/013/014) and P4 (KDI-UI-015/016); all specs are drafted.
 
 ## KDI-UI-001: Server-Side Data Bridge — Implemented (PR #69)
 - [x] BRD drafted at `specs/sveltekit-ui/KDI-UI-001-server-data-bridge.md`
