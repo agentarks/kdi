@@ -162,7 +162,7 @@ async function models(): Promise<Modules> {
 // Spec FR: gate the whole bridge behind FF_SVELTEKIT_FRONTEND. Using the
 // shared flag registry so the UI honors the same env/registry overrides as
 // every other KDI feature.
-import { isEnabled, FF_SVELTEKIT_FRONTEND, FF_LIST_FILTERS_SORT, FF_TENANT_NAMESPACE, FF_CREATED_BY, FF_WORKFLOW_TEMPLATES, FF_RATE_LIMIT_EXIT_CODE, FF_HEARTBEAT, FF_BOARD_METADATA, FF_BOARD_CREATE_SWITCH, FF_DEFAULT_WORKDIR, FF_BOARD_SWITCH, FF_BOARD_RENAME_HERMES, FF_BOARD_RENAME, FF_BOARD_RM_DELETE, FF_ENABLE_KANBAN_DISPATCH, FF_DISPATCH_ONCE, FF_DISPATCH_CONTROLS, FF_REAL_HARNESS_PROFILES, FF_WATCH_FILTERS, FF_TAIL_NO_FOLLOW, FF_NOTIFY_SUBS, FF_STATS } from "~/flags";
+import { isEnabled, FF_SVELTEKIT_FRONTEND, FF_LIST_FILTERS_SORT, FF_TENANT_NAMESPACE, FF_CREATED_BY, FF_WORKFLOW_TEMPLATES, FF_RATE_LIMIT_EXIT_CODE, FF_HEARTBEAT, FF_BOARD_METADATA, FF_BOARD_CREATE_SWITCH, FF_DEFAULT_WORKDIR, FF_BOARD_SWITCH, FF_BOARD_RENAME_HERMES, FF_BOARD_RENAME, FF_BOARD_RM_DELETE, FF_ENABLE_KANBAN_DISPATCH, FF_DISPATCH_ONCE, FF_DISPATCH_CONTROLS, FF_REAL_HARNESS_PROFILES, FF_WATCH_FILTERS, FF_TAIL_NO_FOLLOW, FF_NOTIFY_SUBS, FF_STATS, FF_DIAGNOSTICS } from "~/flags";
 import {
   FF_SCHEDULED_STATUS,
   FF_PRIORITY_INTEGER,
@@ -294,6 +294,7 @@ function wrap(err: unknown): BridgeError {
   if (/Invalid .*slug.*Slugs may only contain/.test(message)) return new BridgeError("invalid_slug", 400, message);
   if (/already exists/.test(message)) return new BridgeError("board_exists", 409, message);
   if (/not found or is archived/.test(message)) return new BridgeError("board_not_found", 404, message);
+  if (/^Task \d+ not found on board/.test(message)) return new BridgeError("task_not_found", 404, message);
   if (/cannot be empty|must be 255|requires scheduled_at|A board id is required|Title is required/.test(message))
     return new BridgeError("invalid_input", 400, message);
   if (/Database not initialized/.test(message)) return new BridgeError("db_not_initialized", 500, message);
@@ -613,6 +614,21 @@ export function activityFlags(): ActivityFlags {
 export function statsFlags(): StatsFlags {
   return {
     stats: isEnabled(FF_STATS),
+  };
+}
+
+// KDI-UI-009 Slice 2: diagnostics page sub-flag gate. The bridge's
+// diagnosticsJson() does NOT enforce FF_DIAGNOSTICS (Gap 1) — the /diagnostics
+// loader gates on this before calling the bridge.
+export interface DiagnosticsFlags {
+  sveltekitFrontend: boolean;
+  diagnostics: boolean;
+}
+
+export function diagnosticsFlags(): DiagnosticsFlags {
+  return {
+    sveltekitFrontend: isEnabled(FF_SVELTEKIT_FRONTEND),
+    diagnostics: isEnabled(FF_DIAGNOSTICS),
   };
 }
 
