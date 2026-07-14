@@ -61,8 +61,17 @@ export const load: PageServerLoad = async ({ url }) => {
   const board = boardResult.board;
 
   // FR-15: ?task= URL param → bridge `taskId` param.
+  // Validate the id HERE (the bridge/model only reject downstream): a
+  // non-numeric or non-positive value misses wrap()'s `Task \d+` regex and
+  // would crash the page with a 500. Mirrors src/commands/diagnostics.ts.
   const rawTask = url.searchParams.get("task");
-  const taskId = rawTask !== null ? Number(rawTask) : undefined;
+  let taskId: number | undefined;
+  if (rawTask !== null) {
+    taskId = Number(rawTask);
+    if (!Number.isInteger(taskId) || taskId <= 0) {
+      return { error: `Invalid task id "${rawTask}".`, flags, board };
+    }
+  }
   const params = new URLSearchParams();
   if (severity) params.set("severity", severity);
   if (taskId !== undefined) params.set("taskId", String(taskId));

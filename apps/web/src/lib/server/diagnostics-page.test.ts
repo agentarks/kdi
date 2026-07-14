@@ -15,7 +15,22 @@ import { describe, it, expect, beforeEach, afterEach, afterAll } from "bun:test"
 import { rmSync, mkdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
-import { createBoardJson, createTaskJson, diagnosticsJson } from "./bridge";
+import { createBoardJson, createTaskJson, diagnosticsJson, BridgeError } from "./bridge";
+
+// Assert a promise rejects with the expected BridgeError code/status. bun:test's
+// rejects.toSatisfy does not unwrap reliably (same shape as bridge.test.ts).
+async function expectBridgeError(p: Promise<unknown>, code: string, status: number): Promise<void> {
+  let threw = false;
+  try {
+    await p;
+  } catch (e) {
+    threw = true;
+    if (!(e instanceof BridgeError)) throw new Error(`expected BridgeError, got ${(e as Error)?.name}`);
+    expect((e as BridgeError).code).toBe(code);
+    expect((e as BridgeError).status).toBe(status);
+  }
+  if (!threw) throw new Error(`expected promise to reject with ${code}/${status}, but it resolved`);
+}
 import { runDiagnostics } from "~/models/diagnostic";
 import { getDb, closeDb, initDb } from "~/db";
 import { clearOverrides } from "~/flags";
@@ -124,10 +139,14 @@ describe("KDI-UI-009 Slice 2 — diagnosticsJson parity with runDiagnostics", ()
     expect(diagnostics.every((f) => f.taskId === t1.id)).toBe(true);
   });
 
-  it("invalid/unknown task id on a valid board throws task_not_found", async () => {
+  it("unknown task id on a valid board throws task_not_found (code + status, not just message)", async () => {
     await createBoardJson({ slug: "diag", workdir: tmpHome });
-    await expect(diagnosticsJson("diag", new URLSearchParams("taskId=9999"))).rejects.toThrow(
-      /not found/,
+    // Assert the BridgeError contract (code + status) — a regression that maps
+    // this to internal/500 must fail this test (guards the wrap() fix).
+    await expectBridgeError(
+      diagnosticsJson("diag", new URLSearchParams("taskId=9999")),
+      "task_not_found",
+      404,
     );
   });
 

@@ -207,6 +207,13 @@ describe("KDI-UI-009 Slice 2 /diagnostics page (AC-02/04/07/08)", () => {
     expect(html).toContain("not found");
   }, 120000);
 
+  it("invalid (non-numeric) task id renders an inline error, not a 500 (loader guard)", async () => {
+    const res = await fetch(`${baseUrl}/diagnostics?board=diag&task=abc`);
+    expect(res.status).toBe(200);
+    const html = await res.text();
+    expect(html).toContain('Invalid task id "abc"');
+  }, 120000);
+
   it("nav contains a /diagnostics link (Gap 4 / FR-19)", async () => {
     const html = await (await fetch(`${baseUrl}/diagnostics?board=diag`)).text();
     expect(html).toContain('href="/diagnostics"');
