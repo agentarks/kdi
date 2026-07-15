@@ -13,6 +13,14 @@
   type DiagnosticAction = "reclaim" | "reassign" | "unblock" | "comment" | "cli_hint" | "open_docs";
   const supported = new Set<string>(["reclaim", "reassign", "unblock", "comment", "cli_hint", "open_docs"]);
   const docsUrl = "https://github.com/agentarks/kdi/blob/main/specs/hermes-kanban-backlog.md";
+  const LABELS: Record<DiagnosticAction, string> = {
+    reclaim: "Reclaim",
+    reassign: "Reassign",
+    unblock: "Unblock",
+    comment: "Comment",
+    cli_hint: "CLI hint",
+    open_docs: "Open docs",
+  };
 
   let { actions, boardSlug, taskId }: Props = $props();
   let dialog = $state<Dialog | undefined>(undefined);
@@ -96,7 +104,7 @@
 
 <div class="diagnostic-actions">
   {#each actions.filter((action) => supported.has(action)) as action}
-    <button type="button" class="badge action-label" onclick={() => open(action as DiagnosticAction)}>{action}</button>
+    <button type="button" class="badge action-label" onclick={() => open(action as DiagnosticAction)}>{LABELS[action as DiagnosticAction]}</button>
   {/each}
 </div>
 
@@ -111,31 +119,21 @@
 
   {#if active === "reclaim"}
     <p class="hint">Reclaim task #{taskId} and return it to ready?</p>
-    <label class="form-group">
-      Reason (optional)
-      <textarea bind:value={reason} rows="2"></textarea>
-    </label>
+    <div class="form-group"><label for="diag-reclaim-reason">Reason (optional)</label>
+      <textarea id="diag-reclaim-reason" bind:value={reason} rows="2"></textarea></div>
     <label class="check"><input type="checkbox" bind:checked={confirmed} /> Confirm reclaim</label>
   {:else if active === "reassign"}
-    <label class="form-group">
-      Profile (required)
-      <input type="text" bind:value={profile} />
-    </label>
-    <label class="form-group">
-      Reason (optional)
-      <textarea bind:value={reason} rows="2"></textarea>
-    </label>
+    <div class="form-group"><label for="diag-reassign-profile">Profile (required)</label>
+      <input id="diag-reassign-profile" type="text" bind:value={profile} /></div>
+    <div class="form-group"><label for="diag-reassign-reason">Reason (optional)</label>
+      <textarea id="diag-reassign-reason" bind:value={reason} rows="2"></textarea></div>
     <p class="hint">Any active claim will be reclaimed first.</p>
   {:else if active === "unblock"}
-    <label class="form-group">
-      Reason (optional)
-      <textarea bind:value={reason} rows="2"></textarea>
-    </label>
+    <div class="form-group"><label for="diag-unblock-reason">Reason (optional)</label>
+      <textarea id="diag-unblock-reason" bind:value={reason} rows="2"></textarea></div>
   {:else if active === "comment"}
-    <label class="form-group">
-      Comment (required)
-      <textarea bind:value={text} rows="3"></textarea>
-    </label>
+    <div class="form-group"><label for="diag-comment-text">Comment (required)</label>
+      <textarea id="diag-comment-text" bind:value={text} rows="3"></textarea></div>
   {/if}
 
   <div class="dialog-actions">
@@ -145,7 +143,7 @@
       class="btn btn--primary"
       onclick={submit}
       disabled={busy || (active === "reclaim" && !confirmed) || (active === "reassign" && !profile.trim()) || (active === "comment" && !text.trim())}
-    >{active}</button>
+    >{active ? LABELS[active] : ""}</button>
   </div>
 </Dialog>
 

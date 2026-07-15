@@ -195,7 +195,7 @@ describe("KDI-UI-009 Slice 2/3 /diagnostics page (AC-02/04/07/08/09)", () => {
   it("renders all six diagnostic shortcuts as clickable controls (FR-14 / AC-09)", async () => {
     const html = await (await fetch(`${baseUrl}/diagnostics?board=diag`)).text();
     const labels = clickableLabels(html);
-    for (const action of ["reclaim", "reassign", "unblock", "comment", "cli_hint", "open_docs"]) {
+    for (const action of ["reclaim", "reassign", "unblock", "comment", "cli hint", "open docs"]) {
       expect(labels).toContain(action);
     }
   }, 120000);
