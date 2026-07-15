@@ -38,6 +38,9 @@
       <div class="actions">
         <a href="/activity?board={data.board.slug}" class="btn">Activity</a>
         <a href="/dispatch?board={data.board.slug}" class="btn">Dispatch</a>
+        <!-- FR-22: board view links to health/capacity dashboards. -->
+        <a href="/stats?board={data.board.slug}" class="btn">Stats</a>
+        <a href="/diagnostics?board={data.board.slug}" class="btn">Diagnostics</a>
         <a href="/boards/{data.board.slug}/edit" class="btn btn--primary">Edit</a>
         <a href="/boards" class="btn">← Back to boards</a>
       </div>

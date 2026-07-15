@@ -88,6 +88,8 @@
         </p>
       </div>
       <div class="actions">
+        <!-- FR-20: bidirectional cross-link to /diagnostics. -->
+        <a class="btn" href="/diagnostics?board={board.slug}">Diagnostics</a>
         <button class="btn" type="button" onclick={refresh}>Refresh</button>
         <button class="btn btn--primary" type="button" onclick={exportJson}>Export JSON</button>
       </div>

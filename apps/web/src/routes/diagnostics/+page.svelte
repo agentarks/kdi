@@ -94,6 +94,8 @@
         <p class="text-dim">Board: <code>{board.slug}</code></p>
       </div>
       <div class="actions">
+        <!-- FR-20: bidirectional cross-link to /stats. -->
+        <a class="btn" href="/stats?board={board.slug}">Stats</a>
         <button class="btn" type="button" onclick={refresh}>Refresh</button>
         <button class="btn" type="button" onclick={exportJson} disabled={!browser}>Export JSON</button>
       </div>
