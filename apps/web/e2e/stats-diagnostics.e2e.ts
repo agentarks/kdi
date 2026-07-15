@@ -17,6 +17,7 @@
 
 import { spawn, type ChildProcess } from "node:child_process";
 import { rmSync, mkdirSync, existsSync } from "node:fs";
+import { createServer as createNetServer } from "node:net";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { test, expect, type Page } from "@playwright/test";
@@ -84,8 +85,29 @@ function backdateTask(taskId: number, ageSeconds: number): Promise<void> {
   });
 }
 
+// OS-assigned free port via node:net port 0. A pure random pick in a fixed
+// range can collide with stale orphaned `vite dev` servers that accumulate on
+// a shared dev machine, making waitAlive time out non-deterministically.
+// getFreePort() returns a port the OS guarantees free at call time.
+function getFreePort(): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const srv = createNetServer();
+    srv.unref();
+    srv.on("error", reject);
+    srv.listen(0, () => {
+      const addr = srv.address();
+      if (addr && typeof addr === "object") {
+        const port = String(addr.port);
+        srv.close(() => resolve(port));
+      } else {
+        reject(new Error("could not determine a free port"));
+      }
+    });
+  });
+}
+
 async function startServer(): Promise<void> {
-  const port = String(50000 + Math.floor(Math.random() * 5000));
+  const port = await getFreePort();
   baseUrl = `http://localhost:${port}`;
   serverProc = spawn("bun", ["run", "dev:web", "--port", port], {
     cwd: REPO_ROOT,
