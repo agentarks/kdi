@@ -10,6 +10,6 @@ function taskId(value: string): number {
 }
 
 export const GET: RequestHandler = apiGet((e) => taskCommentsJson(e.params.slug, taskId(e.params.id)));
-export const POST: RequestHandler = apiPost((e, body: { text: string }) =>
+export const POST: RequestHandler = apiPost((e, body: { text: string; author?: string }) =>
   addCommentJson(e.params.slug, taskId(e.params.id), body),
 );

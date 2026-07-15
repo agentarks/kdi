@@ -19,7 +19,12 @@ import { createBoardJson, createTaskJson, diagnosticsJson, addCommentJson, Bridg
 
 // Assert a promise rejects with the expected BridgeError code/status. bun:test's
 // rejects.toSatisfy does not unwrap reliably (same shape as bridge.test.ts).
-async function expectBridgeError(p: Promise<unknown>, code: string, status: number): Promise<void> {
+async function expectBridgeError(
+  p: Promise<unknown>,
+  code: string,
+  status: number,
+  message?: string,
+): Promise<void> {
   let threw = false;
   try {
     await p;
@@ -28,6 +33,7 @@ async function expectBridgeError(p: Promise<unknown>, code: string, status: numb
     if (!(e instanceof BridgeError)) throw new Error(`expected BridgeError, got ${(e as Error)?.name}`);
     expect((e as BridgeError).code).toBe(code);
     expect((e as BridgeError).status).toBe(status);
+    if (message !== undefined) expect((e as BridgeError).message).toBe(message);
   }
   if (!threw) throw new Error(`expected promise to reject with ${code}/${status}, but it resolved`);
 }
@@ -182,6 +188,53 @@ describe("KDI-UI-009 Slice 3 — addCommentJson (FR-14 / AC-09)", () => {
       author: "qa-profile",
       createdAt: expect.any(Number),
     });
+  });
+
+  it("passes an explicit author to the model and returns it in camelCase", async () => {
+    process.env.KDI_PROFILE = "fallback-profile";
+    await createBoardJson({ slug: "diag", workdir: tmpHome });
+    const { task } = await createTaskJson("diag", { title: "comment target" });
+
+    const { comment } = await addCommentJson("diag", task.id, {
+      text: "diagnostic note",
+      author: "explicit-author",
+    });
+
+    expect(comment).toEqual({
+      id: expect.any(Number),
+      taskId: task.id,
+      text: "diagnostic note",
+      author: "explicit-author",
+      createdAt: expect.any(Number),
+    });
+  });
+
+  it("rejects an explicit empty author with the model error as invalid_input/400", async () => {
+    await createBoardJson({ slug: "diag", workdir: tmpHome });
+    const { task } = await createTaskJson("diag", { title: "comment target" });
+    await expectBridgeError(
+      addCommentJson("diag", task.id, { text: "diagnostic note", author: "" }),
+      "invalid_input",
+      400,
+      "Author cannot be empty.",
+    );
+  });
+
+  it.each([
+    ["null", null],
+    ["number", 1],
+    ["object", {}],
+  ])("rejects a runtime %s author as invalid_input/400", async (_label, author) => {
+    await createBoardJson({ slug: "diag", workdir: tmpHome });
+    const { task } = await createTaskJson("diag", { title: "comment target" });
+
+    await expectBridgeError(
+      addCommentJson("diag", task.id, { text: "diagnostic note", author: author as unknown as string }),
+      "invalid_input",
+      400,
+      "Author must be a string.",
+    );
+    expect(getDb().query("SELECT COUNT(*) AS count FROM comments WHERE task_id = ?").get(task.id)).toEqual({ count: 0 });
   });
 
   it("rejects blank text as invalid_input/400", async () => {
