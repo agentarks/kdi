@@ -15,7 +15,7 @@ import { describe, it, expect, beforeEach, afterEach, afterAll } from "bun:test"
 import { rmSync, mkdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
-import { createBoardJson, createTaskJson, diagnosticsJson, BridgeError } from "./bridge";
+import { createBoardJson, createTaskJson, diagnosticsJson, addCommentJson, BridgeError } from "./bridge";
 
 // Assert a promise rejects with the expected BridgeError code/status. bun:test's
 // rejects.toSatisfy does not unwrap reliably (same shape as bridge.test.ts).
@@ -35,7 +35,7 @@ import { runDiagnostics } from "~/models/diagnostic";
 import { getDb, closeDb, initDb } from "~/db";
 import { clearOverrides } from "~/flags";
 
-const FF_KEYS = ["FF_SVELTEKIT_FRONTEND", "FF_DIAGNOSTICS"];
+const ENV_KEYS = ["FF_SVELTEKIT_FRONTEND", "FF_DIAGNOSTICS", "KDI_PROFILE", "HERMES_PROFILE"];
 
 let tmpHome: string;
 const envSnapshot: Record<string, string | undefined> = {};
@@ -48,19 +48,19 @@ function isolate(): void {
   process.env.HOME = tmpHome;
   process.env.KDI_DB = join(tmpHome, "kdi.sqlite");
   process.env.FF_SVELTEKIT_FRONTEND = "true";
-  for (const key of FF_KEYS) {
+  for (const key of ENV_KEYS) {
     if (key !== "FF_SVELTEKIT_FRONTEND") delete process.env[key];
   }
 }
 
 beforeEach(() => {
-  for (const key of FF_KEYS) envSnapshot[key] = process.env[key];
+  for (const key of ENV_KEYS) envSnapshot[key] = process.env[key];
   isolate();
   clearOverrides();
 });
 
 afterEach(() => {
-  for (const key of FF_KEYS) {
+  for (const key of ENV_KEYS) {
     const value = envSnapshot[key];
     if (value === undefined) delete process.env[key];
     else process.env[key] = value;
@@ -164,5 +164,36 @@ describe("KDI-UI-009 Slice 2 — diagnosticsJson parity with runDiagnostics", ()
       const rule = a.rule.localeCompare(b.rule);
       expect(sev > 0 || (sev === 0 && (task < 0 || (task === 0 && rule <= 0)))).toBe(true);
     }
+  });
+});
+
+describe("KDI-UI-009 Slice 3 — addCommentJson (FR-14 / AC-09)", () => {
+  it("creates a camelCase comment with the current profile as author", async () => {
+    process.env.KDI_PROFILE = "qa-profile";
+    await createBoardJson({ slug: "diag", workdir: tmpHome });
+    const { task } = await createTaskJson("diag", { title: "comment target" });
+
+    const { comment } = await addCommentJson("diag", task.id, { text: "diagnostic note" });
+
+    expect(comment).toEqual({
+      id: expect.any(Number),
+      taskId: task.id,
+      text: "diagnostic note",
+      author: "qa-profile",
+      createdAt: expect.any(Number),
+    });
+  });
+
+  it("rejects blank text as invalid_input/400", async () => {
+    await createBoardJson({ slug: "diag", workdir: tmpHome });
+    const { task } = await createTaskJson("diag", { title: "comment target" });
+    await expectBridgeError(addCommentJson("diag", task.id, { text: "   " }), "invalid_input", 400);
+  });
+
+  it("rejects a task belonging to another board as task_not_found/404", async () => {
+    await createBoardJson({ slug: "diag", workdir: tmpHome });
+    await createBoardJson({ slug: "other", workdir: tmpHome });
+    const { task } = await createTaskJson("other", { title: "off-board target" });
+    await expectBridgeError(addCommentJson("diag", task.id, { text: "nope" }), "task_not_found", 404);
   });
 });
