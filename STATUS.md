@@ -187,8 +187,9 @@
 - [x] Show per-status counts, per-assignee counts, oldest-ready age, and health diagnostics
 - [x] Severity filter and task-specific diagnostics
 - [x] **Slice 3 action shortcuts implemented** — reclaim/reassign/unblock reuse the lifecycle action route; comments POST through the existing task comments resource; CLI hint and docs stay client-only. Dialog errors remain inline, successful mutations refresh diagnostics, and `addCommentJson` enforces board membership plus nonblank text. Focused coverage: 21 tests across `diagnostics-page.test.ts` and `diagnostics-page.http.test.ts`; live Chromium exercised all six shortcuts and CLI state cross-checks.
-- [ ] Acceptance: UI output matches `kdi stats --json` and `kdi diagnostics --json`
-- [ ] `bun run lint`, CLI build, `bun run check:web`, and `bun run build:web` pass with isolated `KDI_DB`
+- [x] **Slice 4 (cross-links + integration + gates) DONE** — FR-20 stats↔diagnostics bidirectional links (`stats/+page.svelte`, `diagnostics/+page.svelte`); FR-22 board-view → stats/diagnostics links (`boards/[slug]/+page.svelte`); FR-21 task-id links already in diagnostics (stats has no task ids). AC-14 integration smoke `stats-diagnostics.http.test.ts` (CLI-seeded DB, both-page parity vs `kdi stats`/`kdi diagnostics --json`, cross-links, #97 carry-forward comment persistence cross-checked via `kdi show <id>`) + AC-13 master-off redirect. `stats-diagnostics.e2e.ts` proves severity `<select>` client navigation + FR-20 cross-link click navigation in a real browser.
+- [x] Acceptance: UI output matches `kdi stats --json` and `kdi diagnostics --json` (proven by `stats.http.test.ts`, `diagnostics-page.http.test.ts`, and the Slice 4 `stats-diagnostics.http.test.ts` integration smoke)
+- [x] `bun run lint`, CLI build, `bun run check:web`, and `bun run build:web` pass with isolated `KDI_DB` (AC-15 gate green)
 
 ## KDI-UI-010: Notification Subscriptions UI — Done
 - [x] Spec: `specs/sveltekit-ui/KDI-UI-010-notification-subscriptions-ui.md`
