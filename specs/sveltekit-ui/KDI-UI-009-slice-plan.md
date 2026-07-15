@@ -150,6 +150,7 @@ graph LR
 - **FR-22:** board view `/boards/[slug]` header/overflow-menu links to `/stats` + `/diagnostics`.
 - **FR-19 verify:** both pages present in nav.
 - **AC-14:** full integration HTTP smoke — temp HOME + temp KDI_DB, create board + tasks in mixed statuses via CLI, create a finding condition, load `/stats` + `/diagnostics`, assert rendered numbers match `kdi stats --json` + `kdi diagnostics --json`.
+- **Carry-forward from #97 review:** the AC-14 smoke should also cross-check **comment persistence via `kdi show <id>`** (CLI parity). #97's Slice 3 unit/HTTP tests substituted a GET round-trip for the comment, so the integration smoke is the right place to close that CLI↔UI parity gap.
 - **AC-13 verify:** `FF_SVELTEKIT_FRONTEND=false` → both routes 503/redirect (re-assert in smoke).
 - **AC-15:** final build-gate sweep.
 

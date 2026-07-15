@@ -3,6 +3,7 @@
   import { browser } from "$app/environment";
   import { invalidateAll } from "$app/navigation";
   import { goto } from "$app/navigation";
+  import DiagnosticActions from "$lib/components/DiagnosticActions.svelte";
   import type { DiagnosticsFlags } from "$lib/server/bridge";
 
   interface Finding {
@@ -149,12 +150,7 @@
             </div>
             <p class="finding-msg">{f.message}</p>
             {#if f.actions.length > 0}
-              <!-- FR-13: action labels as non-clickable badges (Slice 3 wires them). -->
-              <div class="action-badges">
-                {#each f.actions as action}
-                  <span class="badge action-label">{action}</span>
-                {/each}
-              </div>
+              <DiagnosticActions actions={f.actions} boardSlug={board.slug} taskId={f.taskId} />
             {/if}
           </li>
         {/each}
@@ -215,15 +211,5 @@
   .sev-low {
     background: var(--accent);
     color: var(--accent-text);
-  }
-  .action-badges {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-  }
-  .action-label {
-    background: var(--surface-2);
-    color: var(--text-dim);
-    cursor: default;
   }
 </style>

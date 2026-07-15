@@ -183,9 +183,10 @@
 ## KDI-UI-009: Stats and Diagnostics UI — Spec
 - [x] BRD/spec drafted at `specs/sveltekit-ui/KDI-UI-009-stats-diagnostics-ui.md`
 - [x] **Slice 1 (`/stats` page) DONE** — `apps/web/src/routes/stats/+page.{server.ts,svelte}` + `apps/web/src/lib/server/statsPage.ts` + `apps/web/src/lib/format.ts`; `statsFlags()` added to bridge.ts; `FF_STATS`-gated (AC-11), 8 status buckets (AC-03 parity vs `kdi stats --json`), assignee counts (empty-state), oldest-ready age (FR-6), manual refresh, JSON export (AC-10), board-not-found inline error (FR-1). Tests: `stats.test.ts` (8) + `stats.http.test.ts` (5) + `format.test.ts` (4). Nav `/stats` already present in `+layout.svelte`.
-- [ ] Show per-status counts, per-assignee counts, oldest-ready age, and health diagnostics
-- [ ] Severity filter and task-specific diagnostics
-- [ ] Action shortcuts for diagnostics actions: reclaim, reassign, unblock, comment, open docs/CLI hint
+- [x] **Slice 2 (`/diagnostics` read path) DONE** — findings, severity/task filters, disabled and error states, refresh, JSON export, and navigation shipped in PR #95.
+- [x] Show per-status counts, per-assignee counts, oldest-ready age, and health diagnostics
+- [x] Severity filter and task-specific diagnostics
+- [x] **Slice 3 action shortcuts implemented** — reclaim/reassign/unblock reuse the lifecycle action route; comments POST through the existing task comments resource; CLI hint and docs stay client-only. Dialog errors remain inline, successful mutations refresh diagnostics, and `addCommentJson` enforces board membership plus nonblank text. Focused coverage: 21 tests across `diagnostics-page.test.ts` and `diagnostics-page.http.test.ts`; live Chromium exercised all six shortcuts and CLI state cross-checks.
 - [ ] Acceptance: UI output matches `kdi stats --json` and `kdi diagnostics --json`
 - [ ] `bun run lint`, CLI build, `bun run check:web`, and `bun run build:web` pass with isolated `KDI_DB`
 

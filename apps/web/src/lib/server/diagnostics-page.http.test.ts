@@ -1,4 +1,4 @@
-// KDI-UI-009 Slice 2 HTTP smoke — /diagnostics page (AC-02/04/07/08/10/12/16).
+// KDI-UI-009 Slice 2/3 HTTP smoke — /diagnostics page and actions (AC-02/04/07/08/09/10/12/16).
 //
 // Spawns `bun run dev:web` against an isolated temp HOME + KDI_DB, seeds a
 // diagnostic finding (ready task >24h → stranded_in_ready), loads /diagnostics,
@@ -16,6 +16,7 @@ import { execSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { initDb, getDb } from "~/db";
+import { createRun, finishRun } from "~/models/taskRun";
 import { createBoardJson, createTaskJson } from "./bridge";
 
 const REPO_ROOT = process.cwd();
@@ -34,6 +35,7 @@ function kdiEnv(home: string, overrides: Record<string, string> = {}): Record<st
     FF_SVELTEKIT_FRONTEND: "true",
     VITE_FF_SVELTEKIT_FRONTEND: "true",
     FF_DIAGNOSTICS: "true",
+    KDI_PROFILE: "diagnostics-http",
     ...overrides,
   };
 }
@@ -124,15 +126,21 @@ function findingKey(f: { rule: string; severity: string; task_id: number }) {
   return `${f.severity}|${f.task_id}|${f.rule}`;
 }
 
+function clickableLabels(html: string): string[] {
+  return [...html.matchAll(/<(button|a)\b[^>]*>([\s\S]*?)<\/\1>/g)]
+    .map((match) => match[2].replace(/<[^>]+>/g, "").trim().toLowerCase());
+}
+
 // ---------------------------------------------------------------------------
 // Flags-on suite: one shared dev server.
 // ---------------------------------------------------------------------------
 
-describe("KDI-UI-009 Slice 2 /diagnostics page (AC-02/04/07/08)", () => {
+describe("KDI-UI-009 Slice 2/3 /diagnostics page (AC-02/04/07/08/09)", () => {
   let home: string;
   let baseUrl: string;
   let cleanup: () => Promise<void>;
   let staleTaskId: number;
+  let blockedTaskId: number;
 
   beforeAll(async () => {
     home = makeTmpHome("diag");
@@ -140,8 +148,18 @@ describe("KDI-UI-009 Slice 2 /diagnostics page (AC-02/04/07/08)", () => {
     await createBoardJson({ slug: "diag", workdir: home });
     const { task } = await createTaskJson("diag", { title: "Stale ready task", initialStatus: "ready" });
     staleTaskId = task.id;
-    // Backdate 25h so stranded_in_ready fires.
     backdateTask(staleTaskId, 25 * 60 * 60);
+
+    const { task: blocked } = await createTaskJson("diag", { title: "Stale blocked task", initialStatus: "blocked" });
+    blockedTaskId = blocked.id;
+    backdateTask(blockedTaskId, 25 * 60 * 60);
+
+    const { task: crashing } = await createTaskJson("diag", { title: "Repeatedly crashing task" });
+    for (let i = 0; i < 3; i++) {
+      const run = createRun({ task_id: crashing.id, status: "running", started_at: Math.floor(Date.now() / 1000) });
+      finishRun(run.id, "crashed");
+    }
+
     ({ baseUrl, cleanup } = await spawnServer(home));
   }, 120000);
 
@@ -155,7 +173,7 @@ describe("KDI-UI-009 Slice 2 /diagnostics page (AC-02/04/07/08)", () => {
     expect(html).toContain("stranded_in_ready");
     expect(html).toContain("warning");
     expect(html).toContain(`#${staleTaskId}`);
-    expect(html).toContain("1 finding");
+    expect(html).toContain("3 findings");
   }, 120000);
 
   it("rendered findings match kdi diagnostics --json (AC-04/10)", async () => {
@@ -174,14 +192,12 @@ describe("KDI-UI-009 Slice 2 /diagnostics page (AC-02/04/07/08)", () => {
     expect(cliKeys.length).toBeGreaterThan(0);
   }, 120000);
 
-  it("renders action labels as non-clickable badges (FR-13, Slice 2 read-only)", async () => {
+  it("renders all six diagnostic shortcuts as clickable controls (FR-14 / AC-09)", async () => {
     const html = await (await fetch(`${baseUrl}/diagnostics?board=diag`)).text();
-    // stranded_in_ready actions: cli_hint, reassign, comment.
-    expect(html).toContain("reassign");
-    expect(html).toContain("comment");
-    // Slice 2: action labels must NOT be buttons/forms (Slice 3 wires mutations).
-    expect(html).not.toContain("/diagnostics?/reclaim");
-    expect(html).not.toContain("/diagnostics?/reassign");
+    const labels = clickableLabels(html);
+    for (const action of ["reclaim", "reassign", "unblock", "comment", "cli hint", "open docs"]) {
+      expect(labels).toContain(action);
+    }
   }, 120000);
 
   it("severity filter ?severity=critical narrows the list (AC-07)", async () => {
@@ -227,6 +243,70 @@ describe("KDI-UI-009 Slice 2 /diagnostics page (AC-02/04/07/08)", () => {
     // be the old no-board dead-end.
     const html = await (await fetch(`${baseUrl}/diagnostics`)).text();
     expect(html).not.toContain("No board selected");
+  }, 120000);
+
+  it("exercises the existing lifecycle POST and observes refreshed diagnostics", async () => {
+    const response = await fetch(`${baseUrl}/api/boards/diag/tasks/${blockedTaskId}/unblock`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { result: { status: string } };
+    expect(body.result.status).toBe("success");
+
+    const refreshed = await (await fetch(`${baseUrl}/diagnostics?board=diag`)).text();
+    expect(refreshed).not.toContain("stuck_in_blocked");
+  }, 120000);
+
+  it("POST comments persists a valid comment and rejects blank text with 400", async () => {
+    const endpoint = `${baseUrl}/api/boards/diag/tasks/${staleTaskId}/comments`;
+    const valid = await fetch(endpoint, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ text: "diagnostic note" }),
+    });
+    const blank = await fetch(endpoint, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ text: "   " }),
+    });
+    expect([valid.status, blank.status]).toEqual([201, 400]);
+
+    const created = (await valid.json()) as {
+      comment: { id: number; taskId: number; text: string; author: string; createdAt: number };
+    };
+    expect(created.comment).toMatchObject({
+      taskId: staleTaskId,
+      text: "diagnostic note",
+      author: "diagnostics-http",
+    });
+
+    const rejected = (await blank.json()) as { error: string };
+    expect(rejected.error).toBe("invalid_input");
+
+    for (const body of [{}, null, { text: null }, { text: 1 }]) {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      expect(response.status).toBe(400);
+      expect(await response.json()).toMatchObject({ error: "invalid_input" });
+    }
+
+    const invalidTask = await fetch(`${baseUrl}/api/boards/diag/tasks/abc/comments`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ text: "x" }),
+    });
+    expect(invalidTask.status).toBe(400);
+    expect(await invalidTask.json()).toMatchObject({ error: "invalid_input" });
+
+    const listedResponse = await fetch(endpoint);
+    expect(listedResponse.status).toBe(200);
+    const listed = (await listedResponse.json()) as { comments: Array<typeof created.comment> };
+    expect(listed.comments).toEqual([created.comment]);
   }, 120000);
 });
 
