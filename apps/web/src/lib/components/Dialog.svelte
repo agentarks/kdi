@@ -8,8 +8,8 @@
   let { title, children }: Props = $props();
 
   let dialog = $state<HTMLDialogElement | null>(null);
-  // Stable unique ID so aria-labelledby resolves to this dialog's heading.
-  const titleId = `dialog-title-${crypto.randomUUID()}`;
+  // Hydration-stable unique ID so aria-labelledby resolves to this dialog's heading.
+  const titleId = $props.id();
 
   export function open() {
     dialog?.showModal();

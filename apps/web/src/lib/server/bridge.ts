@@ -66,6 +66,7 @@ type Modules = {
   getRun: typeof import("~/models/taskRun")["getRun"];
   getRecentBoardRunFailures: typeof import("~/models/taskRun")["getRecentBoardRunFailures"];
   getComments: typeof import("~/models/comment")["getComments"];
+  addComment: typeof import("~/models/comment")["addComment"];
   listAttachments: typeof import("~/models/taskAttachment")["listAttachments"];
   buildTaskContext: typeof import("~/models/context")["buildTaskContext"];
   runDiagnostics: typeof import("~/models/diagnostic")["runDiagnostics"];
@@ -1004,6 +1005,18 @@ export async function taskCommentsJson(slug: string, id: number): Promise<{ comm
   await assertTaskOnBoard(slug, id);
   const m = await models();
   return { comments: toCamel(m.getComments(id)) };
+}
+
+export async function addCommentJson(
+  slug: string,
+  id: number,
+  input: { text: string },
+): Promise<{ comment: CamelCase<Comment> }> {
+  if (typeof input?.text !== "string" || input.text.trim() === "")
+    throw new BridgeError("invalid_input", 400, "Comment text is required.");
+  await assertTaskOnBoard(slug, id);
+  const m = await models();
+  return { comment: toCamel(m.addComment({ task_id: id, text: input.text, author: resolveCurrentProfile() })) };
 }
 
 export async function taskAttachmentsJson(
