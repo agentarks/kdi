@@ -180,7 +180,7 @@
       `effect_update_depth_exceeded` loop on hydration; timer handles are now
       plain non-reactive vars).
 
-## KDI-UI-009: Stats and Diagnostics UI — Spec
+## KDI-UI-009: Stats and Diagnostics UI — Done
 - [x] BRD/spec drafted at `specs/sveltekit-ui/KDI-UI-009-stats-diagnostics-ui.md`
 - [x] **Slice 1 (`/stats` page) DONE** — `apps/web/src/routes/stats/+page.{server.ts,svelte}` + `apps/web/src/lib/server/statsPage.ts` + `apps/web/src/lib/format.ts`; `statsFlags()` added to bridge.ts; `FF_STATS`-gated (AC-11), 8 status buckets (AC-03 parity vs `kdi stats --json`), assignee counts (empty-state), oldest-ready age (FR-6), manual refresh, JSON export (AC-10), board-not-found inline error (FR-1). Tests: `stats.test.ts` (8) + `stats.http.test.ts` (5) + `format.test.ts` (4). Nav `/stats` already present in `+layout.svelte`.
 - [x] **Slice 2 (`/diagnostics` read path) DONE** — findings, severity/task filters, disabled and error states, refresh, JSON export, and navigation shipped in PR #95.
