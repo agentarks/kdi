@@ -180,15 +180,16 @@
       `effect_update_depth_exceeded` loop on hydration; timer handles are now
       plain non-reactive vars).
 
-## KDI-UI-009: Stats and Diagnostics UI — Spec
+## KDI-UI-009: Stats and Diagnostics UI — Done
 - [x] BRD/spec drafted at `specs/sveltekit-ui/KDI-UI-009-stats-diagnostics-ui.md`
 - [x] **Slice 1 (`/stats` page) DONE** — `apps/web/src/routes/stats/+page.{server.ts,svelte}` + `apps/web/src/lib/server/statsPage.ts` + `apps/web/src/lib/format.ts`; `statsFlags()` added to bridge.ts; `FF_STATS`-gated (AC-11), 8 status buckets (AC-03 parity vs `kdi stats --json`), assignee counts (empty-state), oldest-ready age (FR-6), manual refresh, JSON export (AC-10), board-not-found inline error (FR-1). Tests: `stats.test.ts` (8) + `stats.http.test.ts` (5) + `format.test.ts` (4). Nav `/stats` already present in `+layout.svelte`.
 - [x] **Slice 2 (`/diagnostics` read path) DONE** — findings, severity/task filters, disabled and error states, refresh, JSON export, and navigation shipped in PR #95.
 - [x] Show per-status counts, per-assignee counts, oldest-ready age, and health diagnostics
 - [x] Severity filter and task-specific diagnostics
 - [x] **Slice 3 action shortcuts implemented** — reclaim/reassign/unblock reuse the lifecycle action route; comments POST through the existing task comments resource; CLI hint and docs stay client-only. Dialog errors remain inline, successful mutations refresh diagnostics, and `addCommentJson` enforces board membership plus nonblank text. Focused coverage: 21 tests across `diagnostics-page.test.ts` and `diagnostics-page.http.test.ts`; live Chromium exercised all six shortcuts and CLI state cross-checks.
-- [ ] Acceptance: UI output matches `kdi stats --json` and `kdi diagnostics --json`
-- [ ] `bun run lint`, CLI build, `bun run check:web`, and `bun run build:web` pass with isolated `KDI_DB`
+- [x] **Slice 4 (cross-links + integration + gates) DONE** — FR-20 stats↔diagnostics bidirectional links (`stats/+page.svelte`, `diagnostics/+page.svelte`); FR-22 board-view → stats/diagnostics links (`boards/[slug]/+page.svelte`); FR-21 task-id links already in diagnostics (stats has no task ids). AC-14 integration smoke `stats-diagnostics.http.test.ts` (CLI-seeded DB, both-page parity vs `kdi stats`/`kdi diagnostics --json`, cross-links, #97 carry-forward comment persistence cross-checked via `kdi show <id>`) + AC-13 master-off redirect. `stats-diagnostics.e2e.ts` proves severity `<select>` client navigation + FR-20 cross-link click navigation in a real browser.
+- [x] Acceptance: UI output matches `kdi stats --json` and `kdi diagnostics --json` (proven by `stats.http.test.ts`, `diagnostics-page.http.test.ts`, and the Slice 4 `stats-diagnostics.http.test.ts` integration smoke)
+- [x] `bun run lint`, CLI build, `bun run check:web`, and `bun run build:web` pass with isolated `KDI_DB` (AC-15 gate green)
 
 ## KDI-UI-010: Notification Subscriptions UI — Done
 - [x] Spec: `specs/sveltekit-ui/KDI-UI-010-notification-subscriptions-ui.md`
@@ -1086,6 +1087,13 @@
 - [ ] **DEBT: duplicated fallback `statuses` array in `/stats` page** — `apps/web/src/routes/stats/+page.svelte:28-37` re-declares `STATS_STATUSES` from `statsPage.ts`; the branch using it is unreachable when `statuses` is absent. Replace with `data.statuses ?? []`. Caught by `pi.frontend-reviewer` (ponytail-review) on PR #96.
 - [ ] **DEBT: `StatsFlags` is a one-field interface** — `apps/web/src/lib/types.ts:40-42` `{ stats: boolean }`; a bare `boolean` would do. Accepted for consistency with `ActivityFlags`; revisit if no second field materializes. Caught by `pi.frontend-reviewer` (ponytail-review) on PR #96.
 - [ ] **DEBT: local `BoardStats` interface re-declares the bridge `CamelCase<BoardStats>` shape** — `apps/web/src/routes/stats/+page.svelte:19-24` duplicates the shape with `as BoardStats` casts; types can drift if the bridge shape changes. Pragmatic tradeoff (SvelteKit `$types` generation makes direct imports awkward); low priority. Caught by `pi.frontend-reviewer` on PR #96.
+
+### Review nits (from KDI-UI-009 Slice 4 / PR #98 review)
+
+- [ ] **DEBT: e2e uses CSS-class selectors instead of role/name** — `apps/web/e2e/stats-diagnostics.e2e.ts:176,202,208` (`.status-link`, `.severity-filter select`). Per the AGENTS.md e2e convention, prefer `getByLabel("Severity")` and `getByRole("link", { name: /ready/ })`. Functional today; a class rename would silently break the test. Non-blocking. Caught by `pi.frontend-reviewer` on PR #98, APPROVE_WITH_NITS.
+- [ ] **DEBT: `/stats` parity matcher is substring-based** — `apps/web/src/lib/server/stats-diagnostics.http.test.ts:139` asserts `expect(html).toContain(`>${count}<`)`. Genuine cross-check (iterates every CLI status bucket) but a loose matcher; tighten to a targeted `<td>` cell assertion if the stats table structure changes. Non-blocking. Caught by `pi.frontend-reviewer` on PR #98.
+- [ ] **DEBT: HTTP test harness duplicated across 4 files** — `descendantPids`/`killTree`/`spawnServer`/`makeTmpHome`/`waitAlive`/`runKdi` are copy-pasted across `stats-diagnostics.http.test.ts`, `diagnostics-page.http.test.ts`, `notify-subs.http.test.ts`, and `board-management.http.test.ts` (~80 lines each). Pre-existing pattern (3 files predate KDI-UI-009). Extract to `apps/web/src/lib/server/test-harness.ts` in a dedicated test-infra cleanup PR — out of scope for KDI-UI-009. Caught by `pi.frontend-reviewer` on PR #98.
+- [x] **RESOLVED: STATUS.md "all 15 ACs satisfied" self-claim (commit `4fcb593`)** — flagged by `pi.frontend-reviewer` as unverified until the done-auditor gate. **Validated by `pi.done-auditor`: verdict DONE-WITH-DEBT — all 15 ACs MET, independently verified (the auditor re-ran the AC-15 gate sweep + all 46 KDI-UI-009 tests green itself).** No longer open; KDI-UI-009 is DONE.
 
 ### Deferred non-blocking items (from KDI-038 review)
 
