@@ -1072,6 +1072,8 @@
 
 ### Known gaps (not blocking, tracked for future work)
 
+- [ ] **Worktree hygiene: Bun transpiler cache (`Library/Caches/bun/@t@/*.pile`) can be accidentally committed.** When a test/dev-server run sets `HOME`/`XDG_CACHE_HOME` under the worktree root (e.g. a `/tmp` path that resolves inside, or a stray `HOME=.`), Bun writes its `.pile` transpiler cache to `<worktree>/Library/Caches/bun/`. A broad `git add -A` then tracks ~10s of MB of binary cache. The root `.gitignore` now ignores `Library/Caches/` + `*.pile` (added KDI-UI-013 Slice 3), but sibling worktrees on old bases lack the rule. Mitigation: always `git add` the specific paths you changed (or `git status` before committing), and keep test temp dirs under `/tmp`, never inside the worktree.
+
 - [ ] **KDI-UI-006: heartbeat note byte limit is char-based in the model + CLI** — `src/models/claim.ts` (`MAX_HEARTBEAT_NOTE_BYTES` + `note.length`/`note.slice`) and `src/commands/tasks.ts:1533` enforce the 4 KiB budget via JS code-unit count, not UTF-8 bytes, so CJK/emoji input can exceed the intended byte limit. The SvelteKit UI now clamps by true UTF-8 bytes at the server boundary (`clampUtf8Bytes` in `bridge.ts`), making the model path a harmless no-op for UI submissions, but the CLI path is still char-based. Fixing the model/CLI is out of KDI-UI-006 scope (AC-27 forbids `src/models` churn); track for a separate flag-gated slice with CLI tests.
 
 - [ ] **KDI-000d: Live-PID contention test** — `initDb` is synchronous and blocks the event loop; async test cleanup races with the sync loop. The implementation is correct (verified by code review), but testing live-PID lock contention requires spawning a real concurrent process, which is flaky in the Bun test runner.
