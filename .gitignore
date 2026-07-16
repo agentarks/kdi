@@ -6,3 +6,5 @@ kdi
 dist/
 .worktrees/
 .kdi.sqlite*
+Library/Caches/
+.pile

@@ -6,7 +6,9 @@
 // `/api/boards/[slug]/tasks/[id]/step` route and cross-checks EACH transition
 // against `kdi show` on the same DB.
 //
-// Pattern copied from task-lifecycle-actions.http.test.ts.
+// Spawn/cleanup pattern copied from notify-subs.http.test.ts: random port +
+// killTree (walks all transitive descendants so the `bun -> node -> vite`
+// grandchild is not reparented to PID 1 and leaked, the known KDI-UI-010 risk).
 import { describe, it, expect, afterAll } from "bun:test";
 import { rmSync, existsSync, mkdtempSync } from "node:fs";
 import { execSync } from "node:child_process";
@@ -45,10 +47,52 @@ async function waitAlive(timeoutMs = 60000): Promise<void> {
   throw new Error(`dev server did not come alive on :${port} within ${timeoutMs}ms`);
 }
 
+// Walk all transitive descendants of `rootPid` (pgrep -P lists direct children;
+// breadth-first to completion) so we can kill leaves-first and never leave a
+// reparented Vite grandchild behind. Mirrors notify-subs.http.test.ts.
+function descendantPids(rootPid: number): number[] {
+  const out: number[] = [];
+  let frontier = [rootPid];
+  const seen = new Set<number>();
+  while (frontier.length > 0) {
+    const next: number[] = [];
+    for (const parent of frontier) {
+      if (seen.has(parent)) continue;
+      seen.add(parent);
+      if (parent !== rootPid) out.push(parent);
+      try {
+        const children = execSync(`pgrep -P ${parent} 2>/dev/null || true`, { encoding: "utf8" })
+          .split("\n").map((s) => s.trim()).filter((s) => s !== "").map(Number);
+        next.push(...children);
+      } catch { /* none */ }
+    }
+    frontier = next;
+  }
+  return out;
+}
+
+// Kill the whole spawn tree (parent + all descendants) so no `vite --port`
+// escapes reparenting to PID 1 (the pre-killTree leak that caused back-to-back
+// `bun test` hangs during KDI-UI-010 review). Then assert no vite descendant of
+// THIS spawn survived, scoped by port so we never touch unrelated servers.
 async function stopServer(): Promise<void> {
   if (proc) {
-    try { process.kill(-proc.pid, 9); await proc.exited; } catch { /* already gone */ }
+    const pid = proc.pid;
+    for (const child of descendantPids(pid)) {
+      try { process.kill(child, 9); } catch { /* gone */ }
+    }
+    try { process.kill(pid, 9); } catch { /* gone */ }
+    try { await Promise.race([proc.exited, new Promise<void>((res) => setTimeout(res, 3000))]); } catch { /* gone */ }
     proc = null;
+  }
+  let survivors: string[] = [];
+  try {
+    survivors = execSync(`pgrep -f "vite dev --port ${port}" 2>/dev/null || true`, { encoding: "utf8" })
+      .split("\n").map((s) => s.trim()).filter((s) => s !== "");
+  } catch { /* none */ }
+  if (survivors.length > 0) {
+    try { execSync(`pkill -9 -f "vite dev --port ${port}" >/dev/null 2>&1 || true`); } catch { /* none */ }
+    throw new Error(`vite dev --port ${port} survived killTree: ${survivors.join(",")}`);
   }
   await new Promise((res) => setTimeout(res, 500));
 }
