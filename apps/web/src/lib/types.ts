@@ -286,6 +286,10 @@ export interface TaskDetail {
   attachments: TaskDetailAttachment[];
   context: TaskDetailContext | null;
   contextError?: string;
+  // KDI-UI-013 Slice 3: ordered step keys of the task's workflow template,
+  // null when the task has no template. Powers the Jump-to-step select without
+  // a second fetch.
+  workflowTemplateSteps: string[] | null;
 }
 
 export interface DetailFlags {

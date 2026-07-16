@@ -1,6 +1,7 @@
 <script lang="ts">
   import { formatAge, formatDate, formatBytes, statusLabel } from "$lib/kanban";
   import TaskActions from "$lib/components/TaskActions.svelte";
+  import TaskStep from "$lib/components/TaskStep.svelte";
   import type { TaskDetail, DetailFlags, LogResponse, TaskDetailRun, TaskDetailEvent, LifecycleFlags } from "$lib/types";
 
   interface Props {
@@ -220,6 +221,10 @@
   {/if}
 
   <TaskActions {task} flags={lifecycle} {boardSlug} {currentProfile} hasBlockingDeps={blockedParents.length > 0} {initialAction} />
+
+  <!-- KDI-UI-013 Slice 3: workflow step action cluster (advance / jump). Sits
+       below the lifecycle actions as a separate, FR-25-gated cluster. -->
+  <TaskStep {task} steps={detail.workflowTemplateSteps} flags={flags} {boardSlug} />
 
   <section class="detail-section" aria-labelledby="body-heading">
     <h2 id="body-heading">Body</h2>

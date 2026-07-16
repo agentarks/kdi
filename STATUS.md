@@ -248,8 +248,21 @@
 - [x] BRD/spec drafted at `specs/sveltekit-ui/KDI-UI-013-workflow-templates-ui.md`
 - [ ] `/boards/[slug]/workflows` route lists templates and provides a define/upsert form
 - [ ] Quick-create action on each template row creates a task via `createTask` with the template and an optional step key
-- [ ] Step action on task detail page advances or jumps workflow steps with an optional reason
-- [ ] Server-side validation mirrors the CLI; gated by `FF_WORKFLOW_TEMPLATES` and `FF_SVELTEKIT_FRONTEND`
+- [x] Step action on task detail page advances or jumps workflow steps with an optional reason (Slice 3 — see below)
+- [x] Server-side validation mirrors the CLI; gated by `FF_WORKFLOW_TEMPLATES` and `FF_SVELTEKIT_FRONTEND` (step-action path)
+
+## KDI-UI-013 Slice 3 — Task-detail step action (advance / jump) — Implemented
+- [x] Bridge wired `advanceTaskStep` + `setTaskStep` into `Modules` (loader already spreads the workflow module); added `advanceTaskStepJson` + `setTaskStepJson` returning the updated camelCase `KanbanTask` + a CLI-mirroring success message (FR-18, FR-23)
+- [x] Error mapping mirrors the exact CLI strings: no-template (`Task <id> has no workflow template.`), missing template (`Workflow template "..." not found for task <id>. Define it with 'kdi workflows define'.`), disappeared-step (`Task <id> is on step "..." which no longer exists in template "...".`), invalid jump key (`Step "..." not found in workflow template "...". Valid steps: ...`), empty jump key (`Step key cannot be empty.`) (FR-19, FR-20, FR-21, AC-12)
+- [x] Reason textarea clamped to a true 4 KiB UTF-8 byte budget (reuses `clampUtf8Bytes` + `MAX_HEARTBEAT_NOTE_BYTES`) and recorded on the `stepped` event (FR-22, BRD §11)
+- [x] Terminal advance → `done`, clears `current_step_key`, records `stepped` + `completed` events (FR-18, AC-10)
+- [x] `taskDetailJson` now hydrates `workflowTemplateSteps: string[] | null` so the panel can render the Jump-to-step select with no second fetch; `TaskDetail` type extended
+- [x] New `POST /api/boards/[slug]/tasks/[id]/step` route (static segment wins over the `[action]` param route — no collision with KDI-UI-006); body `{ action: "advance" | "jump", targetKey?, reason? }`; `apiPost` applies the `FF_SVELTEKIT_FRONTEND` gate, the helpers re-check `FF_WORKFLOW_TEMPLATES` (FR-24, FR-27)
+- [x] `TaskStep.svelte` rendered below the KDI-UI-006 lifecycle actions (separate cluster, slice-plan Gap 4); visible only when `task.workflowTemplateId && flags.workflowTemplates && !archived`; `aria-disabled` (not hidden) when `done`/archived with a visually-hidden reason (FR-25); in-form `role="alert"` errors
+- [x] Tests: `task-step.test.ts` (13 unit — advance/jump/terminal/reason/flag gate/error mapping/detail-payload steps) + `task-step.http.test.ts` (3 HTTP smoke, each cross-checked with `kdi show`); bridge guard allowlist extended for the two new server-side test files
+- [x] User-loop smoke (temp HOME/KDI_DB, live `dev:web`): task-detail page renders the Workflow step cluster with the jump select populated; advance → jump with reason → advance-to-terminal all match `kdi show`; reason recorded on the `stepped` event; jump-unknown → 400 CLI error; done state disables the controls
+- [x] No `src/models` / `src/commands` / `src/db.ts` / `src/flags.ts` churn (AC-14); no new flags (FR-28)
+- [x] Verification: `bun run lint`, `bun run build`, `bun run check:web`, `bun run build:web` clean; `bun test` → **1200 pass / 0 fail**
 - [ ] UI smoke with temp HOME/KDI_DB defines templates, creates tasks from templates, and steps tasks; matches `kdi workflows list`/`kdi show`/`kdi step`
 - [ ] `bun run lint`, CLI build, `bun run check:web`, and `bun run build:web` pass with isolated `KDI_DB`
 

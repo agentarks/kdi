@@ -73,6 +73,8 @@ type Modules = {
   listWorkflowTemplates: typeof import("~/models/workflowTemplate")["listWorkflowTemplates"];
   getWorkflowTemplate: typeof import("~/models/workflowTemplate")["getWorkflowTemplate"];
   validateStepKey: typeof import("~/models/workflowTemplate")["validateStepKey"];
+  advanceTaskStep: typeof import("~/models/workflowTemplate")["advanceTaskStep"];
+  setTaskStep: typeof import("~/models/workflowTemplate")["setTaskStep"];
   listSubscriptions: typeof import("~/models/notifySub")["listSubscriptions"];
   subscribe: typeof import("~/models/notifySub")["subscribe"];
   unsubscribe: typeof import("~/models/notifySub")["unsubscribe"];
@@ -923,6 +925,80 @@ export async function validateStepKeyBridge(
   }
 }
 
+// KDI-UI-013 Slice 3: workflow step actions (advance / jump). Thin JSON
+// wrappers over the same model fns the CLI `kdi step` command calls, returning
+// the updated camelCase task + a CLI-mirroring success message (FR-23).
+// Validation/precondition errors map to "invalid_input" 400 with the exact CLI
+// string (FR-19..FR-21); a missing task → "task_not_found" 404. Reuses the
+// KDI-UI-006 reason byte cap (BRD §11) so the recorded `stepped` event reason
+// never exceeds a true 4 KiB UTF-8 budget.
+function stepReason(reason: unknown): string | undefined {
+  if (reason === undefined || reason === null) return undefined;
+  const s = typeof reason === "string" ? reason : String(reason);
+  const trimmed = s.trim();
+  return trimmed === "" ? undefined : clampUtf8Bytes(trimmed, MAX_HEARTBEAT_NOTE_BYTES);
+}
+
+function stepMessage(action: "advance" | "jump", task: KanbanTask): string {
+  if (action === "advance" && task.status === "done") {
+    return `Completed task ${task.id} at terminal workflow step.`;
+  }
+  if (action === "jump") {
+    return `Set task ${task.id} to step ${task.currentStepKey}.`;
+  }
+  return `Advanced task ${task.id} to step ${task.currentStepKey}.`;
+}
+
+// Wrap a model-layer step error as a client BridgeError, surfacing the exact
+// CLI message. A not-found/archived task is 404; everything else the model
+// throws for steps is a validation/precondition error → 400.
+function wrapStepError(err: unknown): BridgeError {
+  if (err instanceof BridgeError) return err;
+  const message = err instanceof Error ? err.message : String(err);
+  if (/not found or already archived/.test(message))
+    return new BridgeError("task_not_found", 404, message);
+  return new BridgeError("invalid_input", 400, message);
+}
+
+export async function advanceTaskStepJson(
+  slug: string,
+  id: number,
+  reason?: string,
+): Promise<{ task: KanbanTask; message: string }> {
+  requireWorkflowTemplates();
+  await assertTaskOnBoard(slug, id);
+  const m = await models();
+  let task: TaskModel;
+  try {
+    task = m.advanceTaskStep(id, stepReason(reason));
+  } catch (err) {
+    throw wrapStepError(err);
+  }
+  const kanban = toKanbanTask(task);
+  return { task: kanban, message: stepMessage("advance", kanban) };
+}
+
+export async function setTaskStepJson(
+  slug: string,
+  id: number,
+  targetKey: string,
+  reason?: string,
+): Promise<{ task: KanbanTask; message: string }> {
+  requireWorkflowTemplates();
+  if (typeof targetKey !== "string" || targetKey.trim() === "")
+    throw new BridgeError("invalid_input", 400, "Step key cannot be empty.");
+  await assertTaskOnBoard(slug, id);
+  const m = await models();
+  let task: TaskModel;
+  try {
+    task = m.setTaskStep(id, targetKey.trim(), stepReason(reason));
+  } catch (err) {
+    throw wrapStepError(err);
+  }
+  const kanban = toKanbanTask(task);
+  return { task: kanban, message: stepMessage("jump", kanban) };
+}
+
 export async function profilesJson(): Promise<{ profiles: Profile[] }> {
   const m = await models();
   return { profiles: m.loadProfiles() };
@@ -1144,6 +1220,13 @@ export async function taskDetailJson(slug: string, id: number): Promise<TaskDeta
   const handoff = findHandoffEvent(m, id);
   const logPath = m.getTaskLogPath(slug, id);
 
+  // KDI-UI-013 Slice 3: hydrate the template step list for the Jump-to-step
+  // control. null when the task has no template (or the template was deleted);
+  // the panel hides the step controls in that case.
+  const workflowTemplateSteps = task.workflow_template_id
+    ? (m.getWorkflowTemplate(task.board_id, task.workflow_template_id)?.steps ?? null)
+    : null;
+
   return {
     task: toCamel(task) as TaskDetail["task"],
     parents,
@@ -1156,6 +1239,7 @@ export async function taskDetailJson(slug: string, id: number): Promise<TaskDeta
     attachments: toCamel(attachments) as TaskDetail["attachments"],
     context: contextResult.ok ? (toCamel(contextResult.value) as TaskDetail["context"]) : null,
     contextError: contextResult.ok ? undefined : "not_available",
+    workflowTemplateSteps,
   };
 }
 
