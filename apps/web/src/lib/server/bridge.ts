@@ -73,6 +73,7 @@ type Modules = {
   listWorkflowTemplates: typeof import("~/models/workflowTemplate")["listWorkflowTemplates"];
   getWorkflowTemplate: typeof import("~/models/workflowTemplate")["getWorkflowTemplate"];
   validateStepKey: typeof import("~/models/workflowTemplate")["validateStepKey"];
+  defineWorkflowTemplate: typeof import("~/models/workflowTemplate")["defineWorkflowTemplate"];
   listSubscriptions: typeof import("~/models/notifySub")["listSubscriptions"];
   subscribe: typeof import("~/models/notifySub")["subscribe"];
   unsubscribe: typeof import("~/models/notifySub")["unsubscribe"];
@@ -297,6 +298,12 @@ function wrap(err: unknown): BridgeError {
   if (/not found or is archived/.test(message)) return new BridgeError("board_not_found", 404, message);
   if (/^Task \d+ not found on board/.test(message)) return new BridgeError("task_not_found", 404, message);
   if (/cannot be empty|must be 255|requires scheduled_at|A board id is required|Title is required/.test(message))
+    return new BridgeError("invalid_input", 400, message);
+  // KDI-UI-013: workflow-template define validation (FR-10..FR-12). The model
+  // throws these exact strings; map them to 400 invalid_input so the form
+  // action preserves values instead of surfacing a 500. ponytail: extend the
+  // one mapper rather than per-route catch blocks.
+  if (/Invalid template id|Template id must be|Template must have|Template cannot have|exceeds 255 characters|Duplicate step key/.test(message))
     return new BridgeError("invalid_input", 400, message);
   if (/Database not initialized/.test(message)) return new BridgeError("db_not_initialized", 500, message);
   return new BridgeError("internal", 500, message);
@@ -1318,6 +1325,25 @@ export async function workflowsJson(slug: string): Promise<{ templates: CamelCas
   const board = await resolveBoard(slug);
   const m = await models();
   return { templates: toCamel(m.listWorkflowTemplates(board.id)) };
+}
+
+// KDI-UI-013 Slice 1 (FR-7..FR-13): define/upsert a board-scoped workflow
+// template. Gated by FF_WORKFLOW_TEMPLATES; the model performs all validation
+// and throws the exact CLI strings, which wrap() maps to 400 invalid_input.
+// ponytail: no re-validation in the bridge — surface the model contract verbatim.
+export async function defineWorkflowTemplateJson(
+  slug: string,
+  input: { templateId: string; name: string; steps: string[] },
+): Promise<{ template: CamelCase<WorkflowTemplate> }> {
+  requireWorkflowTemplates();
+  const board = await resolveBoard(slug);
+  const m = await models();
+  try {
+    const template = m.defineWorkflowTemplate(board.id, input.templateId, input.name, input.steps);
+    return { template: toCamel(template) as CamelCase<WorkflowTemplate> };
+  } catch (err) {
+    throw wrap(err);
+  }
 }
 
 // ---------------------------------------------------------------------------

@@ -246,6 +246,7 @@
 
 ## KDI-UI-013: Workflow Templates UI — Spec
 - [x] BRD/spec drafted at `specs/sveltekit-ui/KDI-UI-013-workflow-templates-ui.md`
+- [~] **Slice 1 done:** `/boards/[slug]/workflows` route lists templates and provides a define/upsert form (FR-1..FR-13, AC-01..AC-06, AC-13, AC-14, AC-15). Bridge wires `defineWorkflowTemplate` into `Modules` + adds `defineWorkflowTemplateJson` (gate via `requireWorkflowTemplates`); `wrap()` maps define validation to 400. Form action parses textarea (split/trim/drop-empty), preserves values on failure with `role="alert"`, redirects on success. Board view links to the page. Tests: `workflow-templates.test.ts` (5 unit, CLI parity) + `workflow-templates.http.test.ts` (7 HTTP smoke, killTree). Remaining slices: create-from-template (S2), task-detail step action (S3), integration smoke (S4).
 - [ ] `/boards/[slug]/workflows` route lists templates and provides a define/upsert form
 - [ ] Quick-create action on each template row creates a task via `createTask` with the template and an optional step key
 - [ ] Step action on task detail page advances or jumps workflow steps with an optional reason
