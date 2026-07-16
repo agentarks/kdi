@@ -263,6 +263,15 @@
 - [x] User-loop smoke (temp HOME/KDI_DB, live `dev:web`): task-detail page renders the Workflow step cluster with the jump select populated; advance → jump with reason → advance-to-terminal all match `kdi show`; reason recorded on the `stepped` event; jump-unknown → 400 CLI error; done state disables the controls
 - [x] No `src/models` / `src/commands` / `src/db.ts` / `src/flags.ts` churn (AC-14); no new flags (FR-28)
 - [x] Verification: `bun run lint`, `bun run build`, `bun run check:web`, `bun run build:web` clean; `bun test` → **1200 pass / 0 fail**
+- [x] **pi.frontend-eng fresh-context review (PR #101) — all findings fixed:**
+  - **M1 (silent fetch failure):** `post()` now catches `fetch` rejection (network/timeout/abort) so the operator always gets feedback instead of a silent unhandled rejection.
+  - **M2 (reason cap not blocking submit):** the 4096-byte reason over-limit now blocks submit and the over-limit control (`blocked = disabled || reasonOver`), matching the KDI-UI-006 heartbeat-note pattern; uses `aria-disabled` (not true `disabled`) to preserve FR-25 reachability of the disabled reason.
+  - **M3 (label wrapping multiple controls):** unwrapped the `<label>` around select+span+button into `<span id="jump-label">` + `<select aria-labelledby="jump-label">` so the label association is unambiguous and the inner button no longer toggles the select.
+  - **L1 (done-task data corruption):** `advanceTaskStepJson`/`setTaskStepJson` reject a done task with `400 Task <id> is already done; step actions are not available.` before the model call — `advanceTaskStep` on a done (null-step) task would set a step without clearing `status='done'` ("done with a step"). Archived tasks are already rejected upstream by `assertTaskOnBoard` (`showTask` filters `archived_at IS NULL` → 404), so no phantom `stepped` event can fire; only the done guard was needed. `assertTaskOnBoard` now returns the `TaskModel` so the guard reuses the existing query. AC-14-clean (only the bridge moves).
+  - **L2 (stale success co-renders with error):** handler entry clears the success message so success+error never co-render.
+  - **L3 (reason editable when disabled):** reason textarea `disabled` when the cluster is disabled.
+  - **L4 (no visual busy feedback):** buttons `aria-disabled={blocked || busy}`.
+  - Added 2 unit tests (done guard + archived 404/no-phantom-event); 15/15 step unit tests pass; full suite **1202 pass / 0 fail**.
 - [ ] UI smoke with temp HOME/KDI_DB defines templates, creates tasks from templates, and steps tasks; matches `kdi workflows list`/`kdi show`/`kdi step`
 - [ ] `bun run lint`, CLI build, `bun run check:web`, and `bun run build:web` pass with isolated `KDI_DB`
 
