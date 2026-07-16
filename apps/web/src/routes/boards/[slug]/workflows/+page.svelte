@@ -1,5 +1,6 @@
 <script lang="ts">
   // KDI-UI-013 Slice 1: workflow templates list + define form.
+  import { page } from "$app/state";
   import type { FormResult } from "$lib/types";
   import type { PageProps } from "./$types";
 
@@ -8,7 +9,8 @@
   const formResult = $derived(form as FormResult | undefined);
   const values = $derived(formResult?.values ?? {});
   const error = $derived(formResult?.error);
-  const success = $derived(typeof data !== "undefined" && "success" in data ? (data as { success?: string }).success : undefined);
+  // FR-13: success toast via the ?success= query param (matches boards/+page.svelte).
+  const success = $derived(page.url.searchParams.get("success") ?? undefined);
 
   const board = $derived(data.board);
   const templates = $derived(data.templates ?? []);
@@ -16,7 +18,12 @@
 
   // FR-8: warn when the typed template_id matches an existing template (upsert).
   const existingIds = $derived(new Set(templates.map((t) => t.templateId)));
-  let templateIdInput = $state("");
+  // FR-13: preserve template_id on failure; seed from preserved form values
+  // and bind for the live FR-8 overwrite warning. Snapshot the value once so the
+  // bind stays editable (not reactive to values).
+  // svelte-ignore state_referenced_locally
+  const initialTemplateId = (values.template_id as string) ?? "";
+  let templateIdInput = $state(initialTemplateId);
   const overwriteWarning = $derived(
     enabled && templateIdInput !== "" && existingIds.has(templateIdInput),
   );
@@ -47,7 +54,7 @@
 
     {#if !enabled}
       <!-- AC-13: disabled payload when the flag is off. -->
-      <p class="text-dim" role="note">Workflow templates feature is not enabled.</p>
+      <p class="text-dim" role="status">Workflow templates feature is not enabled.</p>
     {/if}
 
     <!-- FR-4: template list. -->
@@ -92,7 +99,7 @@
           />
           <p class="text-dim">Letters, numbers, underscores, and hyphens only.</p>
           {#if overwriteWarning}
-            <p class="warn" role="note">An existing template has this ID — it will be overwritten.</p>
+            <p class="warn" role="status">An existing template has this ID — it will be overwritten.</p>
           {/if}
         </div>
         <div class="form-group">
@@ -151,8 +158,8 @@
     border-bottom: none;
   }
   .warn {
-    color: #1a1a1a;
-    background: #fff9c4;
+    color: var(--accent-text);
+    background: var(--accent-muted);
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
     padding: 6px 8px;

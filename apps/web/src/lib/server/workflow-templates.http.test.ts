@@ -203,6 +203,11 @@ describe("KDI-UI-013 Slice 1 workflows UI smoke (AC-01..AC-06)", () => {
     });
     let html = await (await fetch(`${baseUrl}/boards/demo/workflows`)).text();
     expect(html).toContain("Ship it");
+    // FR-13: success toast renders after the redirect (regression guard for the
+    // ?success= query-param path that the gpt-5.6-sol frontend review caught).
+    html = await (await fetch(`${baseUrl}/boards/demo/workflows?success=${encodeURIComponent("Template saved")}`)).text();
+    expect(html).toContain("Template saved");
+    expect(html).toMatch(/role="status"/);
 
     // Upsert (FR-8): same id, new name + steps.
     const upserted = await submitForm(baseUrl, `/boards/demo/workflows?/define`, {
@@ -244,7 +249,8 @@ describe("KDI-UI-013 Slice 1 workflows UI smoke (AC-01..AC-06)", () => {
     const html = await htmlRes.text();
     expect(html).toMatch(/role="alert"/);
     expect(html).toContain("Invalid template id");
-    // Preserved value (FR-13).
+    // Preserved value (FR-13): the typed template_id is echoed back, not blank.
+    expect(html).toContain('value="bad id!"');
     expect(html).toContain('name="template_id"');
     expect(workflowsListJson(home, "demo").length).toBe(before);
   }, 120000);
