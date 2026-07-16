@@ -246,13 +246,12 @@
 
 ## KDI-UI-013: Workflow Templates UI — Spec
 - [x] BRD/spec drafted at `specs/sveltekit-ui/KDI-UI-013-workflow-templates-ui.md`
-- [~] **Slice 1 done:** `/boards/[slug]/workflows` route lists templates and provides a define/upsert form (FR-1..FR-13, AC-01..AC-06, AC-13, AC-14, AC-15). Bridge wires `defineWorkflowTemplate` into `Modules` + adds `defineWorkflowTemplateJson` (gate via `requireWorkflowTemplates`); `wrap()` maps define validation to 400. Form action parses textarea (split/trim/drop-empty), preserves values on failure with `role="alert"`, redirects on success. Board view links to the page. Tests: `workflow-templates.test.ts` (5 unit, CLI parity) + `workflow-templates.http.test.ts` (7 HTTP smoke, killTree). Remaining slices: create-from-template (S2), task-detail step action (S3), integration smoke (S4).
-- [ ] `/boards/[slug]/workflows` route lists templates and provides a define/upsert form
+- [x] **Slice 1:** `/boards/[slug]/workflows` route lists templates and provides a define/upsert form (FR-1..FR-5, FR-7..FR-13, FR-26..FR-29; AC-01..AC-06, AC-13, AC-14, AC-15). Bridge wires `defineWorkflowTemplate` into `Modules` + adds `defineWorkflowTemplateJson` (gated via `requireWorkflowTemplates`; model validates + throws exact CLI strings; `wrap()` maps define errors to 400). Form action parses the textarea (split/trim/drop-empty), preserves values on failure with `role="alert"`, redirects on success; FR-8 overwrite warning when `template_id` exists. Board view links to the page (Gap 3). Tests: `workflow-templates.test.ts` (5 unit, CLI parity) + `workflow-templates.http.test.ts` (7 HTTP smoke incl. flag-off + master-off, `killTree`); REAL-UI loop PASS; full `bun test` gate 1196/0. Remaining slices: create-from-template (S2), task-detail step action (S3), integration smoke+e2e (S4).
 - [ ] Quick-create action on each template row creates a task via `createTask` with the template and an optional step key
 - [ ] Step action on task detail page advances or jumps workflow steps with an optional reason
 - [ ] Server-side validation mirrors the CLI; gated by `FF_WORKFLOW_TEMPLATES` and `FF_SVELTEKIT_FRONTEND`
 - [ ] UI smoke with temp HOME/KDI_DB defines templates, creates tasks from templates, and steps tasks; matches `kdi workflows list`/`kdi show`/`kdi step`
-- [ ] `bun run lint`, CLI build, `bun run check:web`, and `bun run build:web` pass with isolated `KDI_DB`
+- [x] `bun run lint`, CLI build, `bun run check:web`, and `bun run build:web` pass with isolated `KDI_DB`
 
 ## KDI-UI-014: Goal Mode UI — Spec
 - [x] BRD/spec drafted at `specs/sveltekit-ui/KDI-UI-014-goal-mode-ui.md`
