@@ -41,6 +41,7 @@
         <!-- FR-22: board view links to health/capacity dashboards. -->
         <a href="/stats?board={data.board.slug}" class="btn" aria-label="Stats for board {data.board.slug}">Stats</a>
         <a href="/diagnostics?board={data.board.slug}" class="btn" aria-label="Diagnostics for board {data.board.slug}">Diagnostics</a>
+        <a href="/boards/{data.board.slug}/workflows" class="btn" aria-label="Workflow templates for board {data.board.slug}">Workflows</a>
         <a href="/boards/{data.board.slug}/edit" class="btn btn--primary">Edit</a>
         <a href="/boards" class="btn">← Back to boards</a>
       </div>
