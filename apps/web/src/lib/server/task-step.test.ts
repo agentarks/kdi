@@ -15,7 +15,8 @@ import {
   BridgeError,
 } from "./bridge";
 import { defineWorkflowTemplate } from "~/models/workflowTemplate";
-import { showTask } from "~/models/task";
+import { showTask, archiveTask } from "~/models/task";
+import { getEvents } from "~/models/taskEvent";
 import { closeDb } from "~/db";
 import { clearOverrides } from "~/flags";
 
@@ -269,5 +270,48 @@ describe("KDI-UI-013 Slice 3 task-detail payload carries template steps", () => 
     const detail = await taskDetailJson(slug, orphan.id);
     expect(detail.workflowTemplateSteps).toBeNull();
     void id; void boardId;
+  });
+});
+
+describe("KDI-UI-013 Slice 3 terminal-task guard (FR-25 server-side mirror)", () => {
+  it("advance on an archived task is rejected upstream (assertTaskOnBoard 404) and records no stepped event", async () => {
+    // Archived tasks are filtered out by showTask, so assertTaskOnBoard 404s
+    // before any model call — no phantom stepped event can fire. This documents
+    // the contract the L1 review finding worried about.
+    const { slug, boardId } = await freshBoard();
+    await defineTemplate(boardId, "flow", ["a", "b"]);
+    const id = await makeTemplateTask(slug, "flow", "a");
+    const steppedBefore = getEvents(id).filter((e) => e.kind === "stepped").length;
+
+    archiveTask(id);
+    await expectBridgeError(
+      advanceTaskStepJson(slug, id),
+      "task_not_found",
+      404,
+    );
+    // No phantom stepped event; archiving itself records an `archived` event, so
+    // only the stepped count is asserted.
+    expect(getEvents(id).filter((e) => e.kind === "stepped").length).toBe(steppedBefore);
+  });
+
+  it("jump on a done task rejects and never sets a step on a done task", async () => {
+    const { slug, boardId } = await freshBoard();
+    await defineTemplate(boardId, "flow", ["a", "b"]);
+    const id = await makeTemplateTask(slug, "flow", "a");
+    // Move to terminal so the task is done with a null step.
+    await advanceTaskStepJson(slug, id); // a → b
+    await advanceTaskStepJson(slug, id); // b → done
+    expect(showTask(id)?.status).toBe("done");
+
+    await expectBridgeError(
+      setTaskStepJson(slug, id, "a", "restart"),
+      "invalid_input",
+      400,
+      new RegExp(`Task ${id} is already done; step actions are not available\.`),
+    );
+    // No reanimated step on a done task.
+    const t = showTask(id)!;
+    expect(t.status).toBe("done");
+    expect(t.current_step_key).toBeNull();
   });
 });

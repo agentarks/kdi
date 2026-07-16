@@ -960,13 +960,27 @@ function wrapStepError(err: unknown): BridgeError {
   return new BridgeError("invalid_input", 400, message);
 }
 
+// FR-25 server-side mirror: the UI disables the step cluster for a done task,
+// but a direct POST must not reach the model. A done task has a null
+// `current_step_key`; `advanceTaskStep` would set it to `steps[0]` WITHOUT
+// clearing `status='done'` ("done with a step" data corruption), and `setTaskStep`
+// would likewise re-add a step to a terminal task. Guard here so the bridge
+// returns a clean 400 and never mutates a terminal task. Archived tasks are
+// already rejected upstream by `assertTaskOnBoard` (showTask filters
+// `archived_at IS NULL` → 404), so only the done case needs this guard.
+// AC-14-clean: only the bridge moves, no `src/models` churn.
+function rejectTerminalStepTask(task: TaskModel): void {
+  if (task.status === "done")
+    throw new BridgeError("invalid_input", 400, `Task ${task.id} is already done; step actions are not available.`);
+}
+
 export async function advanceTaskStepJson(
   slug: string,
   id: number,
   reason?: string,
 ): Promise<{ task: KanbanTask; message: string }> {
   requireWorkflowTemplates();
-  await assertTaskOnBoard(slug, id);
+  rejectTerminalStepTask(await assertTaskOnBoard(slug, id));
   const m = await models();
   let task: TaskModel;
   try {
@@ -987,7 +1001,7 @@ export async function setTaskStepJson(
   requireWorkflowTemplates();
   if (typeof targetKey !== "string" || targetKey.trim() === "")
     throw new BridgeError("invalid_input", 400, "Step key cannot be empty.");
-  await assertTaskOnBoard(slug, id);
+  rejectTerminalStepTask(await assertTaskOnBoard(slug, id));
   const m = await models();
   let task: TaskModel;
   try {
@@ -1327,12 +1341,13 @@ export async function taskHandoffJson(
   return handoff ? { present: true, ...handoff } : { present: false };
 }
 
-export async function assertTaskOnBoard(slug: string, id: number): Promise<void> {
+export async function assertTaskOnBoard(slug: string, id: number): Promise<TaskModel> {
   const board = await resolveBoard(slug);
   const m = await models();
   const task = m.showTask(id);
   if (!task || task.board_id !== board.id)
     throw new BridgeError("task_not_found", 404, `Task ${id} not found on board "${slug}".`);
+  return task;
 }
 
 // ---------------------------------------------------------------------------

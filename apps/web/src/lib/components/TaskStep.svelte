@@ -31,6 +31,12 @@
   const encoder = new TextEncoder();
   const reasonBytes = $derived(encoder.encode(reason).length);
   const reasonOver = $derived(reasonBytes > 4096);
+  // M2: a too-long reason blocks submit and the over-limit control, matching the
+  // KDI-UI-006 heartbeat-note pattern. Folded into the guard + aria-disabled (not
+  // the true `disabled` attribute, so FR-25 reachability of the disabled reason
+  // is preserved).
+  const blocked = $derived(disabled || reasonOver);
+
   // Default the jump select to the current step (or the first step) so it always
   // has a valid value when the cluster opens.
   $effect(() => {
@@ -40,23 +46,31 @@
   });
 
   async function post(body: Record<string, unknown>): Promise<{ ok: boolean; message: string }> {
-    const res = await fetch(`/api/boards/${boardSlug}/tasks/${task.id}/step`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(15000),
-    });
-    const data = (await res.json().catch(() => ({}))) as { message?: string };
-    if (res.ok) return { ok: true, message: data.message ?? "Step updated." };
-    return { ok: false, message: data.message ?? `Request failed (${res.status})` };
+    // M1: catch fetch rejection (network/timeout/abort) so the operator always
+    // gets feedback instead of a silent unhandled rejection.
+    try {
+      const res = await fetch(`/api/boards/${boardSlug}/tasks/${task.id}/step`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(15000),
+      });
+      const data = (await res.json().catch(() => ({}))) as { message?: string };
+      if (res.ok) return { ok: true, message: data.message ?? "Step updated." };
+      return { ok: false, message: data.message ?? `Request failed (${res.status})` };
+    } catch {
+      return { ok: false, message: "Step request failed (network/timeout)." };
+    }
   }
 
-  async function advance() {
-    if (busy || disabled) return;
+  async function run(op: "advance" | "jump", body: Record<string, unknown>) {
+    if (busy || blocked) return;
     busy = true;
+    // L2: clear the stale success message so success + error never co-render.
     error = null;
+    message = null;
     try {
-      const { ok, message: msg } = await post({ action: "advance", reason: reason || undefined });
+      const { ok, message: msg } = await post(body);
       if (!ok) {
         error = msg;
         return;
@@ -69,26 +83,17 @@
     }
   }
 
-  async function jump() {
-    if (busy || disabled) return;
+  function advance() {
+    return run("advance", { action: "advance", reason: reason || undefined });
+  }
+
+  function jump() {
     if (!jumpKey.trim()) {
+      message = null;
       error = "Step key cannot be empty.";
       return;
     }
-    busy = true;
-    error = null;
-    try {
-      const { ok, message: msg } = await post({ action: "jump", targetKey: jumpKey, reason: reason || undefined });
-      if (!ok) {
-        error = msg;
-        return;
-      }
-      message = msg;
-      reason = "";
-      await invalidateAll();
-    } finally {
-      busy = false;
-    }
+    return run("jump", { action: "jump", targetKey: jumpKey, reason: reason || undefined });
   }
 </script>
 
@@ -109,7 +114,7 @@
       <button
         type="button"
         class="btn btn--primary"
-        aria-disabled={disabled}
+        aria-disabled={blocked || busy}
         aria-describedby={disabled ? "step-disabled-reason" : undefined}
         onclick={advance}
       >
@@ -117,9 +122,9 @@
       </button>
 
       {#if steps && steps.length > 1}
-        <label class="jump-group">
-          <span class="jump-label">Jump to step</span>
-          <select bind:value={jumpKey} aria-disabled={disabled}>
+        <div class="jump-group">
+          <span class="jump-label" id="jump-label">Jump to step</span>
+          <select bind:value={jumpKey} aria-labelledby="jump-label">
             {#each steps as key (key)}
               <option value={key}>{key}</option>
             {/each}
@@ -127,19 +132,19 @@
           <button
             type="button"
             class="btn"
-            aria-disabled={disabled}
+            aria-disabled={blocked || busy}
             aria-describedby={disabled ? "step-disabled-reason" : undefined}
             onclick={jump}
           >
             Jump
           </button>
-        </label>
+        </div>
       {/if}
     </div>
 
     <div class="form-group">
       <label for="step-reason">Reason (optional, max 4096 bytes)</label>
-      <textarea id="step-reason" bind:value={reason} rows="2" aria-describedby="step-reason-count"></textarea>
+      <textarea id="step-reason" bind:value={reason} rows="2" aria-describedby="step-reason-count" disabled={disabled}></textarea>
       <span id="step-reason-count" class="hint">{reasonBytes}/4096 bytes{#if reasonOver} — over the limit{/if}</span>
       {#if reasonOver}<span class="error" role="alert">Reason exceeds 4096 bytes.</span>{/if}
     </div>
